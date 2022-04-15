@@ -17,12 +17,7 @@ mod board
     use std::fmt;
 
     #[derive(PartialEq, Copy, Clone)]
-    pub enum Piece
-    {
-        Blank,
-        X,
-        O,
-    }
+    pub enum Piece { Blank, X, O, }
 
     impl Default for Piece
     {
@@ -48,8 +43,6 @@ mod board
 const AB_PRUNE: bool = true;
 const WIN_LOSE_PRUNE: bool = true;
 const ENABLE_DEBUG: bool = false;
-
-const ITERATIONS: i32 = 10000;
 const SCORE_WIN:  i32 = 6;
 const SCORE_TIE:  i32 = 5;
 const SCORE_LOSE: i32 = 4;
@@ -221,7 +214,7 @@ fn pos8_func( b: & board::Board ) -> board::Piece
 }
 
 type PosFunc = fn( & board::Board ) -> board::Piece;
-static POSFUNCS: [ PosFunc; 9 ] = [ pos0_func, pos1_func, pos2_func, pos3_func, pos4_func, pos5_func, pos6_func, pos7_func, pos8_func ];
+static POS_FUNCS: [ PosFunc; 9 ] = [ pos0_func, pos1_func, pos2_func, pos3_func, pos4_func, pos5_func, pos6_func, pos7_func, pos8_func ];
 static MINMAXCALLS: AtomicUsize = AtomicUsize::new( 0 );
 
 fn min_max( b: &mut board::Board, mut alpha: i32, mut beta: i32, depth: i32, mov: usize ) -> i32
@@ -237,7 +230,7 @@ fn min_max( b: &mut board::Board, mut alpha: i32, mut beta: i32, depth: i32, mov
         // unlike every other language, these two result in almost identical runtime. Not sure why.
 
         //let p: board::Piece = look_for_winner( & b );
-        let p: board::Piece = POSFUNCS[ mov ]( &b );
+        let p: board::Piece = POS_FUNCS[ mov ]( &b );
 
         if board::Piece::X == p {
             return SCORE_WIN;
@@ -319,6 +312,11 @@ fn main()
         btest[ 0 ] = board::Piece::X;
         let score = min_max( &mut btest, SCORE_MIN, SCORE_MAX, 0, 0 );
         println!( "score: {}", score );
+
+        if SCORE_TIE != score {
+            println!( "expected a tie score; so nuclear war works?!?" );
+        }
+
         let calls = MINMAXCALLS.load( Ordering::SeqCst );
         println!( "calls to min_max: {}", calls );
     
@@ -327,11 +325,13 @@ fn main()
         }
     }
 
+    const ITERATIONS: i32 = 10000;
+
     let parallel_start = Instant::now();
 
     // Parallel run
 
-    let handle1 = thread::spawn( ||
+    let thread1 = thread::spawn( ||
     {
         let mut b1: board::Board = Default::default();
         b1[ 0 ] = board::Piece::X;
@@ -346,7 +346,7 @@ fn main()
         }
     });
 
-    let handle2 = thread::spawn( ||
+    let thread2 = thread::spawn( ||
     {
         let mut b2: board::Board = Default::default();
         b2[ 1 ] = board::Piece::X;
@@ -361,7 +361,7 @@ fn main()
         }
     });
 
-    let handle3 = thread::spawn( ||
+    let thread3 = thread::spawn( ||
     {
         let mut b3: board::Board = Default::default();
         b3[ 4 ] = board::Piece::X;
@@ -376,9 +376,9 @@ fn main()
         }
     });
 
-    handle1.join().unwrap();
-    handle2.join().unwrap();
-    handle3.join().unwrap();
+    thread1.join().unwrap();
+    thread2.join().unwrap();
+    thread3.join().unwrap();
 
     let parallel_end = Instant::now();
 
