@@ -401,7 +401,6 @@ extern "C" int __cdecl main( int argc, char *argv[] )
             for ( int times = 0; times < Iterations; times++ )
             {
                 int score = MinMax( b, SCORE_MIN, SCORE_MAX, 0 );
-
                 if ( EnableDebug && SCORE_TIE != score )
                     printf( "alert3! score is %d\n", score );
             }
