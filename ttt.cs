@@ -9,13 +9,13 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
-class HexDump
+class TTT
 {
     const bool ABPrune = true;
     const bool WinLosePrune = true;
     const int Iterations = 10000;
     const bool EnableDebug = false;
-    const bool JustOne = false; //true;
+    const bool JustOne = false;
     const int SCORE_WIN = 6;
     const int SCORE_TIE = 5;
     const int SCORE_LOSE = 4;
@@ -112,12 +112,116 @@ class HexDump
             return true;
         } //Cats
     }
-
-    static void Sp( int x )
+    static Piece pos0func( Board b )
     {
-        for ( int i = 0; i < x; i++ )
-            Console.Write( " " );
-    }
+        Piece x = b.board[0];
+        
+        if ( ( x == b.board[1] && x == b.board[2] ) ||
+             ( x == b.board[3] && x == b.board[6] ) ||
+             ( x == b.board[4] && x == b.board[8] ) )
+            return x;
+        return Piece.blank;
+    } //pos0func
+    
+    static Piece pos1func( Board b )
+    {
+        Piece x = b.board[1];
+        
+        if ( ( x == b.board[0] && x == b.board[2] ) ||
+             ( x == b.board[4] && x == b.board[7] ) )
+            return x;
+        return Piece.blank;
+    } //pos1func
+    
+    static Piece pos2func( Board b )
+    {
+        Piece x = b.board[2];
+        
+        if ( ( x == b.board[0] && x == b.board[1] ) ||
+             ( x == b.board[5] && x == b.board[8] ) ||
+             ( x == b.board[4] && x == b.board[6] ) )
+            return x;
+        return Piece.blank;
+    } //pos2func
+    
+    static Piece pos3func( Board b )
+    {
+        Piece x = b.board[3];
+        
+        if ( ( x == b.board[4] && x == b.board[5] ) ||
+             ( x == b.board[0] && x == b.board[6] ) )
+            return x;
+        return Piece.blank;
+    } //pos3func
+    
+    static Piece pos4func( Board b )
+    {
+        Piece x = b.board[4];
+        
+        if ( ( x == b.board[0] && x == b.board[8] ) ||
+             ( x == b.board[2] && x == b.board[6] ) ||
+             ( x == b.board[1] && x == b.board[7] ) ||
+             ( x == b.board[3] && x == b.board[5] ) )
+            return x;
+        return Piece.blank;
+    } //pos4func
+    
+    static Piece pos5func( Board b )
+    {
+        Piece x = b.board[5];
+        
+        if ( ( x == b.board[3] && x == b.board[4] ) ||
+             ( x == b.board[2] && x == b.board[8] ) )
+            return x;
+        return Piece.blank;
+    } //pos5func
+    
+    static Piece pos6func( Board b )
+    {
+        Piece x = b.board[6];
+        
+        if ( ( x == b.board[7] && x == b.board[8] ) ||
+             ( x == b.board[0] && x == b.board[3] ) ||
+             ( x == b.board[4] && x == b.board[2] ) )
+            return x;
+        return Piece.blank;
+    } //pos6func
+    
+    static Piece pos7func( Board b )
+    {
+        Piece x = b.board[7];
+        
+        if ( ( x == b.board[6] && x == b.board[8] ) ||
+             ( x == b.board[1] && x == b.board[4] ) )
+            return x;
+        return Piece.blank;
+    } //pos7func
+    
+    static Piece pos8func( Board b )
+    {
+        Piece x = b.board[8];
+        
+        if ( ( x == b.board[6] && x == b.board[7] ) ||
+             ( x == b.board[2] && x == b.board[5] ) ||
+             ( x == b.board[0] && x == b.board[4] ) )
+            return x;
+        return Piece.blank;
+    } //pos8func
+
+    delegate Piece winnerfunc( Board b );
+    
+    static winnerfunc [] winner_functions =
+    {
+        pos0func,
+        pos1func,
+        pos2func,
+        pos3func,
+        pos4func,
+        pos5func,
+        pos6func,
+        pos7func,
+        pos8func,
+    };
 
     static void State( int depth, Board b )
     {
@@ -129,10 +233,13 @@ class HexDump
 
     static long evaluated = 0;
 
-    static int MinMax( Board b, int alpha, int beta, int depth )
+    static int MinMax( Board b, int alpha, int beta, int depth, int move )
     {
-        // this increment is very slow on multi-core runs and it's just needed for testing/validation
-        //Interlocked.Increment( ref evaluated );
+        if ( JustOne )
+        {
+            // this increment is very slow on multi-core runs and it's just needed for testing/validation
+            Interlocked.Increment( ref evaluated );
+        }
 
         // scores are always with respect to X.
         // maximize on X moves; minimize on O moves
@@ -140,7 +247,10 @@ class HexDump
 
         if ( depth >= 4 )
         {
-            Piece p = b.LookForWinner();
+            // using the function lookup table is a little faster than LookForWinner
+
+            //Piece p = b.LookForWinner();
+            Piece p = winner_functions[ move ]( b );
 
             if ( Piece.X == p )
                return SCORE_WIN;
@@ -172,7 +282,7 @@ class HexDump
             {
                 b.board[x] = pieceMove;
 
-                int score = MinMax( b, alpha, beta, depth + 1 );
+                int score = MinMax( b, alpha, beta, depth + 1, x );
 
                 b.board[x] = Piece.blank;
 
@@ -223,114 +333,114 @@ class HexDump
 
         try
         {
-if ( JustOne ) {
-            Console.WriteLine( "running once" );
-
-            Board b1 = new Board();
-            b1.board[0] = Piece.X;
-
-            int score = MinMax( b1, SCORE_MIN, SCORE_MAX, 0 );
-            if ( EnableDebug && SCORE_TIE != score )
-                Console.WriteLine( "invalid 0 result {0}", score );
-
-            Console.WriteLine( "moves evaluated: {0}", evaluated );
-
-            Board b2 = new Board();
-            b2.board[1] = Piece.X;
-            score = MinMax( b2, SCORE_MIN, SCORE_MAX, 0 );
-            if ( EnableDebug && SCORE_TIE != score )
-                Console.WriteLine( "invalid 2 result {0}", score );
-    
-            Console.WriteLine( "moves evaluated: {0}", evaluated );
-
-            Board b3 = new Board();
-            b3.board[4] = Piece.X;
-            score = MinMax( b3, SCORE_MIN, SCORE_MAX, 0 );
-            if ( EnableDebug && SCORE_TIE != score )
-                Console.WriteLine( "invalid 3 result {0}", score );
-
-            Console.WriteLine( "moves evaluated: {0}", evaluated );
-}else{
-
-            // Only 3 starting moves aren't transpositions and/or mirrors of other moves.
-
-            long start = stopWatch.ElapsedMilliseconds;
-
-            Parallel.For( 0, 3, i =>
+            if ( JustOne )
             {
-                if ( 0 == i )
-                {
-                    Board b = new Board();
-                    b.board[0] = Piece.X;
-
-                    for ( int l = 0; l < Iterations; l++ )
-                    {
-                        int score = MinMax( b, SCORE_MIN, SCORE_MAX, 0 );
-                        if ( EnableDebug && SCORE_TIE != score )
-                            Console.WriteLine( "invalid 0 result {0}", score );
-                    }
-                }
-                else if ( 1 == i )
-                {
-                    Board b = new Board();
-                    b.board[1] = Piece.X;
-
-                    for ( int l = 0; l < Iterations; l++ )
-                    {
-                        int score = MinMax( b, SCORE_MIN, SCORE_MAX, 0 );
-                        if ( EnableDebug && SCORE_TIE != score )
-                            Console.WriteLine( "invalid 2 result {0}", score );
-                    }
-                }
-                else if ( 2 == i )
-                {
-                    Board b = new Board();
-                    b.board[4] = Piece.X;
-
-                    for ( int l = 0; l < Iterations; l++ )
-                    {
-                        int score = MinMax( b, SCORE_MIN, SCORE_MAX, 0 );
-                        if ( EnableDebug && SCORE_TIE != score )
-                            Console.WriteLine( "invalid 3 result {0}", score );
-                    }
-                }
-            } );
-
-            long parallelEnd = stopWatch.ElapsedMilliseconds;
-
-            long parallelEvaluated = evaluated;
-            evaluated = 0;
-
-            Board b1 = new Board();
-            b1.board[0] = Piece.X;
+                Console.WriteLine( "running once" );
     
-            Board b2 = new Board();
-            b2.board[1] = Piece.X;
-    
-            Board b3 = new Board();
-            b3.board[4] = Piece.X;
-
-            for ( int l = 0; l < Iterations; l++ )
-            {
-                int score = MinMax( b1, SCORE_MIN, SCORE_MAX, 0 );
+                Board b1 = new Board();
+                b1.board[0] = Piece.X;
+                int score = MinMax( b1, SCORE_MIN, SCORE_MAX, 0, 0 );
                 if ( EnableDebug && SCORE_TIE != score )
-                    Console.WriteLine( "invalid 1 result {0}", score );
+                    Console.WriteLine( "invalid 0 result {0}", score );
+                Console.WriteLine( "moves evaluated: {0}", evaluated );
     
-                score = MinMax( b2, SCORE_MIN, SCORE_MAX, 0 );
+                Board b2 = new Board();
+                b2.board[1] = Piece.X;
+                score = MinMax( b2, SCORE_MIN, SCORE_MAX, 0, 1 );
                 if ( EnableDebug && SCORE_TIE != score )
                     Console.WriteLine( "invalid 2 result {0}", score );
+                Console.WriteLine( "moves evaluated: {0}", evaluated );
     
-                score = MinMax( b3, SCORE_MIN, SCORE_MAX, 0 );
+                Board b3 = new Board();
+                b3.board[4] = Piece.X;
+                score = MinMax( b3, SCORE_MIN, SCORE_MAX, 0, 4 );
                 if ( EnableDebug && SCORE_TIE != score )
                     Console.WriteLine( "invalid 3 result {0}", score );
+                Console.WriteLine( "moves evaluated: {0}", evaluated );
             }
+            else
+            {
+                // Only 3 starting moves aren't transpositions and/or mirrors of other moves.
+    
+                long start = stopWatch.ElapsedMilliseconds;
+    
+                Parallel.For( 0, 3, i =>
+                {
+                    if ( 0 == i )
+                    {
+                        Board b = new Board();
+                        b.board[0] = Piece.X;
+    
+                        for ( int l = 0; l < Iterations; l++ )
+                        {
+                            int score = MinMax( b, SCORE_MIN, SCORE_MAX, 0, 0 );
+                            if ( EnableDebug && SCORE_TIE != score )
+                                Console.WriteLine( "invalid 0 result {0}", score );
+                        }
+                    }
+                    else if ( 1 == i )
+                    {
+                        Board b = new Board();
+                        b.board[1] = Piece.X;
+    
+                        for ( int l = 0; l < Iterations; l++ )
+                        {
+                            int score = MinMax( b, SCORE_MIN, SCORE_MAX, 0, 1 );
+                            if ( EnableDebug && SCORE_TIE != score )
+                                Console.WriteLine( "invalid 2 result {0}", score );
+                        }
+                    }
+                    else if ( 2 == i )
+                    {
+                        Board b = new Board();
+                        b.board[4] = Piece.X;
+    
+                        for ( int l = 0; l < Iterations; l++ )
+                        {
+                            int score = MinMax( b, SCORE_MIN, SCORE_MAX, 0, 4 );
+                            if ( EnableDebug && SCORE_TIE != score )
+                                Console.WriteLine( "invalid 3 result {0}", score );
+                        }
+                    }
+                } );
+    
+                long parallelEnd = stopWatch.ElapsedMilliseconds;
+    
+                long parallelEvaluated = evaluated;
+                evaluated = 0;
+    
+                Board b1 = new Board();
+                b1.board[0] = Piece.X;
+        
+                Board b2 = new Board();
+                b2.board[1] = Piece.X;
+        
+                Board b3 = new Board();
+                b3.board[4] = Piece.X;
+    
+                for ( int l = 0; l < Iterations; l++ )
+                {
+                    int score = MinMax( b1, SCORE_MIN, SCORE_MAX, 0, 0 );
+                    if ( EnableDebug && SCORE_TIE != score )
+                        Console.WriteLine( "invalid 1 result {0}", score );
+        
+                    score = MinMax( b2, SCORE_MIN, SCORE_MAX, 0, 1 );
+                    if ( EnableDebug && SCORE_TIE != score )
+                        Console.WriteLine( "invalid 2 result {0}", score );
+        
+                    score = MinMax( b3, SCORE_MIN, SCORE_MAX, 0, 4 );
+                    if ( EnableDebug && SCORE_TIE != score )
+                        Console.WriteLine( "invalid 3 result {0}", score );
+                }
+    
+                long end = stopWatch.ElapsedMilliseconds;
 
-            long end = stopWatch.ElapsedMilliseconds;
+                if ( 0 != parallelEvaluated || 0 != evaluated )
+                    Console.WriteLine( "moves evaluated, parallel {0} serial {1}", parallelEvaluated, evaluated );
 
-            Console.WriteLine( "moves evaluated, parallel {0} serial {1}", parallelEvaluated, evaluated );
-            Console.WriteLine( "elapsed milliseconds for 10k runs, serial: {0,5}", end - parallelEnd );
-            Console.WriteLine( "                                 parallel: {0,5}", parallelEnd - start );
-}
+                Console.WriteLine( "elapsed milliseconds for 10k runs, serial: {0,5}", end - parallelEnd );
+                Console.WriteLine( "                                 parallel: {0,5}", parallelEnd - start );
+            }
         }
         catch (Exception e)
         {
