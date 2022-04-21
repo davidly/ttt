@@ -1,3 +1,9 @@
+;
+; Prove that you can't win at tic-tac-toe
+; The g++ compiler generates better code in that the loop is unrolled and the minimize/maximize codepaths
+; in the loop are separated. It's almost (9 * 2) = 18x as much code, but it's 25% faster.
+;
+
 extern ExitProcess: PROC
 extern printf: PROC
 extern puts: PROC
@@ -14,17 +20,17 @@ XPIECE  equ     1       ; X move piece
 OPIECE  equ     2       ; Y move piece
 
 ; local variable offsets [rbp - X] where X = 1 to N where N is the number of QWORDS beyond 4 reserved at entry
-V_OFFSET      equ 8 * 1
-I_OFFSET      equ 8 * 2
-SC_OFFSET     equ 8 * 3
-PM_OFFSET     equ 8 * 4
-MOVE_OFFSET   equ 8 * 5
+; These are for the function minmax()
+V_OFFSET      equ 8 * 1            ; the value of a board position
+I_OFFSET      equ 8 * 2            ; i in the for loop 0..8
+PM_OFFSET     equ 8 * 3            ; player move X or O
 
 ; spill offsets -- [rbp + X] where X = 2..5  Spill referrs to saving parameters in registers to memory when needed
 ; these registers can be spilled: rcx, rdx, r8, r9
-A_S_OFFSET      equ 8 * 2
-B_S_OFFSET      equ 8 * 3
-DEPTH_S_OFFSET  equ 8 * 4
+; These are for the function minmax()
+A_S_OFFSET      equ 8 * 2        ; alpha
+B_S_OFFSET      equ 8 * 3        ; beta
+DEPTH_S_OFFSET  equ 8 * 4        ; depth in the recursion
 
 .data
     BOARD    db      0,0,0,0,0,0,0,0,0
@@ -194,135 +200,133 @@ minmax PROC
     mov     rbp, rsp
     sub     rsp, 80h   ; 128 decimal
 
-    ; cx = alpha, dx = beta, r8 = depth. Store in spill locations reserved by parent stack
-    ; r9 = position of last piece added. Keep in the register because it's used right away
-    mov     [rbp + A_S_OFFSET ], rcx        ; alpha
-    mov     [rbp + B_S_OFFSET ], rdx        ; beta
-    mov     [rbp + DEPTH_S_OFFSET ], r8     ; depth
-    mov     r14, r8                         ; keep depth in r14 for convenience
+    ; rcx = alpha, rdx = beta, r8 = depth. Store in spill locations reserved by parent stack
+    ; r9 = position of last piece added 0..8. Keep in the register because it's used right away
+    ; r10: unused
+    ; r11: unused
+    ; r12: i in the for loop
+    ; r13: global minmax call count
+    ; r14: V
+    ; r15: unused
 
-    inc     r13
+    inc     r13                             ; r13 is a global variable with the # of calls to minmax
 
-    cmp     r14, 3                          ; # of pieces on board is 1 + depth. So >= 4 means at least 5 moves played
-    jle     skip_winner
+    ; NOTE: r8, rcx, and rdx aren't saved in spill locations until actually needed. Don't trash them until after skip_winner
 
-    mov     rcx, r9                         ; position of last piece added
-    call    winner_proc                     ; winner_all is slightly faster than winner_registers. winner_proc is fastest.
+    cmp     r8, 3                           ; # of pieces on board is 1 + depth. So >= 4 means at least 5 moves played
+    jle     SHORT skip_winner
 
-    cmp     al, XPIECE
-    jne     SHORT not_x_winner
-    mov     rax, WSCO
-    jmp     minmax_done
+    ; winner_proc is inlined here
+    mov     rax, 0                          ; the win procs expect rax and rbx to be 0 on entry 
+    mov     rbx, 0
+    lea     rsi, [WINPROCS]
+    call    QWORD PTR[ rsi + r9 * 8 ]       ; winprocs is faster than winner_all and winner_registers
+    mov     rbx, rax                        ; move to rbx because rax may get trashed by performance side-effects below
 
-  not_x_winner:
-    cmp     al, OPIECE
-    jne     SHORT check_bottom
-    mov     rax, LSCO
-    jmp     minmax_done
+    cmp     bl, XPIECE                      ; did X win? 
+    mov     rax, WSCO                       ; wasted mov, but it often saves a jump
+    je      minmax_done
 
-  check_bottom:
-    cmp     r14, 8                      ; recursion can only go 8 deep before the board is full
-    jne     SHORT skip_winner
-    mov     rax, TSCO
-    jmp     minmax_done
+    cmp     bl, OPIECE                      ; did O win?
+    mov     rax, LSCO                       ; wasted mov, but it often saves a jump
+    je      minmax_done
+
+    cmp     r8, 8                           ; recursion can only go 8 deep before the board is full
+    mov     rax, TSCO                       ; wasted mov, but it often saves a jump
+    je      minmax_done
 
   skip_winner:
+    mov     [rbp + DEPTH_S_OFFSET ], r8     ; depth
+    mov     [rbp + A_S_OFFSET ], rcx        ; alpha
+    mov     [rbp + B_S_OFFSET ], rdx        ; beta
 
-    and     r14d, 1
-    jz      minmax_minimize
+    test    r8d, 1                          ; odd depth means we're maximizing for X. 
+    jz      SHORT minmax_minimize
 
-    mov     rax, NSCO
-    mov     [rbp - V_OFFSET], rax       ; V -- value
-    mov     rax, XPIECE
-    mov     [rbp - PM_OFFSET], rax      ; PM -- player move
-    jmp     minmax_for
+    mov     r14, NSCO                       ; minimum possible score
+    mov     rbx, XPIECE                     ; X will move
+    mov     [rbp - PM_OFFSET], rbx          ; PM -- player move
+    jmp     SHORT minmax_for
 
   minmax_minimize:
-    mov     rax, XSCO
-    mov     [rbp - V_OFFSET], rax       ; V -- value
-    mov     rax, OPIECE
-    mov     [rbp - PM_OFFSET], rax      ; PM -- player move
+    mov     r14, XSCO                       ; maximum possible score
+    mov     rbx, OPIECE                     ; O will move
+    mov     [rbp - PM_OFFSET], rbx          ; PM -- player move
 
   minmax_for:
-    mov     QWORD PTR [rbp - I_OFFSET], 0   ; I -- the for loop 0..8
+    mov     r12, 0                          ; r12 is I in the for loop 0..8
 
   minmax_loop:
-    lea     rcx, [BOARD]                ; Check if the board position is unused
-    add     rcx, [rbp - I_OFFSET]
+    lea     rcx, [BOARD]                    ; Check if the board position is unused
+    add     rcx, r12
     cmp     BYTE PTR [rcx], 0
-    jnz     minmax_loopend
+    jne     minmax_loopend                  ; move to the next spot on the board
 
-    mov     al, [rbp - PM_OFFSET]       ; load PM
-    mov     [rcx], al                   ; make the move
-    mov     [rbp - MOVE_OFFSET], rcx    ; save this so it doesn't have to be recomputed
+    mov     al, [rbp - PM_OFFSET]           ; load player move (X or O)
+    mov     BYTE PTR [rcx], al              ; make the move
 
+    ; prepare arguments for recursing
     ; read from stack spill locations, not local variable locations
 
-    mov     rcx, [rbp + A_S_OFFSET]     ; alpha
-    mov     rdx, [rbp + B_S_OFFSET]     ; beta
-    mov     r8, [rbp + DEPTH_S_OFFSET]  ; depth
-    inc     r8                          ; next depth 1..8
-    mov     r9, [rbp - I_OFFSET]        ; position just claimed 0..8
+    mov     rcx, [rbp + A_S_OFFSET]         ; alpha
+    mov     rdx, [rbp + B_S_OFFSET]         ; beta
+    inc     r8                              ; next depth 1..8
+    mov     r9, r12                         ; position just claimed 0..8
+    mov     [rbp - I_OFFSET], r12           ; save i -- the for loop variable
+    mov     [rbp - V_OFFSET], r14           ; save V -- value of the current board position
 
-    call    minmax
-    mov     [rbp - SC_OFFSET], rax      ; save the score SC, but keep it in rax as long as possible
+    call    minmax                          ; score is in rax on return
 
-    mov     rcx, [rbp - MOVE_OFFSET]    ; restore the move position to 0 on the board
-    mov     BYTE PTR [rcx], 0
+    mov     r8, [rbp + DEPTH_S_OFFSET]      ; restore depth into r8
+    mov     r12, [rbp - I_OFFSET]           ; restore i
+    lea     rcx, [BOARD]                    ; Restore the move on the board to 0 from X or O
+    mov     BYTE PTR [rcx + r12], 0
 
-    mov     r14, [rbp + DEPTH_S_OFFSET]  ; load the depth
-    and     r14, 1                       ; Is it maximize?
+    test    r8, 1                           ; test if the depth is odd, which means maximize
     jz      SHORT minmax_minscore
 
+    ; Maximize the score
     cmp     rax, WSCO
-    je      minmax_done                 ; can't do better than winning score when maximizing
+    je      SHORT minmax_done               ; can't do better than winning score when maximizing
 
-    mov     rbx, [rbp - V_OFFSET]       ; load V
-    cmp     rax, rbx
-    jle     SHORT minmax_no_max
-    mov     [rbp - V_OFFSET], rax       ; update V with SC
-    mov     rbx, rax                    ; keep latest V in rbx
+    mov     r14, [rbp - V_OFFSET]           ; load V
+    cmp     rax, r14                        ; compare SC with V
+    cmovg   r14, rax                        ; keep latest V in r14
 
-  minmax_no_max:
-    mov     rax, [rbp + A_S_OFFSET]     ; load alpha
-    cmp     rax, rbx                    ; compare alpha with V
-    jge     SHORT minmax_no_alpha_update
-    mov     [rbp + A_S_OFFSET], rbx     ; update alpha with V
-    mov     rax, rbx                    ; keep latest alpha in rax
+    mov     rax, [rbp + A_S_OFFSET]         ; load alpha
+    cmp     rax, r14                        ; compare alpha with V
+    cmovl   rax, r14                        ; only update alpha if alpha is less than V
 
-  minmax_no_alpha_update:
-    mov     rbx, [rbp + B_S_OFFSET]     ; load beta
-    cmp     rax, rbx                    ; compare alpha with beta
-    jge     minmax_loadv_done           ; alpha pruning
-    jmp     minmax_loopend
+    cmp     rax, QWORD PTR [rbp + B_S_OFFSET] ; compare alpha (rax) with beta (in memory)
+    jge     SHORT minmax_loadv_done         ; alpha pruning
 
-  minmax_minscore:
+    mov     [rbp + A_S_OFFSET], rax         ; update alpha with V or the same alpha value (to avoid a jump)
+    jmp     SHORT minmax_loopend
+
+  minmax_minscore: ; Minimize the score
     cmp     rax, LSCO
-    je      minmax_done                 ; can't do better than losing score when minimizing
-    mov     rbx, [rbp - V_OFFSET]       ; load V
-    cmp     rax, rbx                    ; compare SC with v
-    jge     minmax_no_min
-    mov     [rbp - V_OFFSET], rax       ; update V with SC
-    mov     rbx, rax
+    je      SHORT minmax_done               ; can't do better than losing score when minimizing
 
-  minmax_no_min:
-    mov     rax, [rbp + B_S_OFFSET]     ; load beta
-    cmp     rax, rbx                    ; compare beta with V
-    jle     minmax_no_beta_update
-    mov     [rbp + B_S_OFFSET], rbx     ; update Beta with V
-    mov     rax, rbx
+    mov     r14, [rbp - V_OFFSET]           ; load V
+    cmp     rax, r14                        ; compare SC with v
+    cmovl   r14, rax                        ; keep latest V in r14
 
-  minmax_no_beta_update:
+    mov     rax, [rbp + B_S_OFFSET]         ; load beta
+    cmp     rax, r14                        ; compare beta with V
+    cmovg   rax, r14                        ; if V is less than Beta, update Beta
+
     cmp     rax, QWORD PTR [rbp + A_S_OFFSET ] ; compare beta (rax) with alpha (in memory)
-    jle     minmax_loadv_done           ; beta pruning
+    jle     SHORT minmax_loadv_done         ; beta pruning
 
-  minmax_loopend:                       ; bottom of the loop
-    inc     QWORD PTR [rbp - I_OFFSET ]
-    cmp     QWORD PTR [rbp - I_OFFSET ], 9
+    mov     [rbp + B_S_OFFSET], rax         ; update beta with a new value or the same value (to avoid a jump)
+
+  minmax_loopend:                           ; bottom of the loop
+    inc     r12
+    cmp     r12, 9
     jl      minmax_loop
 
   minmax_loadv_done:
-    mov     rax, [rbp - V_OFFSET]       ; load V to return
+    mov     rax, r14                        ; load V then return
 
   minmax_done:
     leave
@@ -330,218 +334,218 @@ minmax PROC
 minmax ENDP
 
 proc0 PROC
-    mov     dl, [BOARD]
-    cmp     dl, [BOARD + 1]
-    jne     proc0_next_win
-    cmp     dl, [BOARD + 2]
+    mov     bl, [BOARD]
+    cmp     bl, [BOARD + 1]
+    jne     SHORT proc0_next_win
+    cmp     bl, [BOARD + 2]
     je      SHORT proc0_yes
 
   proc0_next_win:
-    cmp     dl, [BOARD + 3]
-    jne     proc0_next_win2
-    cmp     dl, [BOARD + 6]
+    cmp     bl, [BOARD + 3]
+    jne     SHORT proc0_next_win2
+    cmp     bl, [BOARD + 6]
     je      SHORT proc0_yes
 
   proc0_next_win2:
-    cmp     dl, [BOARD + 4]
+    cmp     bl, [BOARD + 4]
     jne     SHORT proc0_no
-    cmp     dl, [BOARD + 8]
+    cmp     bl, [BOARD + 8]
     je      SHORT proc0_yes
   proc0_no:
     ret
 
   proc0_yes:
-    mov     rax, rdx
+    mov     rax, rbx
     ret
 proc0 ENDP
 
 proc1 PROC
-    mov     dl, [BOARD + 1]
-    cmp     dl, [BOARD + 0]
+    mov     bl, [BOARD + 1]
+    cmp     bl, [BOARD + 0]
     jne     SHORT proc1_next_win
-    cmp     dl, [BOARD + 2]
+    cmp     bl, [BOARD + 2]
     je      SHORT proc1_yes
 
   proc1_next_win:
-    cmp     dl, [BOARD + 4]
+    cmp     bl, [BOARD + 4]
     jne     SHORT proc1_no
-    cmp     dl, [BOARD + 7]
+    cmp     bl, [BOARD + 7]
     je      SHORT proc1_yes
   proc1_no:
     ret
 
   proc1_yes:
-    mov     rax, rdx
+    mov     rax, rbx
     ret
 proc1 ENDP
 
 proc2 PROC
-    mov     dl, [BOARD + 2]
-    cmp     dl, [BOARD + 0]
+    mov     bl, [BOARD + 2]
+    cmp     bl, [BOARD + 0]
     jne     SHORT proc2_next_win
-    cmp     dl, [BOARD + 1]
+    cmp     bl, [BOARD + 1]
     je      SHORT proc2_yes
 
   proc2_next_win:
-    cmp     dl, [BOARD + 5]
+    cmp     bl, [BOARD + 5]
     jne     SHORT proc2_next_win2
-    cmp     dl, [BOARD + 8]
+    cmp     bl, [BOARD + 8]
     je      SHORT proc2_yes
 
   proc2_next_win2:
-    cmp     dl, [BOARD + 4]
+    cmp     bl, [BOARD + 4]
     jne     SHORT proc2_no
-    cmp     dl, [BOARD + 6]
+    cmp     bl, [BOARD + 6]
     je      SHORT proc2_yes
   proc2_no:
     ret
 
   proc2_yes:
-    mov     rax, rdx
+    mov     rax, rbx
     ret
 proc2 ENDP
 
 proc3 PROC
-    mov     dl, [BOARD + 3]
-    cmp     dl, [BOARD + 4]
+    mov     bl, [BOARD + 3]
+    cmp     bl, [BOARD + 4]
     jne     SHORT proc3_next_win
-    cmp     dl, [BOARD + 5]
+    cmp     bl, [BOARD + 5]
     je      SHORT proc3_yes
 
   proc3_next_win:
-    cmp     dl, [BOARD + 0]
+    cmp     bl, [BOARD + 0]
     jne     SHORT proc3_no
-    cmp     dl, [BOARD + 6]
+    cmp     bl, [BOARD + 6]
     je      SHORT proc3_yes
   proc3_no:
     ret
 
   proc3_yes:
-    mov     rax, rdx
+    mov     rax, rbx
     ret
 proc3 ENDP
 
 proc4 PROC
-    mov     dl, [BOARD + 4]
-    cmp     dl, [BOARD + 0]
+    mov     bl, [BOARD + 4]
+    cmp     bl, [BOARD + 0]
     jne     SHORT proc4_next_win
-    cmp     dl, [BOARD + 8]
+    cmp     bl, [BOARD + 8]
     je      SHORT proc4_yes
 
   proc4_next_win:
-    cmp     dl, [BOARD + 2]
+    cmp     bl, [BOARD + 2]
     jne     SHORT proc4_next_win2
-    cmp     dl, [BOARD + 6]
+    cmp     bl, [BOARD + 6]
     je      SHORT proc4_yes
 
   proc4_next_win2:
-    cmp     dl, [BOARD + 1]
+    cmp     bl, [BOARD + 1]
     jne     SHORT proc4_next_win3
-    cmp     dl, [BOARD + 7]
+    cmp     bl, [BOARD + 7]
     je      SHORT proc4_yes
 
   proc4_next_win3:
-    cmp     dl, [BOARD + 3]
+    cmp     bl, [BOARD + 3]
     jne     SHORT proc4_no
-    cmp     dl, [BOARD + 5]
+    cmp     bl, [BOARD + 5]
     je      SHORT proc4_yes
   proc4_no:
     ret
 
   proc4_yes:
-    mov     rax, rdx
+    mov     rax, rbx
     ret
 proc4 ENDP
 
 proc5 PROC
-    mov     dl, [BOARD + 5]
-    cmp     dl, [BOARD + 3]
+    mov     bl, [BOARD + 5]
+    cmp     bl, [BOARD + 3]
     jne     SHORT proc5_next_win
-    cmp     dl, [BOARD + 4]
+    cmp     bl, [BOARD + 4]
     je      SHORT proc5_yes
 
   proc5_next_win:
-    cmp     dl, [BOARD + 2]
+    cmp     bl, [BOARD + 2]
     jne     SHORT proc5_no
-    cmp     dl, [BOARD + 8]
+    cmp     bl, [BOARD + 8]
     je      SHORT proc5_yes
   proc5_no:
     ret
 
   proc5_yes:
-    mov     rax, rdx
+    mov     rax, rbx
     ret
 proc5 ENDP
 
 proc6 PROC
-    mov     dl, [BOARD + 6]
-    cmp     dl, [BOARD + 7]
+    mov     bl, [BOARD + 6]
+    cmp     bl, [BOARD + 4]
     jne     SHORT proc6_next_win
-    cmp     dl, [BOARD + 8]
+    cmp     bl, [BOARD + 2]
     je      SHORT proc6_yes
 
   proc6_next_win:
-    cmp     dl, [BOARD + 0]
+    cmp     bl, [BOARD + 0]
     jne     SHORT proc6_next_win2
-    cmp     dl, [BOARD + 3]
+    cmp     bl, [BOARD + 3]
     je      SHORT proc6_yes
 
   proc6_next_win2:
-    cmp     dl, [BOARD + 4]
+    cmp     bl, [BOARD + 7]
     jne     SHORT proc6_no
-    cmp     dl, [BOARD + 2]
+    cmp     bl, [BOARD + 8]
     je      SHORT proc6_yes
   proc6_no:
     ret
 
   proc6_yes:
-    mov     rax, rdx
+    mov     rax, rbx
     ret
 proc6 ENDP
 
 proc7 PROC
-    mov     dl, [BOARD + 7]
-    cmp     dl, [BOARD + 6]
+    mov     bl, [BOARD + 7]
+    cmp     bl, [BOARD + 1]
     jne     SHORT proc7_next_win
-    cmp     dl, [BOARD + 8]
+    cmp     bl, [BOARD + 4]
     je      SHORT proc7_yes
 
   proc7_next_win:
-    cmp     dl, [BOARD + 1]
+    cmp     bl, [BOARD + 6]
     jne     SHORT proc7_no
-    cmp     dl, [BOARD + 4]
+    cmp     bl, [BOARD + 8]
     je      SHORT proc7_yes
   proc7_no:
     ret
 
   proc7_yes:
-    mov     rax, rdx
+    mov     rax, rbx
     ret
 proc7 ENDP
 
 proc8 PROC
-    mov     dl, [BOARD + 8]
-    cmp     dl, [BOARD + 6]
+    mov     bl, [BOARD + 8]
+    cmp     bl, [BOARD + 0]
     jne     SHORT proc8_next_win
-    cmp     dl, [BOARD + 7]
+    cmp     bl, [BOARD + 4]
     je      SHORT proc8_yes
 
   proc8_next_win:
-    cmp     dl, [BOARD + 2]
+    cmp     bl, [BOARD + 2]
     jne     SHORT proc8_next_win2
-    cmp     dl, [BOARD + 5]
+    cmp     bl, [BOARD + 5]
     je      SHORT proc8_yes
 
   proc8_next_win2:
-    cmp     dl, [BOARD + 0]
+    cmp     bl, [BOARD + 6]
     jne     SHORT proc8_no
-    cmp     dl, [BOARD + 4]
+    cmp     bl, [BOARD + 7]
     je      SHORT proc8_yes
   proc8_no:
     ret
 
   proc8_yes:
-    mov     rax, rdx
+    mov     rax, rbx
     ret
 proc8 ENDP
 
