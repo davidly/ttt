@@ -246,7 +246,7 @@ void Sp( int x )
 
 unsigned int g_Moves = 0;
 
-int MinMax( Board &b, int alpha, int beta, int depth, int move = 0 )
+int MinMax( Board &b, int alpha, int beta, int depth, int move )
 {
 //    keeping track of g_Moves makes the runtime much slower, especially when it's parallelized
 //    InterlockedIncrement( &g_Moves );
@@ -376,7 +376,7 @@ extern "C" int __cdecl main( int argc, char *argv[] )
 
             for ( int times = 0; times < Iterations; times++ )
             {
-                int score = MinMax( b, SCORE_MIN, SCORE_MAX, 0 );
+                int score = MinMax( b, SCORE_MIN, SCORE_MAX, 0, 0 );
                 if ( EnableDebug && SCORE_TIE != score )
                     printf( "alert1! score is %d\n", score );
             }
@@ -388,7 +388,7 @@ extern "C" int __cdecl main( int argc, char *argv[] )
 
             for ( int times = 0; times < Iterations; times++ )
             {
-                int score = MinMax( b, SCORE_MIN, SCORE_MAX, 0 );
+                int score = MinMax( b, SCORE_MIN, SCORE_MAX, 0, 1 );
                 if ( EnableDebug && SCORE_TIE != score )
                     printf( "alert2! score is %d\n", score );
             }
@@ -400,7 +400,7 @@ extern "C" int __cdecl main( int argc, char *argv[] )
 
             for ( int times = 0; times < Iterations; times++ )
             {
-                int score = MinMax( b, SCORE_MIN, SCORE_MAX, 0 );
+                int score = MinMax( b, SCORE_MIN, SCORE_MAX, 0, 4 );
                 if ( EnableDebug && SCORE_TIE != score )
                     printf( "alert3! score is %d\n", score );
             }
@@ -427,17 +427,17 @@ extern "C" int __cdecl main( int argc, char *argv[] )
     
     for ( int l = 0; l < Iterations; l++ )
     {
-        int score = MinMax( b1, SCORE_MIN, SCORE_MAX, 0 );
+        int score = MinMax( b1, SCORE_MIN, SCORE_MAX, 0, 0 );
 
         if ( EnableDebug && SCORE_TIE != score )
             printf( "alert1! score is %d\n", score );
     
-        score = MinMax( b2, SCORE_MIN, SCORE_MAX, 0 );
+        score = MinMax( b2, SCORE_MIN, SCORE_MAX, 0, 1 );
 
         if ( EnableDebug && SCORE_TIE != score )
             printf( "alert2! score is %d\n", score );
     
-        score = MinMax( b3, SCORE_MIN, SCORE_MAX, 0 );
+        score = MinMax( b3, SCORE_MIN, SCORE_MAX, 0, 4 );
 
         if ( EnableDebug && SCORE_TIE != score )
             printf( "alert3! score is %d\n", score );
