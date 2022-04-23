@@ -2,7 +2,11 @@
 ; Prove that you can't win at tic-tac-toe
 ; The g++ compiler generates better code in that the loop is unrolled and the minimize/maximize codepaths
 ; in the loop are separated. It's almost (9 * 2) = 18x as much code, but it's 25% faster.
-;
+; This code just separates min/max codepaths but leaves the loops in place.
+; Initial with decent optimizations: .0772
+; lots of small fixes using registers instead of memory: .0578
+; separating min/max codepaths, aligning loop jump targets: .0448
+; separate loops for 3 boards instead of just one .0433
 
 extern ExitProcess: PROC
 extern printf: PROC
@@ -10,6 +14,10 @@ extern puts: PROC
 extern mainCRTStartup: PROC
 extern QueryPerformanceCounter: PROC
 extern QueryPerformanceFrequency: PROC
+extern CreateThread: PROC
+extern WaitForSingleObject: PROC
+extern WaitForMultipleObjects: PROC
+extern CloseHandle: PROC
 
 ; these short/terrible names are to support portability of names to 8085
 
@@ -33,21 +41,30 @@ A_S_OFFSET      equ 8 * 2        ; alpha
 B_S_OFFSET      equ 8 * 3        ; beta
 
 .data
-    BOARD    db      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0  ; allocate 16 bytes; only first 9 are used.
-    caption  db      'Hello world!', 0
-    fmtStr   db      'Format string int %I64d %I64d %I64d %I64d %I64d %s', 0
-    pieceS   db      '%d', 0
-    intS     db      '%d ', 0
-    STRWIN   db      'winner: %d', 10, 13, 0
-    moveStr  db      'moves: %d', 10, 13, 0
-    dbgcw    db      'calling winner', 10, 13, 0
-    CRLF     db      10, 13, 0
-    WINPROCS      dq     proc0, proc1, proc2, proc3, proc4, proc5, proc6, proc7, proc8
-    WINPROCS_orig dq     proc0_orig, proc1_orig, proc2_orig, proc3_orig, proc4_orig, proc5_orig, proc6_orig, proc7_orig, proc8_orig
+    ; The fillerX items are to get each board in a separate cache line, which appears to be 128 bytes on my 5950x
+    ; Separating cache lines improves performance 3x. Using 64 byte cache lines had bad performance.
+    BOARD0        db     1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0  ; allocate 16 bytes; only first 9 are used.
+    filler0       dq     0, 0, 0, 0, 0, 0, 0
+    BOARD1        db     0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0  ; allocate 16 bytes; only first 9 are used.
+    filler1       dq     0, 0, 0, 0, 0, 0, 0
+    BOARD4        db     0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0  ; allocate 16 bytes; only first 9 are used.
+    filler4       dq     0, 0, 0, 0, 0, 0, 0
+    WINPROCS_x    dq     proc0, proc1, proc2, proc3, proc4, proc5, proc6, proc7, proc8 ; thought these might be faster, but they're not
+    WINPROCS      dq     proc0_orig, proc1_orig, proc2_orig, proc3_orig, proc4_orig, proc5_orig, proc6_orig, proc7_orig, proc8_orig
     startTime     dq     0
     endTime       dq     0
     perfFrequency dq     0
+    moveCount     dq     0
     runTime       db     'runtime in microseconds (-6): %lld', 10, 13, 0
+    caption       db     'Hello world!', 0
+    fmtStr        db     'Format string int %I64d %I64d %I64d %I64d %I64d %s', 0
+    pieceS        db     '%d', 0
+    intS          db     '%d ', 0
+    STRWIN        db     'winner: %d', 10, 13, 0
+    moveStr       db     'moves: %d', 10, 13, 0
+    donewith      db     'done with: %d', 10, 13, 0
+    dbgcw         db     'calling winner', 10, 13, 0
+    CRLF          db     10, 13, 0
 
 .code
 main PROC
@@ -55,121 +72,189 @@ main PROC
     mov     rbp, rsp
     sub     rsp, 32 + 8 * 3
 
-;    lea     rcx, [fmtStr]
-;    mov     rdx, 17
-;    mov     r8, 18
-;    mov     r9, 19
-;    mov     rbx, 20
-;    mov     [rsp + 8 * 4 ], rbx
-;    mov     rbx, 21
-;    mov     [rsp + 8 * 5 ], rbx
-;    lea     rbx, [caption]
-;    mov     [rsp + 8 * 6 ], rbx
-;    call    printf
+;    lea    rcx, [fmtStr]
+;    mov    rdx, 17
+;    mov    r8, 18
+;    mov    r9, 19
+;    mov    rbx, 20
+;    mov    [rsp + 8 * 4 ], rbx
+;    mov    rbx, 21
+;    mov    [rsp + 8 * 5 ], rbx
+;    lea    rbx, [caption]
+;    mov    [rsp + 8 * 6 ], rbx
+;    call   printf
 
     lea     rcx, [startTime]
     call    QueryPerformanceCounter
 
-    xor     r13, r13           ; count of moves examined (calls to minmax()). Global for whole app
+    mov     [moveCount], 0     ; # of calls to minmax_* functions
+    xor     r11, r11           ; handy register with 0 value
 
-;     mov     r15, 1
-    mov     r15, 100000         ; # of iterations
+    mov     rcx, 0             ; solve for board 0
+    call    TTTThreadProc
 
-  main_loopagain:
-    lea     rcx, [BOARD]
-    mov     al, XPIECE
-    mov     [rcx], al
-    mov     rcx, 0             ; piece placed at position 0
-    call    minmaxdriver
+    mov     rcx, 1             ; solve for board 1
+    call    TTTThreadProc
 
-    lea     rcx, [BOARD]
-    mov     al, 0
-    mov     [rcx], al
-    lea     rcx, [BOARD + 1]
-    mov     al, XPIECE
-    mov     [rcx], al
-    mov     rcx, 1             ; piece placed at position 1
-    call    minmaxdriver
+    mov     rcx, 4             ; solve for board 4
+    call    TTTThreadProc
 
-    lea     rcx, [BOARD + 1]
-    mov     al, 0
-    mov     [rcx], al
-    lea     rcx, [BOARD + 4]
-    mov     al, XPIECE
-    mov     [rcx], al
-    mov     rcx, 4             ; piece placed at position 4
-    call    minmaxdriver
+    call    showstats
 
-    lea     rcx, [BOARD + 4]
-    mov     al, 0
-    mov     [rcx], al
-    
-    dec     r15
-    cmp     r15, 0
-    jne     main_loopagain
+    ; now do it again, but this time with 3 threads
 
-; debugging winner
-;    call    printboard
-;    call    winner
-;    mov     rdx, rax     ; return value
-;    lea     rcx, STRWIN
-;    call    printf
+    lea     rcx, [startTime]
+    call    QueryPerformanceCounter
 
-    ; show the time taken for the computation
-    lea      rcx, [endTime]
-    call     QueryPerformanceCounter
-    lea      rcx, [perfFrequency]
-    call     QueryPerformanceFrequency
-    mov      rbx, [startTime]
-    mov      rax, [endTime]
-    sub      rax, rbx
-    mov      rcx, [perfFrequency]
-    xor      rdx, rdx
-    mov      rbx, 1000000  ; increase resolution so the divide gives better results
-    mul      rbx
-    div      rcx
+    mov     [moveCount], 0     ; # of calls to minmax_* functions
+    xor     r11, r11           ; handy register with 0 value
 
-    mov      rdx, rax
-    lea      rcx, [runTime]
-    call     printf
+    call    solvethreaded
 
-    ; show the # of moves taken, mostly to validate it worked. Should be a multiple of 6493.
-    mov      rdx, r13
-    lea      rcx, moveStr
-    call     printf
+    call    showstats
 
     xor     rax, rax
 
-    ; these two instructions are identical to leave
-    mov     rsp, rbp
-    pop     rbp
-    ;    leave
-
+    leave
     ret
 main ENDP
 
-minmaxdriver PROC
+showstats PROC
     push    rbp
     mov     rbp, rsp
     sub     rsp, 32
 
-;    call    printboard
-;    call    printCRLF
+    lea     rcx, [endTime]
+    call    QueryPerformanceCounter
+    lea     rcx, [perfFrequency]
+    call    QueryPerformanceFrequency
+    mov     rbx, [startTime]
+    mov     rax, [endTime]
+    sub     rax, rbx
+    mov     rcx, [perfFrequency]
+    xor     rdx, rdx
+    mov     rbx, 1000000  ; increase resolution so the divide gives better results
+    mul     rbx
+    div     rcx
 
-    mov     r9, rcx       ; position of last board update
-    mov     rcx, NSCO     ; alpha -- minimum score
-    mov     rdx, XSCO     ; beta -- maximum score
-    xor     r8, r8        ; depth
+    mov     rdx, rax
+    lea     rcx, [runTime]
+    call    printf
 
-    call    minmax_min
-
-;    mov     rdx, rax     ; return value
-;    lea     rcx, STRWIN
-;    call    printf
+    ; show the # of moves taken, mostly to validate it worked. Should be a multiple of 6493.
+    mov     rdx, [moveCount]
+    lea     rcx, moveStr
+    call    printf
 
     leave
     ret
-minmaxdriver ENDP
+showstats ENDP
+
+boardIndex$ = 32
+
+TTTThreadProc PROC
+    push    rbp
+    mov     rbp, rsp
+    sub     rsp, 40
+
+    ; code that follows expects r11 to be 0 and r13 to be the move count
+    xor     r11, r11
+    xor     r13, r13
+
+    ; save the initial move board position
+    mov     QWORD PTR boardIndex$[rsp], rcx
+
+    cmp     rcx, 0
+    jne     TTTThreadProc_try1
+    lea     r10, [BOARD0]
+    jmp     TTTThreadProc_for
+
+  TTTThreadProc_try1:
+    cmp     rcx, 1
+    jne     TTTThreadProc_try4
+    lea     r10, [BOARD1]
+    jmp     TTTThreadProc_for
+
+  TTTThreadProc_try4:                    ; don't validate it's four -- just assume it
+    lea     r10, [BOARD4]
+
+  TTTThreadProc_for:
+    mov     r15, 10000                   ; # of iterations
+
+    align 16
+  TTTThreadProc_loop:
+    mov     r9, QWORD PTR boardIndex$[rsp]  ; position of last board update
+    mov     rcx, NSCO     ; alpha -- minimum score
+    mov     rdx, XSCO     ; beta -- maximum score
+    xor     r8, r8        ; depth
+    ; r10 holds the board
+    ; r11 must be 0
+    ; r13 holds the minmax call count
+
+    call    minmax_min
+
+    dec     r15
+    cmp     r15, 0
+    jne     TTTTHreadProc_loop
+
+    lock add [moveCount], r13            ; do this locked update once here at the end instead for each iteration
+    xor     rax, rax
+
+    leave
+    ret
+TTTThreadProc ENDP
+
+_TEXT SEGMENT
+
+aHandles$ = 48  ; reserve 24 bytes. Start at 48 because < that is reserved for CreateThread arguments
+
+solvethreaded PROC
+    push    rbp
+    mov     rbp, rsp
+    sub     rsp, 80
+
+    ; board 1 takes the longest; start it first
+    xor     rcx, rcx                     ; no security attributes
+    xor     rdx, rdx                     ; default stack size
+    lea     r8, TTTThreadProc
+    mov     r9, 1                        ; 0, 1, or 4 depending on the board being solved for
+    mov     DWORD PTR [rsp + 32], 0      ; 0 creation flags
+    mov     QWORD PTR [rsp + 40], 0      ; don't return a dwThreadID
+    call    CreateThread
+    mov     QWORD PTR aHandles$[rsp], rax
+
+    ; board 4 takes the next longest
+    xor     rcx, rcx                     ; no security attributes
+    xor     rdx, rdx                     ; default stack size
+    lea     r8, TTTThreadProc
+    mov     r9, 4                        ; 0, 1, or 4 depending on the board being solved for
+    mov     DWORD PTR [rsp + 32], 0      ; 0 creation flags
+    mov     QWORD PTR [rsp + 40], 0      ; don't return a dwThreadID
+    call    CreateThread
+    mov     QWORD PTR aHandles$[rsp + 8], rax
+
+    ; solve for board 0 on this thread
+    mov     rcx, 0
+    call    TTTThreadProc
+
+    ; wait for the threads to complete
+    mov     rcx, 2                        ; # of handles to wait for
+    lea     rdx, QWORD PTR aHandles$[rsp] ; location of the handles
+    mov     r8d, 1                        ; wait all
+    mov     r9, -1                        ; wait forever
+    call    WaitForMultipleObjects
+
+    ; close the thread handles
+    mov     rcx, aHandles$[rsp + 0]
+    call    CloseHandle
+    mov     rcx, aHandles$[rsp + 8]
+    call    CloseHandle
+
+    leave
+    ret
+solvethreaded ENDP
+
+_TEXT ENDS
 
 printCRLF PROC
     push    rbp
@@ -206,7 +291,7 @@ printboard PROC
     xor     rbx, rbx
 
   pb_loop:
-    lea     rcx, [BOARD]
+    mov     rcx, r10
     add     rcx, rbx
     mov     al, [rcx]
 
@@ -230,8 +315,8 @@ minmax_max PROC
 
     ; rcx = alpha, rdx = beta, r8 = depth. Store in spill locations reserved by parent stack
     ; r9 = position of last piece added 0..8. Keep in the register because it's used right away
-    ; r10: unused
-    ; r11: unused
+    ; r10: the board
+    ; r11: set to 0 and stays there for the whole app
     ; r12: i in the for loop
     ; r13: global minmax_max call count
     ; r14: V
@@ -244,11 +329,11 @@ minmax_max PROC
     cmp     r8, 3                           ; # of pieces on board is 1 + depth. So >= 4 means at least 5 moves played
     jle     SHORT minmax_max_skip_winner
 
-    ; winner_proc is inlined here
-    mov     rax, 0                          ; the win procs expect rax to be 0
+    ; the win procs expect the board in r10
+    mov     rax, r11                        ; the win procs expect rax to be 0
     mov     rbx, OPIECE                     ; and rbx to contain the player with the latest move
     lea     rsi, [WINPROCS]
-    call    QWORD PTR[ rsi + r9 * 8 ]       ; winprocs is faster than winner_all and winner_registers
+    call    QWORD PTR[ rsi + r9 * 8 ]       ; call the proc that checks for wins starting with last piece added
 
     cmp     al, OPIECE                      ; did O win?
     mov     rax, LSCO                       ; wasted mov if not equal, but it often saves a jump. no cmov for loading register with constant
@@ -259,13 +344,13 @@ minmax_max PROC
     mov     [rbp + B_S_OFFSET ], rdx        ; beta
 
     mov     r14, NSCO                       ; minimum possible score
+    mov     r9, r11                         ; r9 is I in the for loop 0..8
 
-    mov     r9, 0                           ; r9 is I in the for loop 0..8
-
+    align   16
   minmax_max_loop:
-    lea     rdi, [BOARD]                    ; Check if the board position is unused
+    mov     rdi, r10                        ; Check if the board position is unused
     add     rdi, r9
-    cmp     BYTE PTR [rdi], 0
+    cmp     BYTE PTR [rdi], r11b
     jne     SHORT minmax_max_loopend        ; move to the next spot on the board
 
     mov     BYTE PTR [rdi], XPIECE          ; make the move
@@ -283,8 +368,7 @@ minmax_max PROC
 
     dec     r8                              ; restore depth to the current level
     mov     r9, [rbp - I_OFFSET]            ; restore i
-    lea     rcx, [BOARD]                    ; Restore the move on the board to 0 from X or O
-    mov     BYTE PTR [rcx + r9], 0
+    mov     BYTE PTR [r10 + r9], r11b       ; Restore the move on the board to 0 from X or O
 
     ; Maximize the score
     cmp     rax, WSCO
@@ -303,6 +387,7 @@ minmax_max PROC
 
     mov     [rbp + A_S_OFFSET], rax         ; update alpha with V or the same alpha value (to avoid a jump). no cmov for writing to memory
 
+    align   16
   minmax_max_loopend:                       ; bottom of the loop
     inc     r9
     cmp     r9, 9
@@ -325,25 +410,25 @@ minmax_min PROC
     ; rcx = alpha, rdx = beta, r8 = depth. Store in spill locations reserved by parent stack
     ; r9 = position of last piece added 0..8. Keep in the register because it's used right away
     ;      later, r9 is the i in the for loop 0..8
-    ; r10: unused
-    ; r11: unused
+    ; r10: the board
+    ; r11: set to 0 and stays there for the whole app
     ; r12: unused
     ; r13: global minmax call count
     ; r14: V
     ; r15: reserved for global loop of 10000 calls
 
-    inc     r13                             ; r13 is a global variable with the # of calls to minmax
+    inc     r13                             ; r13 is a global variable with the # of calls to minmax_max
 
     ; NOTE: r8, rcx, and rdx aren't saved in spill locations until actually needed. Don't trash them until after skip_winner
 
     cmp     r8, 3                           ; # of pieces on board is 1 + depth. So >= 4 means at least 5 moves played
     jle     SHORT minmax_min_skip_winner
 
-    ; winner_proc is inlined here
-    mov     rax, 0                          ; the win procs expect rax to be 0
+    ; the win procs expect the board in r10
+    mov     rax, r11                        ; the win procs expect rax to be 0
     mov     rbx, XPIECE                     ; and rbx to contain the player with the latest move
     lea     rsi, [WINPROCS]
-    call    QWORD PTR[ rsi + r9 * 8 ]       ; winprocs is faster than winner_all and winner_registers
+    call    QWORD PTR[ rsi + r9 * 8 ]       ; call the proc that checks for wins starting with last piece added
 
     cmp     al, XPIECE                      ; did X win? 
     mov     rax, WSCO                       ; wasted mov, but it often saves a jump. no cmov for loading constant to register
@@ -358,13 +443,13 @@ minmax_min PROC
     mov     [rbp + B_S_OFFSET ], rdx        ; beta
  
     mov     r14, XSCO                       ; maximum possible score
+    mov     r9, r11                         ; r9 is I in the for loop 0..8
 
-    mov     r9, 0                           ; r9 is I in the for loop 0..8
-
+    align   16
   minmax_min_loop:
-    lea     rdi, [BOARD]                    ; Check if the board position is unused
+    mov     rdi, r10                        ; Check if the board position is unused
     add     rdi, r9
-    cmp     BYTE PTR [rdi], 0
+    cmp     BYTE PTR [rdi], r11b
     jne     SHORT minmax_min_loopend        ; move to the next spot on the board
 
     mov     BYTE PTR [rdi], OPIECE          ; make the move
@@ -382,8 +467,7 @@ minmax_min PROC
 
     dec     r8                              ; restore depth to the current level
     mov     r9, [rbp - I_OFFSET]            ; restore i
-    lea     rcx, [BOARD]                    ; Restore the move on the board to 0 from X or O
-    mov     BYTE PTR [rcx + r9], 0
+    mov     BYTE PTR [r10 + r9], r11b       ; Restore the move on the board to 0 from X or O
 
     ; Mimimize the score
     cmp     rax, LSCO
@@ -402,6 +486,7 @@ minmax_min PROC
 
     mov     [rbp + B_S_OFFSET], rax         ; update beta with a new value or the same value (to avoid a jump). no cmov for writing to memory
 
+    align   16
   minmax_min_loopend:                       ; bottom of the loop
     inc     r9
     cmp     r9, 9
@@ -416,21 +501,21 @@ minmax_min PROC
 minmax_min ENDP
 
 proc0_orig PROC
-    cmp     bl, [BOARD + 1]
+    cmp     bl, [r10 + 1]
     jne     SHORT proc0_next_win
-    cmp     bl, [BOARD + 2]
+    cmp     bl, [r10 + 2]
     je      SHORT proc0_yes
 
   proc0_next_win:
-    cmp     bl, [BOARD + 3]
+    cmp     bl, [r10 + 3]
     jne     SHORT proc0_next_win2
-    cmp     bl, [BOARD + 6]
+    cmp     bl, [r10 + 6]
     je      SHORT proc0_yes
 
   proc0_next_win2:
-    cmp     bl, [BOARD + 4]
+    cmp     bl, [r10 + 4]
     jne     SHORT proc0_no
-    cmp     bl, [BOARD + 8]
+    cmp     bl, [r10 + 8]
     je      SHORT proc0_yes
 
   proc0_no:
@@ -442,28 +527,28 @@ proc0_orig PROC
 proc0_orig ENDP
 
 proc0 PROC
-    cmp     bl, [BOARD + 1]
+    cmp     bl, [r10 + 1]
     je      SHORT proc0_maybe
   proc0_next:
-    cmp     bl, [BOARD + 3]
+    cmp     bl, [r10 + 3]
     je      SHORT proc0_maybe2
   proc0_next2:
-    cmp     bl, [BOARD + 4]
+    cmp     bl, [r10 + 4]
     je      SHORT proc0_maybe3
     ret
 
   proc0_maybe:
-    cmp     bl, [BOARD + 2]
+    cmp     bl, [r10 + 2]
     je      SHORT proc0_yes
     jmp     SHORT proc0_next
 
   proc0_maybe2:
-    cmp     bl, [BOARD + 6]
+    cmp     bl, [r10 + 6]
     je      SHORT proc0_yes
     jmp     SHORT proc0_next2
 
   proc0_maybe3:
-    cmp     bl, [BOARD + 8]
+    cmp     bl, [r10 + 8]
     cmovz   rax, rbx
     ret
 
@@ -473,15 +558,15 @@ proc0 PROC
 proc0 ENDP
 
 proc1_orig PROC
-    cmp     bl, [BOARD + 0]
+    cmp     bl, [r10 + 0]
     jne     SHORT proc1_next_win
-    cmp     bl, [BOARD + 2]
+    cmp     bl, [r10 + 2]
     je      SHORT proc1_yes
 
   proc1_next_win:
-    cmp     bl, [BOARD + 4]
+    cmp     bl, [r10 + 4]
     jne     SHORT proc1_no
-    cmp     bl, [BOARD + 7]
+    cmp     bl, [r10 + 7]
     je      SHORT proc1_yes
 
   proc1_no:
@@ -493,21 +578,21 @@ proc1_orig PROC
 proc1_orig ENDP
 
 proc1 PROC
-    cmp     bl, [BOARD + 0]
+    cmp     bl, [r10 + 0]
     je      SHORT proc1_maybe
-    cmp     bl, [BOARD + 4]
+    cmp     bl, [r10 + 4]
     je      SHORT proc1_maybe2
     ret
 
   proc1_maybe:
-    cmp     bl, [BOARD + 2]
+    cmp     bl, [r10 + 2]
     je      SHORT proc1_yes
-    cmp     bl, [BOARD + 4]
+    cmp     bl, [r10 + 4]
     je      SHORT proc1_maybe2
     ret
 
   proc1_maybe2:
-    cmp     bl, [BOARD + 7]
+    cmp     bl, [r10 + 7]
     cmovz   rax, rbx
     ret
 
@@ -517,21 +602,21 @@ proc1 PROC
 proc1 ENDP
 
 proc2_orig PROC
-    cmp     bl, [BOARD + 0]
+    cmp     bl, [r10 + 0]
     jne     SHORT proc2_next_win
-    cmp     bl, [BOARD + 1]
+    cmp     bl, [r10 + 1]
     je      SHORT proc2_yes
 
   proc2_next_win:
-    cmp     bl, [BOARD + 5]
+    cmp     bl, [r10 + 5]
     jne     SHORT proc2_next_win2
-    cmp     bl, [BOARD + 8]
+    cmp     bl, [r10 + 8]
     je      SHORT proc2_yes
 
   proc2_next_win2:
-    cmp     bl, [BOARD + 4]
+    cmp     bl, [r10 + 4]
     jne     SHORT proc2_no
-    cmp     bl, [BOARD + 6]
+    cmp     bl, [r10 + 6]
     je      SHORT proc2_yes
 
   proc2_no:
@@ -543,28 +628,28 @@ proc2_orig PROC
 proc2_orig ENDP
 
 proc2 PROC
-    cmp     bl, [BOARD + 0]
+    cmp     bl, [r10 + 0]
     je      SHORT proc2_maybe
   proc2_next:
-    cmp     bl, [BOARD + 5]
+    cmp     bl, [r10 + 5]
     je      SHORT proc2_maybe2
   proc2_next2:
-    cmp     bl, [BOARD + 4]
+    cmp     bl, [r10 + 4]
     je      SHORT proc2_maybe3
     ret
 
   proc2_maybe:
-    cmp     bl, [BOARD + 1]
+    cmp     bl, [r10 + 1]
     je      SHORT proc2_yes
     jmp     SHORT proc2_next
 
   proc2_maybe2:
-    cmp     bl, [BOARD + 8]
+    cmp     bl, [r10 + 8]
     je      SHORT proc2_yes
     jmp     SHORT proc2_next2
 
   proc2_maybe3:
-    cmp     bl, [BOARD + 6]
+    cmp     bl, [r10 + 6]
     cmovz   rax, rbx
     ret
 
@@ -574,15 +659,15 @@ proc2 PROC
 proc2 ENDP
 
 proc3_orig PROC
-    cmp     bl, [BOARD + 4]
+    cmp     bl, [r10 + 4]
     jne     SHORT proc3_next_win
-    cmp     bl, [BOARD + 5]
+    cmp     bl, [r10 + 5]
     je      SHORT proc3_yes
 
   proc3_next_win:
-    cmp     bl, [BOARD + 0]
+    cmp     bl, [r10 + 0]
     jne     SHORT proc3_no
-    cmp     bl, [BOARD + 6]
+    cmp     bl, [r10 + 6]
     je      SHORT proc3_yes
 
   proc3_no:
@@ -594,21 +679,21 @@ proc3_orig PROC
 proc3_orig ENDP
 
 proc3 PROC
-    cmp     bl, [BOARD + 0]
+    cmp     bl, [r10 + 0]
     je      SHORT proc3_maybe
-    cmp     bl, [BOARD + 4]
+    cmp     bl, [r10 + 4]
     je      SHORT proc3_maybe2
     ret
 
   proc3_maybe:
-    cmp     bl, [BOARD + 6]
+    cmp     bl, [r10 + 6]
     je      SHORT proc3_yes
-    cmp     bl, [BOARD + 4]
+    cmp     bl, [r10 + 4]
     je      SHORT proc3_maybe2
     ret
 
   proc3_maybe2:
-    cmp     bl, [BOARD + 5]
+    cmp     bl, [r10 + 5]
     cmovz   rax, rbx
     ret
 
@@ -618,27 +703,27 @@ proc3 PROC
 proc3 ENDP
 
 proc4_orig PROC
-    cmp     bl, [BOARD + 0]
+    cmp     bl, [r10 + 0]
     jne     SHORT proc4_next_win
-    cmp     bl, [BOARD + 8]
+    cmp     bl, [r10 + 8]
     je      SHORT proc4_yes
 
   proc4_next_win:
-    cmp     bl, [BOARD + 2]
+    cmp     bl, [r10 + 2]
     jne     SHORT proc4_next_win2
-    cmp     bl, [BOARD + 6]
+    cmp     bl, [r10 + 6]
     je      SHORT proc4_yes
 
   proc4_next_win2:
-    cmp     bl, [BOARD + 1]
+    cmp     bl, [r10 + 1]
     jne     SHORT proc4_next_win3
-    cmp     bl, [BOARD + 7]
+    cmp     bl, [r10 + 7]
     je      SHORT proc4_yes
 
   proc4_next_win3:
-    cmp     bl, [BOARD + 3]
+    cmp     bl, [r10 + 3]
     jne     SHORT proc4_no
-    cmp     bl, [BOARD + 5]
+    cmp     bl, [r10 + 5]
     je      SHORT proc4_yes
 
   proc4_no:
@@ -650,36 +735,36 @@ proc4_orig PROC
 proc4_orig ENDP
 
 proc4 PROC
-    cmp     bl, [BOARD + 0]
+    cmp     bl, [r10 + 0]
     je      SHORT proc4_maybe
   proc4_next:
-    cmp     bl, [BOARD + 3]
+    cmp     bl, [r10 + 3]
     je      SHORT proc4_maybe2
   proc4_next2:
-    cmp     bl, [BOARD + 6]
+    cmp     bl, [r10 + 6]
     je      SHORT proc4_maybe3
   proc4_next3:
-    cmp     bl, [BOARD + 1]
+    cmp     bl, [r10 + 1]
     je      SHORT proc4_maybe4
     ret
 
   proc4_maybe:
-    cmp     bl, [BOARD + 8]
+    cmp     bl, [r10 + 8]
     je      SHORT proc4_yes
     jmp     SHORT proc4_next
 
   proc4_maybe2:
-    cmp     bl, [BOARD + 5]
+    cmp     bl, [r10 + 5]
     je      SHORT proc4_yes
     jmp     SHORT proc4_next2
 
   proc4_maybe3:
-    cmp     bl, [BOARD + 2]
+    cmp     bl, [r10 + 2]
     je      SHORT proc4_yes
     jmp     SHORT proc4_next3
 
   proc4_maybe4:
-    cmp     bl, [BOARD + 7]
+    cmp     bl, [r10 + 7]
     cmovz   rax, rbx
     ret
 
@@ -689,15 +774,15 @@ proc4 PROC
 proc4 ENDP
 
 proc5_orig PROC
-    cmp     bl, [BOARD + 3]
+    cmp     bl, [r10 + 3]
     jne     SHORT proc5_next_win
-    cmp     bl, [BOARD + 4]
+    cmp     bl, [r10 + 4]
     je      SHORT proc5_yes
 
   proc5_next_win:
-    cmp     bl, [BOARD + 2]
+    cmp     bl, [r10 + 2]
     jne     SHORT proc5_no
-    cmp     bl, [BOARD + 8]
+    cmp     bl, [r10 + 8]
     je      SHORT proc5_yes
 
   proc5_no:
@@ -709,21 +794,21 @@ proc5_orig PROC
 proc5_orig ENDP
 
 proc5 PROC
-    cmp     bl, [BOARD + 2]
+    cmp     bl, [r10 + 2]
     je      SHORT proc5_maybe
-    cmp     bl, [BOARD + 4]
+    cmp     bl, [r10 + 4]
     je      SHORT proc5_maybe2
     ret
 
   proc5_maybe:
-    cmp     bl, [BOARD + 8]
+    cmp     bl, [r10 + 8]
     je      SHORT proc5_yes
-    cmp     bl, [BOARD + 4]
+    cmp     bl, [r10 + 4]
     je      SHORT proc5_maybe2
     ret
 
   proc5_maybe2:
-    cmp     bl, [BOARD + 3]
+    cmp     bl, [r10 + 3]
     cmovz   rax, rbx
     ret
 
@@ -733,21 +818,21 @@ proc5 PROC
 proc5 ENDP
 
 proc6_orig PROC
-    cmp     bl, [BOARD + 4]
+    cmp     bl, [r10 + 4]
     jne     SHORT proc6_next_win
-    cmp     bl, [BOARD + 2]
+    cmp     bl, [r10 + 2]
     je      SHORT proc6_yes
 
   proc6_next_win:
-    cmp     bl, [BOARD + 0]
+    cmp     bl, [r10 + 0]
     jne     SHORT proc6_next_win2
-    cmp     bl, [BOARD + 3]
+    cmp     bl, [r10 + 3]
     je      SHORT proc6_yes
 
   proc6_next_win2:
-    cmp     bl, [BOARD + 7]
+    cmp     bl, [r10 + 7]
     jne     SHORT proc6_no
-    cmp     bl, [BOARD + 8]
+    cmp     bl, [r10 + 8]
     je      SHORT proc6_yes
 
   proc6_no:
@@ -759,28 +844,28 @@ proc6_orig PROC
 proc6_orig ENDP
 
 proc6 PROC
-    cmp     bl, [BOARD + 0]
+    cmp     bl, [r10 + 0]
     je      SHORT proc6_maybe
   proc6_next:
-    cmp     bl, [BOARD + 7]
+    cmp     bl, [r10 + 7]
     je      SHORT proc6_maybe2
   proc6_next2:
-    cmp     bl, [BOARD + 4]
+    cmp     bl, [r10 + 4]
     je      SHORT proc6_maybe3
     ret
 
   proc6_maybe:
-    cmp     bl, [BOARD + 3]
+    cmp     bl, [r10 + 3]
     je      SHORT proc6_yes
     jmp     SHORT proc6_next
 
   proc6_maybe2:
-    cmp     bl, [BOARD + 8]
+    cmp     bl, [r10 + 8]
     je      SHORT proc6_yes
     jmp     SHORT proc6_next2
 
   proc6_maybe3:
-    cmp     bl, [BOARD + 2]
+    cmp     bl, [r10 + 2]
     cmovz   rax, rbx
     ret
 
@@ -790,15 +875,15 @@ proc6 PROC
 proc6 ENDP
 
 proc7_orig PROC
-    cmp     bl, [BOARD + 1]
+    cmp     bl, [r10 + 1]
     jne     SHORT proc7_next_win
-    cmp     bl, [BOARD + 4]
+    cmp     bl, [r10 + 4]
     je      SHORT proc7_yes
 
   proc7_next_win:
-    cmp     bl, [BOARD + 6]
+    cmp     bl, [r10 + 6]
     jne     SHORT proc7_no
-    cmp     bl, [BOARD + 8]
+    cmp     bl, [r10 + 8]
     je      SHORT proc7_yes
 
   proc7_no:
@@ -810,21 +895,21 @@ proc7_orig PROC
 proc7_orig ENDP
 
 proc7 PROC
-    cmp     bl, [BOARD + 1]
+    cmp     bl, [r10 + 1]
     je      SHORT proc7_maybe
-    cmp     bl, [BOARD + 6]
+    cmp     bl, [r10 + 6]
     je      SHORT proc7_maybe2
     ret
 
   proc7_maybe:
-    cmp     bl, [BOARD + 4]
+    cmp     bl, [r10 + 4]
     je      SHORT proc7_yes
-    cmp     bl, [BOARD + 6]
+    cmp     bl, [r10 + 6]
     je      SHORT proc7_maybe2
     ret
 
   proc7_maybe2:
-    cmp     bl, [BOARD + 8]
+    cmp     bl, [r10 + 8]
     cmovz   rax, rbx
     ret
 
@@ -834,21 +919,21 @@ proc7 PROC
 proc7 ENDP
 
 proc8_orig PROC
-    cmp     bl, [BOARD + 0]
+    cmp     bl, [r10 + 0]
     jne     SHORT proc8_next_win
-    cmp     bl, [BOARD + 4]
+    cmp     bl, [r10 + 4]
     je      SHORT proc8_yes
 
   proc8_next_win:
-    cmp     bl, [BOARD + 2]
+    cmp     bl, [r10 + 2]
     jne     SHORT proc8_next_win2
-    cmp     bl, [BOARD + 5]
+    cmp     bl, [r10 + 5]
     je      SHORT proc8_yes
 
   proc8_next_win2:
-    cmp     bl, [BOARD + 6]
+    cmp     bl, [r10 + 6]
     jne     SHORT proc8_no
-    cmp     bl, [BOARD + 7]
+    cmp     bl, [r10 + 7]
     je      SHORT proc8_yes
 
   proc8_no:
@@ -860,28 +945,28 @@ proc8_orig PROC
 proc8_orig ENDP
 
 proc8 PROC
-    cmp     bl, [BOARD + 2]
+    cmp     bl, [r10 + 2]
     je      SHORT proc8_maybe
   proc8_next:
-    cmp     bl, [BOARD + 6]
+    cmp     bl, [r10 + 6]
     je      SHORT proc8_maybe2
   proc8_next2:
-    cmp     bl, [BOARD + 4]
+    cmp     bl, [r10 + 4]
     je      SHORT proc8_maybe3
     ret
 
   proc8_maybe:
-    cmp     bl, [BOARD + 5]
+    cmp     bl, [r10 + 5]
     je      SHORT proc8_yes
     jmp     SHORT proc8_next
 
   proc8_maybe2:
-    cmp     bl, [BOARD + 7]
+    cmp     bl, [r10 + 7]
     je      SHORT proc8_yes
     jmp     SHORT proc8_next2
 
   proc8_maybe3:
-    cmp     bl, [BOARD + 0]
+    cmp     bl, [r10 + 0]
     cmovz   rax, rbx
     ret
 
