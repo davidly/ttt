@@ -3,7 +3,9 @@ tic-tac-toe and its applicability to nuclear war and WOPR
 
 Source code referred to here: https://medium.com/@davidly_33504/tic-tac-toe-and-its-applicability-to-nuclear-war-and-wopr-13be09ec05c9
 
-Aside from tic-tac-toe, this code provides examples of how to do things in various languages (go, Rust, C#, C++, swift) including concurrency, high resolution timing, pointers to functions, passing arguments by reference and value, basic control flow, atomic increments, etc.
+Aside from tic-tac-toe, this code provides examples of how to do things in various languages (go, Rust, C#, C++, swift, assembly languages) including concurrency, high resolution timing, pointers to functions, passing arguments by reference and value, basic control flow, atomic increments, etc.
+
+The Gnu G++ compiler produces the fastest code, because it unrolls the loop and the min/max conditions. So the code is 18x as large, but slightly faster than the x64 assembler version. A table with all timings is in the medium article referred to above.
 
 To build:
 
