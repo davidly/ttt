@@ -180,10 +180,10 @@ TTTThreadProc PROC
 
     align 16
   TTTThreadProc_loop:
-    mov     r9, QWORD PTR boardIndex$[rsp]  ; position of last board update
     mov     rcx, NSCO     ; alpha -- minimum score
     mov     rdx, XSCO     ; beta -- maximum score
     xor     r8, r8        ; depth
+    mov     r9, QWORD PTR boardIndex$[rsp]  ; position of last board update
     ; r10 holds the board
     ; r11 must be 0
     ; r13 holds the minmax call count
