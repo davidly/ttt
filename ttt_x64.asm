@@ -1,5 +1,5 @@
 ;
-; Prove that you can't win at tic-tac-toe
+; Prove that you can't win at tic-tac-toe.
 ; The g++ compiler generates better code in that the loop is unrolled and the minimize/maximize codepaths
 ; in the loop are separated. It's almost (9 * 2) = 18x as much code, but it's 25% faster.
 ; This code just separates min/max codepaths but leaves the loops in place.
@@ -21,34 +21,33 @@ extern CloseHandle: PROC
 
 ; these short/terrible names are to support portability of names to 8085
 
-XSCO    equ     9       ; maximum score
-NSCO    equ     2       ; minimum score
-WSCO    equ     6       ; winning score
-TSCO    equ     5       ; tie score
-LSCO    equ     4       ; losing score
-XPIECE  equ     1       ; X move piece
-OPIECE  equ     2       ; Y move piece
-
+XSCO    equ     9                        ; maximum score
+NSCO    equ     2                        ; minimum score
+WSCO    equ     6                        ; winning score
+TSCO    equ     5                        ; tie score
+LSCO    equ     4                        ; losing score
+XPIECE  equ     1                        ; X move piece
+OPIECE  equ     2                        ; Y move piece
+                                         
 ; local variable offsets [rbp - X] where X = 1 to N where N is the number of QWORDS beyond 4 reserved at entry
 ; These are for the functions minmax_min and minmax_max
-V_OFFSET      equ 8 * 1            ; the value of a board position
-I_OFFSET      equ 8 * 2            ; i in the for loop 0..8
+V_OFFSET      equ 8 * 1                  ; the value of a board position
+I_OFFSET      equ 8 * 2                  ; i in the for loop 0..8
 
 ; spill offsets -- [rbp + X] where X = 2..5  Spill referrs to saving parameters in registers to memory when needed
 ; these registers can be spilled: rcx, rdx, r8, r9
 ; These are for the function minmax()
-A_S_OFFSET      equ 8 * 2        ; alpha
-B_S_OFFSET      equ 8 * 3        ; beta
+A_S_OFFSET      equ 8 * 2                ; alpha
+B_S_OFFSET      equ 8 * 3                ; beta
 
-.data
-    ; The fillerX items are to get each board in a separate cache line, which appears to be 128 bytes on my 5950x
-    ; Separating cache lines improves performance 3x. Using 64 byte cache lines had bad performance.
-    BOARD0        db     1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0  ; allocate 16 bytes; only first 9 are used.
-    filler0       dq     0, 0, 0, 0, 0, 0, 0
-    BOARD1        db     0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0  ; allocate 16 bytes; only first 9 are used.
-    filler1       dq     0, 0, 0, 0, 0, 0, 0
-    BOARD4        db     0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0  ; allocate 16 bytes; only first 9 are used.
-    filler4       dq     0, 0, 0, 0, 0, 0, 0
+data_ttt SEGMENT ALIGN( 4096 ) 'DATA'
+    ; It's important to put each of these boards in separate 64-byte cache lines or multi-core performance is terrible
+    BOARD0        db     1,0,0,0,0,0,0,0,0
+  align 64
+    BOARD1        db     0,1,0,0,0,0,0,0,0
+  align 64
+    BOARD4        db     0,0,0,0,1,0,0,0,0
+  align 64
     WINPROCS_x    dq     proc0, proc1, proc2, proc3, proc4, proc5, proc6, proc7, proc8 ; thought these might be faster, but they're not
     WINPROCS      dq     proc0_orig, proc1_orig, proc2_orig, proc3_orig, proc4_orig, proc5_orig, proc6_orig, proc7_orig, proc8_orig
     startTime     dq     0
@@ -65,8 +64,9 @@ B_S_OFFSET      equ 8 * 3        ; beta
     donewith      db     'done with: %d', 10, 13, 0
     dbgcw         db     'calling winner', 10, 13, 0
     CRLF          db     10, 13, 0
+data_ttt ENDS
 
-.code
+code_ttt SEGMENT ALIGN( 128 ) 'CODE'
 main PROC
     push    rbp
     mov     rbp, rsp
@@ -84,37 +84,34 @@ main PROC
 ;    mov    [rsp + 8 * 6 ], rbx
 ;    call   printf
 
+    ; solve for the 3 unique starting board positions in serial
+
+    mov     [moveCount], 0               ; # of calls to minmax_* functions
     lea     rcx, [startTime]
     call    QueryPerformanceCounter
 
-    mov     [moveCount], 0     ; # of calls to minmax_* functions
-    xor     r11, r11           ; handy register with 0 value
-
-    mov     rcx, 0             ; solve for board 0
+    mov     rcx, 0                       ; solve for board 0
     call    TTTThreadProc
 
-    mov     rcx, 1             ; solve for board 1
+    mov     rcx, 1                       ; solve for board 1
     call    TTTThreadProc
 
-    mov     rcx, 4             ; solve for board 4
+    mov     rcx, 4                       ; solve for board 4
     call    TTTThreadProc
 
     call    showstats
 
-    ; now do it again, but this time with 3 threads
+    ; now do it again, but this time with 3 threads in parallel
 
+    mov     [moveCount], 0               ; # of calls to minmax_* functions
     lea     rcx, [startTime]
     call    QueryPerformanceCounter
-
-    mov     [moveCount], 0     ; # of calls to minmax_* functions
-    xor     r11, r11           ; handy register with 0 value
 
     call    solvethreaded
 
     call    showstats
 
     xor     rax, rax
-
     leave
     ret
 main ENDP
@@ -133,9 +130,9 @@ showstats PROC
     sub     rax, rbx
     mov     rcx, [perfFrequency]
     xor     rdx, rdx
-    mov     rbx, 1000000  ; increase resolution so the divide gives better results
-    mul     rbx
-    div     rcx
+    mov     rbx, 1000000                 ; increase resolution so the divide gives better results
+    mul     rbx                          ; multiplies rdx:rax by rbx and leaves the result in rax
+    div     rcx                          ; divides rdx:rax by rcx and leaves the result in rax
 
     mov     rdx, rax
     lea     rcx, [runTime]
@@ -179,7 +176,7 @@ TTTThreadProc PROC
     lea     r10, [BOARD4]
 
   TTTThreadProc_for:
-    mov     r15, 10000                   ; # of iterations
+    mov     r15, 10000                   ; # of iterations -- 10,000
 
     align 16
   TTTThreadProc_loop:
@@ -191,29 +188,28 @@ TTTThreadProc PROC
     ; r11 must be 0
     ; r13 holds the minmax call count
 
-    call    minmax_min
+    call    minmax_min                   ; call min, because X just moved and now O moves should be minimized
 
     dec     r15
     cmp     r15, 0
     jne     TTTTHreadProc_loop
 
-    lock add [moveCount], r13            ; do this locked update once here at the end instead for each iteration
+    lock add [moveCount], r13            ; do this locked update once here at the end instead of for each iteration
     xor     rax, rax
 
     leave
     ret
 TTTThreadProc ENDP
 
-_TEXT SEGMENT
-
-aHandles$ = 48  ; reserve 24 bytes. Start at 48 because < that is reserved for CreateThread arguments
-
 solvethreaded PROC
+  aHandles$ = 48  ; reserve 16 for 2 handles bytes. Start at 48 because < than that is reserved for CreateThread arguments
     push    rbp
     mov     rbp, rsp
     sub     rsp, 80
 
-    ; board 1 takes the longest; start it first
+    ; The thread creation, waiting, and handle closing are fast; very little impact on performance
+
+    ; board 1 takes the longest to compute; start it first
     xor     rcx, rcx                     ; no security attributes
     xor     rdx, rdx                     ; default stack size
     lea     r8, TTTThreadProc
@@ -221,7 +217,7 @@ solvethreaded PROC
     mov     DWORD PTR [rsp + 32], 0      ; 0 creation flags
     mov     QWORD PTR [rsp + 40], 0      ; don't return a dwThreadID
     call    CreateThread
-    mov     QWORD PTR aHandles$[rsp], rax
+    mov     aHandles$[rsp], rax          ; save the thread handle
 
     ; board 4 takes the next longest
     xor     rcx, rcx                     ; no security attributes
@@ -231,17 +227,17 @@ solvethreaded PROC
     mov     DWORD PTR [rsp + 32], 0      ; 0 creation flags
     mov     QWORD PTR [rsp + 40], 0      ; don't return a dwThreadID
     call    CreateThread
-    mov     QWORD PTR aHandles$[rsp + 8], rax
+    mov     aHandles$[rsp + 8], rax      ; save the thread handle
 
     ; solve for board 0 on this thread
     mov     rcx, 0
     call    TTTThreadProc
 
-    ; wait for the threads to complete
+    ; wait for the 2 created threads to complete
     mov     rcx, 2                        ; # of handles to wait for
-    lea     rdx, QWORD PTR aHandles$[rsp] ; location of the handles
-    mov     r8d, 1                        ; wait all
-    mov     r9, -1                        ; wait forever
+    lea     rdx, aHandles$[rsp]           ; location of the handles
+    mov     r8d, 1                        ; wait for all (true)
+    mov     r9, -1                        ; wait forever, INFINITE
     call    WaitForMultipleObjects
 
     ; close the thread handles
@@ -253,8 +249,6 @@ solvethreaded PROC
     leave
     ret
 solvethreaded ENDP
-
-_TEXT ENDS
 
 printCRLF PROC
     push    rbp
@@ -275,7 +269,6 @@ printint PROC
 
     mov     rdx, rcx
     lea     rcx, [intS]
-
     call    printf
 
     leave
@@ -307,7 +300,8 @@ printboard PROC
     ret
 printboard ENDP
 
-; Odd depth = maximize for X in subsequent moves, O's move
+; Odd depth = maximize for X in subsequent moves, O just took a move in r9
+align 16
 minmax_max PROC
     push    rbp
     mov     rbp, rsp
@@ -350,7 +344,7 @@ minmax_max PROC
   minmax_max_loop:
     mov     rdi, r10                        ; Check if the board position is unused
     add     rdi, r9
-    cmp     BYTE PTR [rdi], r11b
+    cmp     BYTE PTR [rdi], r11b            ; compare to r11, which is 0
     jne     SHORT minmax_max_loopend        ; move to the next spot on the board
 
     mov     BYTE PTR [rdi], XPIECE          ; make the move
@@ -390,7 +384,7 @@ minmax_max PROC
     align   16
   minmax_max_loopend:                       ; bottom of the loop
     inc     r9
-    cmp     r9, 9
+    cmp     r9, 9                           ; 9 because the board is 0..8
     jl      minmax_max_loop
 
   minmax_max_loadv_done:
@@ -401,7 +395,8 @@ minmax_max PROC
     ret
 minmax_max ENDP
 
-; Even depth = mininize for X in subsequent moves, X's move
+; Even depth = mininize for X in subsequent moves, X just took a move in r9
+align 16
 minmax_min PROC
     push    rbp
     mov     rbp, rsp
@@ -449,7 +444,7 @@ minmax_min PROC
   minmax_min_loop:
     mov     rdi, r10                        ; Check if the board position is unused
     add     rdi, r9
-    cmp     BYTE PTR [rdi], r11b
+    cmp     BYTE PTR [rdi], r11b            ; compare to r11, which is 0
     jne     SHORT minmax_min_loopend        ; move to the next spot on the board
 
     mov     BYTE PTR [rdi], OPIECE          ; make the move
@@ -489,7 +484,7 @@ minmax_min PROC
     align   16
   minmax_min_loopend:                       ; bottom of the loop
     inc     r9
-    cmp     r9, 9
+    cmp     r9, 9                           ; 9 because the board is 0..8
     jl      minmax_min_loop
 
   minmax_min_loadv_done:
@@ -499,6 +494,8 @@ minmax_min PROC
     leave
     ret
 minmax_min ENDP
+
+; Two implementations to try to find faster solutions. The _orig (original) variants are faster
 
 proc0_orig PROC
     cmp     bl, [r10 + 1]
@@ -975,5 +972,6 @@ proc8 PROC
     ret
 proc8 ENDP
 
-End
+code_ttt ENDS
+END
 
