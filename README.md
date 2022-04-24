@@ -12,7 +12,7 @@ To build:
     - MSVC: cl /nologo ttt.cxx /Ox /Qpar /Ob2 /O2i /EHac /Zi /D_AMD64_ /link ntdll.lib
     - GNU: g++ -DNDEBUG ttt.cxx -o ttt -O3 -fopenmp
     - MacOS clang: clang++ -DNDEBUG -Xpreprocessor -fopenmp -lomp -std=c++11 -Wc++11-extensions -I"$(brew --prefix libomp)/include" -L"$(brew --prefix libomp)/lib" ttt.cxx -O3 -o ttt
-    - x64 ASM: ml64 /nologo tttx64.asm /Flx.lst /Zd /Zf /Zi /link /OPT:REF /nologo ^
+    - x64 ASM: ml64 /nologo ttt_x64.asm /Flx.lst /Zd /Zf /Zi /link /OPT:REF /nologo ^
                                         /subsystem:console /defaultlib:kernel32.lib ^
                                         /defaultlib:user32.lib ^
                                         /defaultlib:libucrt.lib ^
