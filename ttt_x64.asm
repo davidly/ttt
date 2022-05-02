@@ -136,14 +136,14 @@ showstats PROC
     call    QueryPerformanceFrequency
     mov     rbx, [startTime]
     mov     rax, [endTime]
-    sub     rax, rbx
+    sub     rax, rbx                     ; rax now has total execution time in counter units
     mov     rcx, [perfFrequency]
     xor     rdx, rdx
     mov     rbx, 1000000                 ; increase resolution so the divide gives better results
     mul     rbx                          ; multiplies rdx:rax by rbx and leaves the result in rax
     div     rcx                          ; divides rdx:rax by rcx and leaves the result in rax
 
-    mov     rdx, rax
+    mov     rdx, rax                     ; rax now has the total execution time; print it out
     lea     rcx, [runTime]
     call    printf
 
@@ -157,18 +157,16 @@ showstats PROC
 showstats ENDP
 
 boardIndex$ = 32
-align   16
+align 16
 TTTThreadProc PROC
     push    rbp
     mov     rbp, rsp
-    sub     rsp, 48 ; only 40 needed, but want to keep stacks 16-byte aligned
-
-    ; code that follows expects r11 to be 0 and r13 to be the move count
-    xor     r11, r11
-    xor     r13, r13
-
-    ; save the initial move board position
-    mov     QWORD PTR boardIndex$[rsp], rcx
+    sub     rsp, 48                      ; only 40 needed, but want to keep stacks 16-byte aligned
+    
+    xor     r11, r11                     ; code that follows expects r11 to be 0
+    xor     r13, r13                     ; and r13 to be the move count
+    
+    mov     boardIndex$[rsp], rcx        ; save the initial move board position
 
     ; load r10 with the board to play -- BOARD0, BOARD1, or BOARD4
 
@@ -191,10 +189,11 @@ TTTThreadProc PROC
 
     align 16
   TTTThreadProc_loop:
-    mov     rcx, NSCO     ; alpha -- minimum score
-    mov     rdx, XSCO     ; beta -- maximum score
-    xor     r8, r8        ; depth
-    mov     r9, QWORD PTR boardIndex$[rsp]  ; position of last board update
+    mov     rcx, NSCO                    ; alpha -- minimum score
+    mov     rdx, XSCO                    ; beta -- maximum score
+    xor     r8, r8                       ; depth is 0
+    mov     r9, boardIndex$[rsp]         ; position of last board update
+
     ; r10 holds the board
     ; r11 must be 0
     ; r13 holds the minmax call count
@@ -212,7 +211,7 @@ TTTThreadProc PROC
     ret
 TTTThreadProc ENDP
 
-align   16
+align 16
 solvethreaded PROC
   aHandles$ = 48  ; reserve 16 for 2 handles bytes. Start at 48 because < than that is reserved for CreateThread arguments
     push    rbp
@@ -263,7 +262,7 @@ solvethreaded PROC
     ret
 solvethreaded ENDP
 
-align   16
+align 16
 printCRLF PROC
     push    rbp
     mov     rbp, rsp
@@ -276,7 +275,7 @@ printCRLF PROC
     ret
 printCRLF ENDP
 
-align   16
+align 16
 printint PROC
     push    rbp
     mov     rbp, rsp
@@ -290,7 +289,7 @@ printint PROC
     ret
 printint ENDP
 
-align   16
+align 16
 printboard PROC
     push    rbp
     mov     rbp, rsp
@@ -332,33 +331,33 @@ minmax_max PROC
     ; r11: set to 0 and stays there for the whole app
     ; r12: unused except by some WINPROCS
     ; r13: global minmax_max call count
-    ; r14: V
+    ; r14: Value
     ; r15: reserved for global loop of 10000 calls
 
     inc     r13                             ; r13 is a global variable with the # of calls to minmax_max and minmax_min
 
-    ; NOTE: r8, rcx, and rdx aren't saved in spill locations until actually needed. Don't trash them until after skip_winner
+    ; NOTE: rcx, and rdx aren't saved in spill locations until actually needed. Don't trash them until after skip_winner
 
     cmp     r8, 3                           ; # of pieces on board is 1 + depth. So >= 4 means at least 5 moves played
     jle     SHORT minmax_max_skip_winner
 
     ; the win procs expect the board in r10
-    mov     rax, r11                        ; the win procs expect rax to be 0
+    xor     rax, rax                        ; the win procs expect rax to be 0
     mov     rbx, OPIECE                     ; and rbx to contain the player with the latest move
     lea     rsi, [WINPROCS]               
-    call    QWORD PTR[ rsi + r9 * 8 ]       ; call the proc that checks for wins starting with last piece added
+    call    QWORD PTR [rsi + r9 * 8]        ; call the proc that checks for wins starting with last piece added
 
-    cmp     al, OPIECE                      ; did O win?
+    cmp     rax, OPIECE                     ; did O win?
     mov     rax, LSCO                       ; wasted mov if not equal, but it often saves a jump. no cmov for loading register with constant
     je      minmax_max_done
 
     align   16
   minmax_max_skip_winner:
-    mov     [rbp + A_S_OFFSET ], rcx        ; alpha saved in the spill location
-    mov     [rbp + B_S_OFFSET ], rdx        ; beta saved in the spill location
+    mov     [rbp + A_S_OFFSET], rcx         ; alpha saved in the spill location
+    mov     [rbp + B_S_OFFSET], rdx         ; beta saved in the spill location
 
     mov     r14, NSCO                       ; minimum possible score. maximizing, so find a score higher than this
-    mov     r9, r11                         ; r9 is I in the for loop 0..8
+    xor     r9, r9                          ; r9 is I in the for loop 0..8
     dec     r9                              ; avoid a jump by starting at -1
 
     align   16
@@ -400,7 +399,7 @@ minmax_max PROC
 
     mov     rdx, [rbp + B_S_OFFSET]         ; load beta
     cmp     rcx, rdx                        ; compare alpha (rcx) with beta (rdx)
-    jge     SHORT minmax_max_loadv_done     ; alpha pruning
+    jge     SHORT minmax_max_loadv_done     ; alpha pruning if alpha >= beta
     mov     [rdi], rcx                      ; update alpha with V or the same alpha value (to avoid a jump). no cmov for writing to memory
 
     jmp     minmax_max_top_of_loop
@@ -430,23 +429,23 @@ minmax_min PROC
     ; r11: set to 0 and stays there for the whole app
     ; r12: unused except by some WINPROCS
     ; r13: global minmax call count
-    ; r14: V
+    ; r14: Value
     ; r15: reserved for global loop of 10000 calls
 
     inc     r13                             ; r13 is a global variable with the # of calls to minmax_max and minmax_min
 
-    ; NOTE: r8, rcx, and rdx aren't saved in spill locations until actually needed. Don't trash them until after skip_winner
+    ; NOTE: rcx, and rdx aren't saved in spill locations until actually needed. Don't trash them until after skip_winner
 
     cmp     r8, 3                           ; # of pieces on board is 1 + depth. So >= 4 means at least 5 moves played
     jle     SHORT minmax_min_skip_winner
 
     ; the win procs expect the board in r10
-    mov     rax, r11                        ; the win procs expect rax to be 0
+    xor     rax, rax                        ; the win procs expect rax to be 0
     mov     rbx, XPIECE                     ; and rbx to contain the player with the latest move
     lea     rsi, [WINPROCS_X]
-    call    QWORD PTR[ rsi + r9 * 8 ]       ; call the proc that checks for wins starting with last piece added
+    call    QWORD PTR [rsi + r9 * 8]        ; call the proc that checks for wins starting with last piece added
 
-    cmp     al, XPIECE                      ; did X win? 
+    cmp     rax, XPIECE                     ; did X win? 
     mov     rax, WSCO                       ; wasted mov, but it often saves a jump. no cmov for loading constant to register
     je      minmax_min_done
 
@@ -456,11 +455,11 @@ minmax_min PROC
 
     align   16
   minmax_min_skip_winner:
-    mov     [rbp + A_S_OFFSET ], rcx        ; alpha saved in the spill location
-    mov     [rbp + B_S_OFFSET ], rdx        ; beta saved in the spill location
+    mov     [rbp + A_S_OFFSET], rcx         ; alpha saved in the spill location
+    mov     [rbp + B_S_OFFSET], rdx         ; beta saved in the spill location
  
     mov     r14, XSCO                       ; maximum possible score; minimizing, so find a score lower than this
-    mov     r9, r11                         ; r9 is I in the for loop 0..8
+    xor     r9, r9                          ; r9 is I in the for loop 0..8
     dec     r9                              ; avoid a jump by starting at -1
 
     align   16
@@ -502,7 +501,7 @@ minmax_min PROC
 
     mov     rcx, [rbp + A_S_OFFSET ]        ; load alpha
     cmp     rdx, rcx                        ; compare beta (rdx) with alpha (rcx)
-    jle     SHORT minmax_min_loadv_done     ; beta pruning
+    jle     SHORT minmax_min_loadv_done     ; beta pruning if beta <= alpha
     mov     [rdi], rdx                      ; update beta with a new value or the same value (to avoid a jump). no cmov for writing to memory
 
     jmp     minmax_min_top_of_loop
