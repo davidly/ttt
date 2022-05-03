@@ -163,7 +163,6 @@ TTTThreadProc PROC
     mov     rbp, rsp
     sub     rsp, 48                      ; only 40 needed, but want to keep stacks 16-byte aligned
     
-    xor     r11, r11                     ; code that follows expects r11 to be 0
     xor     r13, r13                     ; and r13 to be the move count
     
     mov     boardIndex$[rsp], rcx        ; save the initial move board position
@@ -195,7 +194,6 @@ TTTThreadProc PROC
     mov     r9, boardIndex$[rsp]         ; position of last board update
 
     ; r10 holds the board
-    ; r11 must be 0
     ; r13 holds the minmax call count
 
     call    minmax_min                   ; call min, because X just moved and now O moves should be minimized
@@ -322,15 +320,15 @@ minmax_max PROC
     mov     rbp, rsp
     sub     rsp, 48                         ; 32 by convention + space for 2 8-byte local variables I and V
 
-    ; rcx = alpha. Store in spill location reserved by parent stack
-    ; rdx = beta. Store in spill location reserved by parent stack
-    ; r8 = depth. keep in the register
-    ; r9 = position of last piece added 0..8. Keep in the register because it's used right away
+    ; rcx: alpha. Store in spill location reserved by parent stack
+    ; rdx: beta. Store in spill location reserved by parent stack
+    ; r8:  depth. keep in the register
+    ; r9:  position of last piece added 0..8. Keep in the register because it's used right away
     ;      later, r9 is the i in the for loop 0..8
     ; r10: the board
-    ; r11: set to 0 and stays there for the whole app
+    ; r11: unused
     ; r12: unused except by some WINPROCS
-    ; r13: global minmax_max call count
+    ; r13: global minmax call count
     ; r14: Value
     ; r15: reserved for global loop of 10000 calls
 
@@ -339,7 +337,7 @@ minmax_max PROC
     ; NOTE: rcx, and rdx aren't saved in spill locations until actually needed. Don't trash them until after skip_winner
 
     cmp     r8, 3                           ; # of pieces on board is 1 + depth. So >= 4 means at least 5 moves played
-    jle     SHORT minmax_max_skip_winner
+    jle     SHORT minmax_max_skip_winner    ; if too few moves, there can't be a winner yet
 
     ; the win procs expect the board in r10
     xor     rax, rax                        ; the win procs expect rax to be 0
@@ -366,24 +364,22 @@ minmax_max PROC
     cmp     r9, 9                           ; 9 because the board is 0..8
     je      SHORT minmax_max_loadv_done
 
-    mov     rdi, r10                        ; Check if the board position is unused
-    add     rdi, r9                         ; r10 has the board, and r9 is the offset on the board
-    cmp     BYTE PTR [rdi], r11b            ; compare to r11, which is 0
+    cmp     BYTE PTR [r10 + r9], 0          ; is the board position free?
     jne     SHORT minmax_max_top_of_loop    ; move to the next spot on the board
 
-    mov     BYTE PTR [rdi], XPIECE          ; make the move
+    mov     BYTE PTR [r10 + r9], XPIECE     ; make the move
 
     ; prepare arguments for recursing. rcx (alpha) and rdx (beta) are already set
     inc     r8                              ; next depth 1..8
     mov     [rbp - I_OFFSET], r9            ; save i -- the for loop variable
     mov     [rbp - V_OFFSET], r14           ; save V -- value of the current board position
 
-    ; unlike win64 calling conventions, no registers are preserved aside from r8 and globals in r10, r11, r12, r13, and r15
+    ; unlike win64 calling conventions, no registers are preserved aside from r8 and globals in r10, r12, r13, and r15
     call    minmax_min                      ; score is in rax on return
 
     dec     r8                              ; restore depth to the current level
     mov     r9, [rbp - I_OFFSET]            ; restore i
-    mov     BYTE PTR [r10 + r9], r11b       ; Restore the move on the board to 0 from X or O
+    mov     BYTE PTR [r10 + r9], 0          ; Restore the move on the board to 0 from X
 
     cmp     rax, WSCO
     je      SHORT minmax_max_done           ; can't do better than winning score when maximizing
@@ -420,13 +416,13 @@ minmax_min PROC
     mov     rbp, rsp
     sub     rsp, 48                         ; 32 by convention + space for 2 8-byte local variables I and V
 
-    ; rcx = alpha. Store in spill location reserved by parent stack
-    ; rdx = beta. Store in spill location reserved by parent stack
-    ; r8 = depth. keep in the register
-    ; r9 = position of last piece added 0..8. Keep in the register because it's used right away
+    ; rcx: alpha. Store in spill location reserved by parent stack
+    ; rdx: beta. Store in spill location reserved by parent stack
+    ; r8:  depth. keep in the register
+    ; r9:  position of last piece added 0..8. Keep in the register because it's used right away
     ;      later, r9 is the i in the for loop 0..8
     ; r10: the board
-    ; r11: set to 0 and stays there for the whole app
+    ; r11: unused
     ; r12: unused except by some WINPROCS
     ; r13: global minmax call count
     ; r14: Value
@@ -437,7 +433,7 @@ minmax_min PROC
     ; NOTE: rcx, and rdx aren't saved in spill locations until actually needed. Don't trash them until after skip_winner
 
     cmp     r8, 3                           ; # of pieces on board is 1 + depth. So >= 4 means at least 5 moves played
-    jle     SHORT minmax_min_skip_winner
+    jle     SHORT minmax_min_skip_winner    ; if too few moves, there can't be a winner yet
 
     ; the win procs expect the board in r10
     xor     rax, rax                        ; the win procs expect rax to be 0
@@ -468,24 +464,22 @@ minmax_min PROC
     cmp     r9, 9                           ; 9 because the board is 0..8
     je      SHORT minmax_min_loadv_done
 
-    mov     rdi, r10                        ; Check if the board position is unused
-    add     rdi, r9                         ; r10 has the board, and r9 is the offset on the board
-    cmp     BYTE PTR [rdi], r11b            ; compare to r11, which is 0
+    cmp     BYTE PTR [r10 + r9], 0          ; is the board position free?
     jne     SHORT minmax_min_top_of_loop    ; move to the next spot on the board
 
-    mov     BYTE PTR [rdi], OPIECE          ; make the move
+    mov     BYTE PTR [r10 + r9], OPIECE     ; make the move
 
     ; prepare arguments for recursing. rcx (alpha) and rdx (beta) are already set
     inc     r8                              ; next depth 1..8
     mov     [rbp - I_OFFSET], r9            ; save i -- the for loop variable
     mov     [rbp - V_OFFSET], r14           ; save V -- value of the current board position
 
-    ; unlike win64 calling conventions, no registers are preserved aside from r8 and globals in r10, r11, r12, r13, and r15
+    ; unlike win64 calling conventions, no registers are preserved aside from r8 and globals in r10, r12, r13, and r15
     call    minmax_max                      ; score is in rax on return
 
     dec     r8                              ; restore depth to the current level
     mov     r9, [rbp - I_OFFSET]            ; restore i
-    mov     BYTE PTR [r10 + r9], r11b       ; Restore the move on the board to 0 from X or O
+    mov     BYTE PTR [r10 + r9], 0          ; Restore the move on the board to 0 from O
 
     cmp     rax, LSCO
     je      SHORT minmax_min_done           ; can't do better than losing score when minimizing
