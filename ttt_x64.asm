@@ -11,6 +11,14 @@
 ; better alignment, keep alpha/beta in registers: .0404
 ; remove jumps, alternate WINPROCS_X and WINPROCS: .0353
 ; use 3 cores: .0139
+;
+; Board: 0 | 1 | 2
+;        ---------
+;        3 | 4 | 5
+;        ---------
+;        6 | 7 | 8
+;
+; Only first moves 0, 1, and 4 are solved since other first moves are reflections
 
 extern printf: PROC
 extern QueryPerformanceCounter: PROC
@@ -55,6 +63,8 @@ data_ttt SEGMENT ALIGN( 4096 ) 'DATA'
     WINPROCS_X    dq     proc0_X, proc1_X, proc2_X, proc3_X, proc4_X, proc5_X, proc6_X, proc7_X, proc8_X
   align 64
     WINPROCS_O    dq     proc0_O, proc1_O, proc2_O, proc3_O, proc4_O, proc5_O, proc6_O, proc7_O, proc8_O
+  align 64
+    WINPROCS_NJ   dq     proc0_nj, proc1_nj, proc2_nj, proc3_nj, proc4_nj, proc5_nj, proc6_nj, proc7_nj, proc8_nj ; nj for No Jump when no win
   align 64
     WINPROCS      dq     proc0, proc1, proc2, proc3, proc4, proc5, proc6, proc7, proc8
   align 64
@@ -161,7 +171,7 @@ align 16
 TTTThreadProc PROC
     push    rbp
     mov     rbp, rsp
-    sub     rsp, 48                      ; only 40 needed, but want to keep stacks 16-byte aligned
+    sub     rsp, 32 + 8 * 2              ; only 40 needed, but want to keep stacks 16-byte aligned
     
     xor     r13, r13                     ; and r13 to be the move count
     
@@ -182,6 +192,8 @@ TTTThreadProc PROC
 
   TTTThreadProc_try4:                    ; don't validate it's four -- just assume it
     lea     r10, [BOARD4]
+    mov     rcx, 4                       ; ensure this is the case
+    mov     boardIndex$[rsp], rcx        ; again, make sure
 
   TTTThreadProc_for:
     mov     r15, 10000                   ; # of iterations -- 10,000
@@ -318,7 +330,7 @@ align 16
 minmax_max PROC
     push    rbp
     mov     rbp, rsp
-    sub     rsp, 48                         ; 32 by convention + space for 2 8-byte local variables I and V
+    sub     rsp, 32 + 8 * 2                 ; 32 by convention + space for 2 8-byte local variables I and V
 
     ; rcx: alpha. Store in spill location reserved by parent stack
     ; rdx: beta. Store in spill location reserved by parent stack
@@ -342,7 +354,7 @@ minmax_max PROC
     ; the win procs expect the board in r10
     xor     rax, rax                        ; the win procs expect rax to be 0
     mov     rbx, OPIECE                     ; and rbx to contain the player with the latest move
-    lea     rsi, [WINPROCS]               
+    lea     rsi, [WINPROCS_NJ]               
     call    QWORD PTR [rsi + r9 * 8]        ; call the proc that checks for wins starting with last piece added
 
     cmp     rax, OPIECE                     ; did O win?
@@ -414,7 +426,7 @@ align 16
 minmax_min PROC
     push    rbp
     mov     rbp, rsp
-    sub     rsp, 48                         ; 32 by convention + space for 2 8-byte local variables I and V
+    sub     rsp, 32 + 8 * 2                 ; 32 by convention + space for 2 8-byte local variables I and V
 
     ; rcx: alpha. Store in spill location reserved by parent stack
     ; rdx: beta. Store in spill location reserved by parent stack
@@ -537,6 +549,38 @@ proc0 PROC
 proc0 ENDP
 
 align 16
+proc0_nj PROC
+    cmp     bl, [r10 + 1]
+    je      SHORT proc0_top_row2
+
+  proc0_left_column:
+    cmp     bl, [r10 + 3]
+    je      SHORT proc0_left_column2
+
+  proc0_diagonal:
+    cmp     bl, [r10 + 4]
+    je      SHORT proc0_diagonal2
+    ret
+
+  proc0_top_row2:
+    cmp     bl, [r10 + 2]
+    jne     proc0_left_column
+    mov     rax, rbx
+    ret
+
+  proc0_left_column2:
+    cmp     bl, [r10 + 6]
+    jne     proc0_diagonal
+    mov     rax, rbx
+    ret
+
+  proc0_diagonal2:
+    cmp     bl, [r10 + 8]
+    cmove   rax, rbx
+    ret
+proc0_nj ENDP
+
+align 16
 proc1 PROC
     cmp     bl, [r10 + 0]
     jne     SHORT proc1_next_win
@@ -556,6 +600,28 @@ proc1 PROC
     mov     rax, rbx
     ret
 proc1 ENDP
+
+align 16
+proc1_nj PROC
+    cmp     bl, [r10 + 0]
+    je      SHORT proc1_top_row2
+
+  proc1_center_column:
+    cmp     bl, [r10 + 4]
+    je      SHORT proc1_center_column2
+    ret
+
+  proc1_top_row2:
+    cmp     bl, [r10 + 2]
+    jne     SHORT proc1_center_column
+    mov     rax, rbx
+    ret
+
+  proc1_center_column2:
+    cmp     bl, [r10 + 7]
+    cmove   rax, rbx
+    ret
+proc1_nj ENDP
 
 align 16
 proc2 PROC
@@ -585,6 +651,38 @@ proc2 PROC
 proc2 ENDP
 
 align 16
+proc2_nj PROC
+    cmp     bl, [r10 + 0]
+    je      SHORT proc2_top_row2
+
+  proc2_right_column:
+    cmp     bl, [r10 + 5]
+    je      SHORT proc2_right_column2
+
+  proc2_diagonal:
+    cmp     bl, [r10 + 4]
+    je      SHORT proc2_diagonal2
+    ret
+
+  proc2_top_row2:
+    cmp     bl, [r10 + 1]
+    jne     proc2_right_column
+    mov     rax, rbx
+    ret
+
+  proc2_right_column2:
+    cmp     bl, [r10 + 8]
+    jne     proc2_diagonal
+    mov     rax, rbx
+    ret
+
+  proc2_diagonal2:
+    cmp     bl, [r10 + 6]
+    cmove   rax, rbx
+    ret
+proc2_nj ENDP
+
+align 16
 proc3 PROC
     cmp     bl, [r10 + 0]
     jne     SHORT proc3_next_win
@@ -604,6 +702,28 @@ proc3 PROC
     mov     rax, rbx
     ret
 proc3 ENDP
+
+align 16
+proc3_nj PROC
+    cmp     bl, [r10 + 4]
+    je      SHORT proc3_center_row2
+
+  proc3_left_column:
+    cmp     bl, [r10 + 0]
+    je      SHORT proc3_left_column2
+    ret
+
+  proc3_center_row2:
+    cmp     bl, [r10 + 5]
+    jne     SHORT proc3_left_column
+    mov     rax, rbx
+    ret
+
+  proc3_left_column2:
+    cmp     bl, [r10 + 6]
+    cmove   rax, rbx
+    ret
+proc3_nj ENDP
 
 align 16
 proc4 PROC
@@ -639,6 +759,48 @@ proc4 PROC
 proc4 ENDP
 
 align 16
+proc4_nj PROC
+    cmp     bl, [r10 + 1]
+    je      SHORT proc4_center_column2
+
+  proc4_center_row:
+    cmp     bl, [r10 + 3]
+    je      SHORT proc4_center_row2
+
+  proc4_diagonal:
+    cmp     bl, [r10 + 0]
+    je      SHORT proc4_diagonal2
+
+  proc4_diagonalB:
+    cmp     bl, [r10 + 2]
+    je      SHORT proc4_diagonalB2
+    ret
+
+  proc4_center_column2:
+    cmp     bl, [r10 + 7]
+    jne     proc4_center_row
+    mov     rax, rbx
+    ret
+
+  proc4_center_row2:
+    cmp     bl, [r10 + 5]
+    jne     proc4_diagonal
+    mov     rax, rbx
+    ret
+
+  proc4_diagonal2:
+    cmp     bl, [r10 + 8]
+    jne     proc4_diagonalB
+    mov     rax, rbx
+    ret
+
+  proc4_diagonalB2:
+    cmp     bl, [r10 + 6]
+    cmove   rax, rbx
+    ret
+proc4_nj ENDP
+
+align 16
 proc5 PROC
     cmp     bl, [r10 + 3]
     jne     SHORT proc5_next_win
@@ -658,6 +820,28 @@ proc5 PROC
     mov     rax, rbx
     ret
 proc5 ENDP
+
+align 16
+proc5_nj PROC
+    cmp     bl, [r10 + 4]
+    je      SHORT proc5_center_row2
+
+  proc5_right_column:
+    cmp     bl, [r10 + 2]
+    je      SHORT proc5_right_column2
+    ret
+
+  proc5_center_row2:
+    cmp     bl, [r10 + 3]
+    jne     SHORT proc5_right_column
+    mov     rax, rbx
+    ret
+
+  proc5_right_column2:
+    cmp     bl, [r10 + 8]
+    cmove   rax, rbx
+    ret
+proc5_nj ENDP
 
 align 16
 proc6 PROC
@@ -687,6 +871,38 @@ proc6 PROC
 proc6 ENDP
 
 align 16
+proc6_nj PROC
+    cmp     bl, [r10 + 0]
+    je      SHORT proc6_left_column2
+
+  proc6_bottom_row:
+    cmp     bl, [r10 + 7]
+    je      SHORT proc6_bottom_row2
+
+  proc6_diagonal:
+    cmp     bl, [r10 + 4]
+    je      SHORT proc6_diagonal2
+    ret
+
+  proc6_left_column2:
+    cmp     bl, [r10 + 3]
+    jne     proc6_bottom_row
+    mov     rax, rbx
+    ret
+
+  proc6_bottom_row2:
+    cmp     bl, [r10 + 8]
+    jne     proc6_diagonal
+    mov     rax, rbx
+    ret
+
+  proc6_diagonal2:
+    cmp     bl, [r10 + 2]
+    cmove   rax, rbx
+    ret
+proc6_nj ENDP
+
+align 16
 proc7 PROC
     cmp     bl, [r10 + 1]
     jne     SHORT proc7_next_win
@@ -706,6 +922,28 @@ proc7 PROC
     mov     rax, rbx
     ret
 proc7 ENDP
+
+align 16
+proc7_nj PROC
+    cmp     bl, [r10 + 6]
+    je      SHORT proc7_bottom_row2
+
+  proc7_center_column:
+    cmp     bl, [r10 + 1]
+    je      SHORT proc7_center_column2
+    ret
+
+  proc7_bottom_row2:
+    cmp     bl, [r10 + 8]
+    jne     SHORT proc7_center_column
+    mov     rax, rbx
+    ret
+
+  proc7_center_column2:
+    cmp     bl, [r10 + 4]
+    cmove   rax, rbx
+    ret
+proc7_nj ENDP
 
 align 16
 proc8 PROC
@@ -733,6 +971,38 @@ proc8 PROC
     mov     rax, rbx
     ret
 proc8 ENDP
+
+align 16
+proc8_nj PROC
+    cmp     bl, [r10 + 2]
+    je      SHORT proc8_right_column2
+
+  proc8_bottom_row:
+    cmp     bl, [r10 + 6]
+    je      SHORT proc8_bottom_row2
+
+  proc8_diagonal:
+    cmp     bl, [r10 + 4]
+    je      SHORT proc8_diagonal2
+    ret
+
+  proc8_right_column2:
+    cmp     bl, [r10 + 5]
+    jne     proc8_bottom_row
+    mov     rax, rbx
+    ret
+
+  proc8_bottom_row2:
+    cmp     bl, [r10 + 7]
+    jne     proc8_diagonal
+    mov     rax, rbx
+    ret
+
+  proc8_diagonal2:
+    cmp     bl, [r10 + 0]
+    cmove   rax, rbx
+    ret
+proc8_nj ENDP
 
 align 16
 proc0_O PROC
