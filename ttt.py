@@ -14,6 +14,7 @@ import threading
 import multiprocessing
 
 from multiprocessing.pool import ThreadPool as Pool
+from multiprocessing import freeze_support
 
 evaluated = 0
 iterations = 1000 # not 10k like other implementations because Python is too slow
@@ -60,12 +61,87 @@ def look_for_winner( board ):
 
     return piece_blank
 
+def pos0func( b ):
+    p = b[0]
+    if ( ( p == b[1] and p == b[2] ) or
+         ( p == b[3] and p == b[6] ) or
+         ( p == b[4] and p == b[8] ) ):
+         return p
+    return piece_blank
+
+def pos1func( b ):
+    p = b[1]
+    if ( ( p == b[0] and p == b[2] ) or
+         ( p == b[4] and p == b[7] ) ):
+         return p
+    return piece_blank
+
+def pos2func( b ):
+    p = b[2]
+    if ( ( p == b[0] and p == b[1] ) or
+         ( p == b[5] and p == b[8] ) or
+         ( p == b[4] and p == b[6] ) ):
+         return p
+    return piece_blank
+
+def pos3func( b ):
+    p = b[3]
+    if ( ( p == b[4] and p == b[5] ) or
+         ( p == b[0] and p == b[6] ) ):
+         return p
+    return piece_blank
+
+def pos4func( b ):
+    p = b[4]
+    if ( ( p == b[0] and p == b[8] ) or
+         ( p == b[2] and p == b[6] ) or
+         ( p == b[1] and p == b[7] ) or
+         ( p == b[3] and p == b[5] ) ):
+         return p
+    return piece_blank
+
+def pos5func( b ):
+    p = b[5]
+    if ( ( p == b[3] and p == b[4] ) or
+         ( p == b[2] and p == b[8] ) ):
+         return p
+    return piece_blank
+
+def pos6func( b ):
+    p = b[6]
+    if ( ( p == b[7] and p == b[8] ) or
+         ( p == b[0] and p == b[3] ) or
+         ( p == b[4] and p == b[2] ) ):
+         return p
+    return piece_blank
+
+def pos7func( b ):
+    p = b[7]
+    if ( ( p == b[6] and p == b[8] ) or
+         ( p == b[1] and p == b[4] ) ):
+         return p
+    return piece_blank
+
+def pos8func( b ):
+    p = b[8]
+    if ( ( p == b[6] and p == b[7] ) or
+         ( p == b[2] and p == b[5] ) or
+         ( p == b[0] and p == b[4] ) ):
+         return p
+    return piece_blank
+
+move_functions = [ pos0func, pos1func, pos2func, pos3func, pos4func, pos5func, pos6func, pos7func, pos8func ]
+
 def min_max( board, alpha, beta, depth, move ):
-    global evaluated
-    evaluated += 1
+    # just for debugging; total moves should be multiple of 6493 for 3 starting positions
+    #global evaluated
+    #evaluated += 1
 
     if depth >= 4:
-        p = look_for_winner( board )
+
+        # function pointers are about 20% faster than look_for_winner
+        #p = look_for_winner( board )
+        p = move_functions[ move ]( board )
 
         if piece_x == p:
             return score_win
@@ -106,7 +182,7 @@ def min_max( board, alpha, beta, depth, move ):
     return value
 
 def run_board( move ):
-    b = arr.array( 'i', [ 0, 0, 0, 0, 0, 0, 0, 0, 0 ] )
+    b = [ 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
     b[ move ] = piece_x
     #print( f"run_board for " + str( move ) )
 
@@ -115,48 +191,54 @@ def run_board( move ):
         #if score_tie != score:
         #    print( f"didn't get a tie score!")
 
-serial_start_time = time.time()
+def run_app():
+    global evaluated
+    serial_start_time = time.time()
 
-run_board( 0 )
-run_board( 1 )
-run_board( 4 )
+    run_board( 0 )
+    run_board( 1 )
+    run_board( 4 )
 
-serial_end_time = time.time()
-serial_time = serial_end_time - serial_start_time
-serial_evaluated = evaluated
+    serial_end_time = time.time()
+    serial_time = serial_end_time - serial_start_time
+    serial_evaluated = evaluated
 
-evaluated = 0
-parallel_start_time = time.time()
+    evaluated = 0
+    parallel_start_time = time.time()
 
-# using multipule threads doesn't help because they all share 1 core
-#pool = Pool()
-#pool.apply_async( run_board, ( 0, ) )
-#pool.apply_async( run_board, ( 1, ) )
-#pool.apply_async( run_board, ( 4, ) )
-#pool.close()
-#pool.join()
+    # using multipule threads doesn't help because they all share 1 core
+    #pool = Pool()
+    #pool.apply_async( run_board, ( 0, ) )
+    #pool.apply_async( run_board, ( 1, ) )
+    #pool.apply_async( run_board, ( 4, ) )
+    #pool.close()
+    #pool.join()
 
-p0 = multiprocessing.Process( target = run_board, args = ( 0, ) )
-p1 = multiprocessing.Process( target = run_board, args = ( 1, ) )
-p4 = multiprocessing.Process( target = run_board, args = ( 4, ) )
+    p0 = multiprocessing.Process( target = run_board, args = ( 0, ) )
+    p1 = multiprocessing.Process( target = run_board, args = ( 1, ) )
+    p4 = multiprocessing.Process( target = run_board, args = ( 4, ) )
 
-p0.start()
-p1.start()
-p4.start()
+    p0.start()
+    p1.start()
+    p4.start()
 
-p0.join()
-p1.join()
-p4.join()
+    p0.join()
+    p1.join()
+    p4.join()
 
-parallel_end_time = time.time()
-parallel_time = parallel_end_time - parallel_start_time
+    parallel_end_time = time.time()
+    parallel_time = parallel_end_time - parallel_start_time
 
-# this will be 0 when using multiprocessing because the variable isn't marshalled back
-parallel_evaluated = evaluated
+    # this will be 0 when using multiprocessing because the variable isn't marshalled back
+    parallel_evaluated = evaluated
 
-print( f"serial moves evaluated: " + str( serial_evaluated ) )
-print( f"    elapsed time: " + str( serial_time ) )
-print( f"    one iteration: " + str( ( serial_time ) / iterations ) )
-print( f"parallel moves evaluated: " + str( parallel_evaluated) )
-print( f"    elapsed time: " + str( parallel_time ) )
-print( f"    one iteration: " + str( ( parallel_time ) / iterations ) )
+    print( f"serial moves evaluated: " + str( serial_evaluated ) )
+    print( f"    elapsed time: " + str( serial_time ) )
+    print( f"    one iteration: " + str( ( serial_time ) / iterations ) )
+    print( f"parallel moves evaluated: " + str( parallel_evaluated) )
+    print( f"    elapsed time: " + str( parallel_time ) )
+    print( f"    one iteration: " + str( ( parallel_time ) / iterations ) )
+
+if __name__ == '__main__':
+    freeze_support()
+    run_app()
