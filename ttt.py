@@ -1,4 +1,6 @@
-# prove you can't win at tic-tac-tie
+# prove you can't win at tic-tac-tie.
+# only solves for opening moves on 0, 1, and 4 because others are just reflect.ions
+# 6493 board positions are evaluated per iteration across all 3 opening moves.
 #
 # boards positions:
 #   0  1  2
@@ -32,24 +34,30 @@ def look_for_winner( board ):
             return p
         if p == board[3] and p == board[6]:
             return p
+
     p = board[3]
     if piece_blank != p and p == board[4] and p == board[5]:
         return p
+
     p = board[6]
     if piece_blank != p and p == board[7] and p == board[8]:
         return p
+
     p = board[1]
     if piece_blank != p and p == board[4] and p == board[7]:
         return p
+
     p = board[2]
     if piece_blank != p and p == board[5] and p == board[8]:
         return p
+
     p = board[4]
     if piece_blank != p:
         if p == board[0] and p == board[8]:
             return p
         if p == board[2] and p == board[6]:
             return p
+
     return piece_blank
 
 def min_max( board, alpha, beta, depth, move ):
@@ -87,7 +95,7 @@ def min_max( board, alpha, beta, depth, move ):
                 if alpha >= beta:
                     return value
                 if score_win == value:
-                    return value
+                    return score_win
             else:
                 value = min( value, score )
                 beta = min( value, beta )
@@ -128,9 +136,9 @@ parallel_start_time = time.time()
 #pool.close()
 #pool.join()
 
-p0 = multiprocessing.Process( target=run_board, args=(0,))
-p1 = multiprocessing.Process( target=run_board, args=(1,))
-p4 = multiprocessing.Process( target=run_board, args=(4,))
+p0 = multiprocessing.Process( target = run_board, args = ( 0, ) )
+p1 = multiprocessing.Process( target = run_board, args = ( 1, ) )
+p4 = multiprocessing.Process( target = run_board, args = ( 4, ) )
 
 p0.start()
 p1.start()
@@ -146,10 +154,9 @@ parallel_time = parallel_end_time - parallel_start_time
 # this will be 0 when using multiprocessing because the variable isn't marshalled back
 parallel_evaluated = evaluated
 
-print( f"serial moves evaluated: " + str( serial_evaluated) )
+print( f"serial moves evaluated: " + str( serial_evaluated ) )
 print( f"    elapsed time: " + str( serial_time ) )
 print( f"    one iteration: " + str( ( serial_time ) / iterations ) )
 print( f"parallel moves evaluated: " + str( parallel_evaluated) )
 print( f"    elapsed time: " + str( parallel_time ) )
 print( f"    one iteration: " + str( ( parallel_time ) / iterations ) )
-
