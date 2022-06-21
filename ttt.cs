@@ -300,7 +300,7 @@ class TTT
                     // can't do better than this
 
                     if ( WinLosePrune && ( SCORE_WIN == value ) )
-                        return value;
+                        return SCORE_WIN;
                 }
                 else
                 {
@@ -319,7 +319,6 @@ class TTT
                 }
             }
         }
-
 
         Debug.Assert( ( 100 != Math.Abs( value ) ), "value is somehow +/- 100!" );
 
