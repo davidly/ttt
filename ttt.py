@@ -8,12 +8,11 @@
 #   6  7  8
 #
 
-import array as arr
 import time
 import threading
 import multiprocessing
 
-from multiprocessing.pool import ThreadPool as Pool
+#from multiprocessing.pool import ThreadPool as Pool
 from multiprocessing import freeze_support
 
 evaluated = 0
@@ -143,21 +142,21 @@ def min_max( board, alpha, beta, depth, move ):
         #p = look_for_winner( board )
         p = move_functions[ move ]( board )
 
-        if piece_x == p:
-            return score_win
+        if ( piece_blank != p ):
+            if piece_x == p:
+                return score_win
 
-        if piece_o == p:
             return score_lose
 
         if 8 == depth:
             return score_tie
 
-    value = score_max
-    pieceMove = piece_o
-
     if 0 != ( depth & 1 ):
         value = score_min
         pieceMove = piece_x
+    else:
+        value = score_max
+        pieceMove = piece_o
 
     for x in range( 0, 9 ):
         if piece_blank == board[ x ]:
@@ -166,19 +165,23 @@ def min_max( board, alpha, beta, depth, move ):
             board[ x ] = piece_blank
 
             if 0 != ( depth & 1 ):
-                value = max( value, score )
-                alpha = max( alpha, value )
+                if score_win == score:
+                    return score_win
+                if score > value:
+                    value = score
+                if value > alpha:
+                    alpha = value
                 if alpha >= beta:
                     return value
-                if score_win == value:
-                    return score_win
             else:
-                value = min( value, score )
-                beta = min( value, beta )
+                if score_lose == score:
+                    return score_lose
+                if score < value:
+                    value = score
+                if value < beta:
+                    beta = value
                 if beta <= alpha:
                     return value
-                if score_lose == value:
-                    return score_lose
     return value
 
 def run_board( move ):
@@ -233,12 +236,12 @@ def run_app():
     parallel_evaluated = evaluated
 
     print( f"serial moves evaluated: " + str( serial_evaluated ) )
-    print( f"    elapsed time: " + str( serial_time ) )
+    print( f"    elapsed time:  " + str( serial_time ) )
     print( f"    one iteration: " + str( ( serial_time ) / iterations ) )
     print( f"parallel moves evaluated: " + str( parallel_evaluated) )
-    print( f"    elapsed time: " + str( parallel_time ) )
+    print( f"    elapsed time:  " + str( parallel_time ) )
     print( f"    one iteration: " + str( ( parallel_time ) / iterations ) )
 
 if __name__ == '__main__':
-    freeze_support()
+    freeze_support()   # needed to run on Mac (not Windows or WSL)
     run_app()
