@@ -35,7 +35,8 @@ To build:
           ○ I put code and data all in one segment because trying other ways caused VirtualT to crash.
           
 	
-![image](https://user-images.githubusercontent.com/1497921/175107859-72640faa-3de1-4c29-83f7-d740c093499b.png)
+![image](https://user-images.githubusercontent.com/1497921/175112792-e12328fe-fa15-4ff6-a33f-551b36659388.png)
+
                                         
                                         
      
