@@ -11,6 +11,9 @@ To build:
     - Rust: rustc -O ttt.rs
     - MSVC: cl /nologo ttt.cxx /Ox /Qpar /Ob2 /O2i /EHac /Zi /D_AMD64_ /link ntdll.lib
     - GNU: g++ -DNDEBUG ttt.cxx -o ttt -O3 -fopenmp
+    - Lua: lua54 ttt.lua
+    - Julia: julia -q --optimize=3 --check-bounds=no -t auto ttt.jl
+    - Python: python3 ttt.py
     - MacOS clang: clang++ -DNDEBUG -Xpreprocessor -fopenmp -lomp -std=c++11 -Wc++11-extensions -I"$(brew --prefix libomp)/include" -L"$(brew --prefix libomp)/lib" ttt.cxx -O3 -o ttt
     - x64 ASM: ml64 /nologo ttt_x64.asm /Flx.lst /Zd /Zf /Zi /link /OPT:REF /nologo ^
                                         /subsystem:console /defaultlib:kernel32.lib ^
