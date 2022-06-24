@@ -37,6 +37,5 @@ To build:
 			      § 30 print "  ";time$
           ○ I put code and data all in one segment because trying other ways caused VirtualT to crash.
           
-![image](https://user-images.githubusercontent.com/1497921/175559700-dab05bc7-db4a-42c5-98a5-5b5dae83f2f1.png)
+![image](https://user-images.githubusercontent.com/1497921/175721026-b2675dc2-0fd3-400a-91fc-043f1d57e16d.png)
 
-     
