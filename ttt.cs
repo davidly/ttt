@@ -1,11 +1,5 @@
 using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.IO;
-using System.Text;
 using System.Diagnostics;
-using System.ComponentModel;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -21,14 +15,6 @@ class TTT
     const int SCORE_LOSE = 4;
     const int SCORE_MAX = 9;
     const int SCORE_MIN = 2;
-
-    static void Usage()
-    {
-        Console.WriteLine( "Usage: ttt" );
-        Console.WriteLine( "  Tic Tac Toe" );
-
-        Environment.Exit( 1 );
-    } //Usage
 
     enum Piece : byte { blank = 0, X = 1, O = 2 }
 
@@ -281,18 +267,19 @@ class TTT
             if ( Piece.blank == b.board[x] )
             {
                 b.board[x] = pieceMove;
-
                 int score = MinMax( b, alpha, beta, depth + 1, x );
-
                 b.board[x] = Piece.blank;
 
                 if ( 0 != ( depth & 1 ) ) //maximize
                 {
-                    value = Math.Max( value, score );
+                    if ( score > value )
+                        value = score;
 
                     if ( ABPrune )
                     {
-                        alpha = Math.Max( alpha, value );
+                        if ( value > alpha )
+                            alpha = value;
+
                         if ( alpha >= beta )
                             return value;
                     }
@@ -304,10 +291,14 @@ class TTT
                 }
                 else
                 {
-                    value = Math.Min( value, score );
+                    if ( score < value )
+                        value = score;
+
                     if ( ABPrune )
                     {
-                        beta = Math.Min( value, beta );
+                        if ( value < beta )
+                            beta = value;
+
                         if ( beta <= alpha )
                             return value;
                     }
@@ -321,7 +312,6 @@ class TTT
         }
 
         Debug.Assert( ( 100 != Math.Abs( value ) ), "value is somehow +/- 100!" );
-
         return value;
     } //MinMax
 
@@ -444,7 +434,6 @@ class TTT
         catch (Exception e)
         {
             Console.WriteLine( "ttt.exe caught an exception {0}", e.ToString() );
-            Usage();
         }
     } //Main
 } //HexDump
