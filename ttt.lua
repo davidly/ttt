@@ -151,7 +151,7 @@ end
 move_functions = { pos1func, pos2func, pos3func, pos4func, pos5func, pos6func, pos7func, pos8func, pos9func }
 
 function min_max( board, alpha, beta, depth, move )
-    evaluated = evaluated + 1
+    --evaluated = evaluated + 1
 
     if depth >= 4 then
         -- the function table is about 30% faster
@@ -220,7 +220,7 @@ function run_app()
     print( "serial elapsed time ", serial_elapsed_time )
     print( "  per iteration: ", serial_elapsed_time / iterations * 1000, " ms" )
 
-    -- print( "moves evaluated: ", evaluated )
+    --print( "moves evaluated: ", evaluated )
 end
 
 --io.write("lua version ",_VERSION,"!\n")
