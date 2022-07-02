@@ -36,6 +36,21 @@ To build:
 			      § 20 runm "ttta"
 			      § 30 print "  ";time$
           ○ I put code and data all in one segment because trying other ways caused VirtualT to crash.
-          
-![image](https://user-images.githubusercontent.com/1497921/175721026-b2675dc2-0fd3-400a-91fc-043f1d57e16d.png)
+
+I was curious about the relative performance of the Python, Julia, and Lua interpreters. Why is Python almost 2x slower than the others?
+How hard is it to implement a faster interpreter? Since I couldn't find a reputable BASIC interpreter that runs on x64, I wrote one 
+called BA. The code is here in ba.cxx. It runs just enough BASIC for TTT (see the source file for limitations). I updated the BASIC 
+app for TTT to use a 1-dimensional array for the board instead of 2 so it'd be in line with other implementations (and quite a
+bit faster). That's call ttt-1dim.bas. As seen in the table below, it was easy to create an interpreter for BASIC that's faster than
+Python. BASIC doesn't support function (goto/gosub) pointers. The Python, Julia, and Lua versions without function pointers 
+run slower (4.34, 1.48, and 2.31 ms respectively) than with them. The BA version runs in 2.23ms, so it's faster than all but Julia. 
+The BA version is faster than Python even when Python is using function pointers.
+
+I'm not really proud of BA -- it was a very quickly written hack. But it shows that Python could benefit from some performance work.
+
+BA.cxx can be built from a CMD prompt initialized with Visual Studio's vcvars64.bat using m.bat (for retail) or mdbg (for debug).
+
+![image](https://user-images.githubusercontent.com/1497921/177012849-80e435cf-d5ca-43b7-9b33-a0c5f40c561f.png)
+
+
 
