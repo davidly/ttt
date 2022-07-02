@@ -871,7 +871,7 @@ __makeinline Variable * FindKnownVariable( TokenValue & val, map<string, Variabl
 
     pvar = FindVariable( varmap, val.strValue );
     if ( !pvar )
-        RuntimeFail( "array variable used but not declared with a DIM", 0 );
+        RuntimeFail( "variable used but not declared with a DIM or initialized", 0 );
     val.pVariable = pvar;
 
     return pvar;
@@ -1006,7 +1006,7 @@ __makeinline int run_operator_p0( int a, Token t, int b )
 typedef int (*operator_func)( int a, Token t, int b );
 
 //
-// precedence: in parens first (not implemented yet)
+// precedence: in parens first
 //         0    multiplication and division left to right
 //         1    addition and subtraction left to right
 //         2    relational > < >= <= = left to right
@@ -1458,7 +1458,7 @@ extern "C" int __cdecl main( int argc, char *argv[] )
     char * pbuf = input.data();
     char * pbeyond = pbuf + filelen;
     char line[ 300 ];
-    const int MaxDictionaryLineLen = _countof( line ) - 1;
+    const int MaxLineLen = _countof( line ) - 1;
     int fileLine = 0;
     vector<LineOfCode> linesOfCode;
     int prevLineNum = 0;
@@ -1466,7 +1466,7 @@ extern "C" int __cdecl main( int argc, char *argv[] )
     while ( pbuf < pbeyond )
     {
         int len = 0;
-        while ( ( pbuf < pbeyond ) && ( ( *pbuf != 10 ) && ( *pbuf != 13 ) ) && ( len < MaxDictionaryLineLen ) )
+        while ( ( pbuf < pbeyond ) && ( ( *pbuf != 10 ) && ( *pbuf != 13 ) ) && ( len < MaxLineLen ) )
             line[ len++ ] = *pbuf++;
 
         while ( ( pbuf < pbeyond ) && ( *pbuf == 10 || *pbuf == 13 ) )
@@ -1775,7 +1775,7 @@ extern "C" int __cdecl main( int argc, char *argv[] )
             rewritten = true;
         }
 
-        // VARIABLE = VARIABLE - 1  =============>  ATOMIC INC VARIABLE
+        // VARIABLE = VARIABLE - 1  =============>  ATOMIC DEC VARIABLE
         // 4500 has 6 tokens
         //   token   0 VARIABLE, value 0, strValue 'p%'
         //   token   1 EQ, value 0, strValue ''
@@ -2090,16 +2090,14 @@ extern "C" int __cdecl main( int argc, char *argv[] )
             }
             else if ( Token::ATOMIC == token )
             {
+                Variable * pvar = FindKnownVariable( vals[ t + 1 ], varmap );
+
                 if ( Token::INC == vals[ t + 1 ].token )
-                {
-                    Variable * pvar = FindKnownVariable( vals[ t + 1 ], varmap );
                     pvar->value++;
-                }
                 else if ( Token::DEC == vals[ t + 1 ].token )
-                {
-                    Variable * pvar = FindKnownVariable( vals[ t + 1 ], varmap );
                     pvar->value--;
-                }
+                else
+                    assert( !"unknown ATOMIC token" );
 
                 pc++;
                 break;
