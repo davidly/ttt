@@ -41,7 +41,7 @@ I was curious about the relative performance of the Python, Julia, and Lua inter
 How hard is it to implement a faster interpreter? Since I couldn't find a reputable BASIC interpreter that runs on x64, I wrote one 
 called BA. The code is here in ba.cxx. It runs just enough BASIC for TTT (see the source file for limitations). I updated the BASIC 
 app for TTT to use a 1-dimensional array for the board instead of 2 so it'd be in line with other implementations (and quite a
-bit faster). That's call ttt-1dim.bas. As seen in the table below, it was easy to create an interpreter for BASIC that's faster than
+bit faster). That's called ttt-1dim.bas. As seen in the table below, it was easy to create an interpreter for BASIC that's faster than
 Python. BASIC doesn't support function (goto/gosub) pointers. The Python, Julia, and Lua versions without function pointers 
 run slower (4.34, 1.48, and 2.31 ms respectively) than with them. The BA version runs in 2.23ms, so it's faster than all but Julia. 
 The BA version is faster than Python even when Python is using function pointers.
