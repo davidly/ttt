@@ -111,7 +111,7 @@ struct Variable
     int value;           // when a scalar
     char name[4];        // variables can only be 2 chars + type + null
     int dimensions;      // 0 for scalar
-    short dims[ 2 ];     // only support up to 2 dimensional arrays
+    int dims[ 2 ];       // only support up to 2 dimensional arrays
     vector<int> array;
 };
 
@@ -137,7 +137,7 @@ struct TokenValue
     Token token;
     int value;
     int dimensions;    // 0 for scalar or 1-2 if an array
-    short dims[ 2 ];   // only support up to 2 dimensional arrays
+    int dims[ 2 ];     // only support up to 2 dimensional arrays
     Variable * pVariable;
     string strValue;
 };
@@ -1670,11 +1670,7 @@ extern "C" int __cdecl main( int argc, char *argv[] )
         printf( "lines of code: %zd\n", linesOfCode.size() );
     
         for ( size_t l = 0; l < linesOfCode.size(); l++ )
-        {
-            LineOfCode & loc = linesOfCode[ l ];
-
-            ShowLocListing( loc );
-        }
+            ShowLocListing( linesOfCode[ l ] );
     }
 
     // patch goto/gosub line numbers with actual offsets to remove runtime searches
@@ -1758,6 +1754,7 @@ extern "C" int __cdecl main( int argc, char *argv[] )
             Token::VARIABLE == vals[ 0 ].token &&
             Token::EQ == vals[ 1 ].token &&
             Token::VARIABLE == vals[ 3 ].token &&
+            !vals[ 0 ].strValue.compare( vals[ 3 ].strValue ) &&
             Token::PLUS == vals[ 4 ].token &&
             Token::CONSTANT == vals[ 5 ].token &&
             1 == vals[ 5 ].value )
@@ -1788,6 +1785,7 @@ extern "C" int __cdecl main( int argc, char *argv[] )
             Token::VARIABLE == vals[ 0 ].token &&
             Token::EQ == vals[ 1 ].token &&
             Token::VARIABLE == vals[ 3 ].token &&
+            !vals[ 0 ].strValue.compare( vals[ 3 ].strValue ) &&
             Token::MINUS == vals[ 4 ].token &&
             Token::CONSTANT == vals[ 5 ].token &&
             1 == vals[ 5 ].value )
@@ -1843,14 +1841,15 @@ extern "C" int __cdecl main( int argc, char *argv[] )
 
     // interpret the code
 
-    high_resolution_clock::time_point timeBegin = high_resolution_clock::now();      
-
     map<string, Variable> varmap;
     Stack<ForGosubItem> forGosubStack;
     int pc = 0;
     int pcPrevious = 0;
     int countOfLines = linesOfCode.size();
     bool basicTracing = false;
+    linesOfCode[ 0 ].timesExecuted--; // avoid off by 1 on first iteration of loop
+
+    high_resolution_clock::time_point timeBegin = high_resolution_clock::now();      
     high_resolution_clock::time_point timePrevious = timeBegin;
 
     do
