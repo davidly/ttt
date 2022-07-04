@@ -50,7 +50,8 @@ I'm not really proud of BA -- it was a very quickly written hack. But it shows t
 
 BA.cxx can be built from a CMD prompt initialized with Visual Studio's vcvars64.bat using m.bat (for retail) or mdbg (for debug).
 
-![image](https://user-images.githubusercontent.com/1497921/177012849-80e435cf-d5ca-43b7-9b33-a0c5f40c561f.png)
+![image](https://user-images.githubusercontent.com/1497921/177211926-f6d2c542-7beb-4160-8a1e-0ea2fe4c5dac.png)
+
 
 
 
