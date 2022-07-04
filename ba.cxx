@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <string>
+#include <cctype>
 #include <map>
 #include <vector>
 #include <chrono>
@@ -33,8 +34,8 @@ const bool EnableExecutionTime = false; // makes everything 5% slower
     #define __makeinline __declspec(noinline)
     //#define __makeinline
 #else
-    const bool RangeCheckArrays = false;
-    const bool EnableTracing = false; // makes eveything 10% slower
+    const bool RangeCheckArrays = false;  // oh how I wish C# supported this
+    const bool EnableTracing = false;     // makes eveything 10% slower
 
     #define __makeinline __forceinline
     //#define __makeinline
@@ -134,6 +135,8 @@ struct TokenValue
         token = t;
     } //TokenValue
 
+    // note: 64 bytes in size, which is good because the compiler can use shl 6 for array lookups
+
     Token token;
     int value;
     int dimensions;    // 0 for scalar or 1-2 if an array
@@ -152,10 +155,14 @@ struct LineOfCode
     }
 
     int lineNumber;
+
+    // These tokens will be scattered through memory. I tried making them all contiguous
+    // and there was no performance benefit
+
     vector<TokenValue> tokenValues;
 
-    long long timesExecuted;
-    long long duration;   // execution time so far on this line of code
+    long long timesExecuted;    // # of times this line is executed
+    long long duration;         // execution time so far on this line of code
 };
 
 struct ParenItem
@@ -174,27 +181,26 @@ struct ForGosubItem
         pc = p;
     }
 
-    int  pc;
     int isFor;  // true if FOR, false if GOSUB
+    int  pc;
 };
 
 // this is faster than both <stack> and Stack using <vector> to implement a stack because there are no memory allocations.
 
-const int maxStack = 100;
+const int maxStack = 60;
 
 template <class T> class Stack
 {
     int current;
-    union { T items[ maxStack ]; };  // avoid constructors and destructors on each T
-    // T items[ maxStack ];
+    union { T items[ maxStack ]; };  // avoid constructors and destructors on each T by using a union
 
     public:
         Stack() : current( 0 ) {}
-        void push( T & x ) { assert( current < maxStack ); items[ current++ ] = x; }
-        size_t size() { return current; }
-        void pop() { assert( current > 0 ); current--; }
-        T & top() { assert( current > 0 ); return items[ current - 1 ]; }
-        T & operator[] ( size_t i ) { return items[ i ]; }
+        __makeinline void push( T & x ) { assert( current < maxStack ); items[ current++ ] = x; }
+        __makeinline size_t size() { return current; }
+        __makeinline void pop() { assert( current > 0 ); current--; }
+        __makeinline T & top() { assert( current > 0 ); return items[ current - 1 ]; }
+        __makeinline T & operator[] ( size_t i ) { return items[ i ]; }
 };
 
 class CFile
@@ -863,20 +869,6 @@ __makeinline Variable * FindVariable( map<string, Variable> & varmap, string con
     return & it->second;
 } //FindVariable
 
-__makeinline Variable * FindKnownVariable( TokenValue & val, map<string, Variable> & varmap )
-{
-    Variable *pvar = val.pVariable;
-    if ( pvar )
-        return pvar;
-
-    pvar = FindVariable( varmap, val.strValue );
-    if ( !pvar )
-        RuntimeFail( "variable used but not declared with a DIM or initialized", 0 );
-    val.pVariable = pvar;
-
-    return pvar;
-} //FindKnownVariable
-
 __makeinline Variable * GetVariablePerhapsCreate( TokenValue & val, map<string, Variable>  & varmap )
 {
     Variable *pvar = val.pVariable;
@@ -900,69 +892,57 @@ __makeinline Variable * GetVariablePerhapsCreate( TokenValue & val, map<string, 
     return pvar;
 } //GetVariablePerhapsCreate
 
-__makeinline int GetVariableValue( TokenValue & val, map<string, Variable> & varmap )
-{
-    assert( Token::VARIABLE == val.token );
-
-    Variable * pvar = GetVariablePerhapsCreate( val, varmap );
-    return val.pVariable->value;
-} //GetVariableValue
-
-__makeinline int GetKnownVariableValue( TokenValue & val, map<string, Variable> & varmap )
-{
-    assert( Token::VARIABLE == val.token );
-
-    Variable * pvar = FindKnownVariable( val, varmap );
-    return val.pVariable->value;
-} //GetKnownVariableValue
-
-__makeinline int GetSimpleValue( TokenValue & val, map<string, Variable> & varmap )
+__makeinline int GetSimpleValue( TokenValue & val )
 {
     assert( isTokenSimpleValue( val.token ) );
 
     if ( Token::CONSTANT == val.token )
         return val.value;
 
-    return GetVariableValue( val, varmap );
+    return val.pVariable->value;
 } //GetSimpleValue
 
 __makeinline int run_operator( int a, Token t, int b )
 {
+    // in order of actual calls when running ttt
+
     switch( t )
     {
         case Token::EQ    : return ( a == b );
         case Token::AND   : return ( a & b );
         case Token::LT    : return ( a < b );
-        case Token::PLUS  : return ( a + b );
-        case Token::NE    : return ( a != b );
         case Token::GT    : return ( a > b );
         case Token::GE    : return ( a >= b );
         case Token::MINUS : return ( a - b );
-        case Token::OR    : return ( a | b );
         case Token::LE    : return ( a <= b );
+        case Token::OR    : return ( a | b );
+        case Token::PLUS  : return ( a + b );
+        case Token::NE    : return ( a != b );
         case Token::MULT  : return ( a * b );
         case Token::DIV   : return ( a / b );
         case Token::XOR   : return ( a ^ b );
+        default: __assume( false );
     }
 
     assert( !"invalid operator token" );
     return 0;
 } //run_operator
 
-__makeinline int run_operator_p3( int a, Token t, int b )
+__makeinline int run_operator_logical( int a, Token t, int b )
 {
     switch( t )
     {
         case Token::AND   : return ( a & b );
         case Token::OR    : return ( a | b );
         case Token::XOR   : return ( a ^ b );
+        default: __assume( false );
     }
 
-    assert( !"invalid p3 operator token" );
+    assert( !"invalid logical operator token" );
     return 0;
 } //run_operator_p3
 
-__makeinline int run_operator_p2( int a, Token t, int b )
+__makeinline int run_operator_relational( int a, Token t, int b )
 {
     switch( t )
     {
@@ -971,39 +951,39 @@ __makeinline int run_operator_p2( int a, Token t, int b )
         case Token::NE    : return ( a != b );
         case Token::GT    : return ( a > b );
         case Token::GE    : return ( a >= b );
-        case Token::OR    : return ( a | b );
         case Token::LE    : return ( a <= b );
+        default: __assume( false );
     }
 
-    assert( !"invalid p2 operator token" );
+    assert( !"invalid relational operator token" );
     return 0;
-} //run_operator_p2
+} //run_operator_relational
 
-__makeinline int run_operator_p1( int a, Token t, int b )
+__makeinline int run_operator_additive( int a, Token t, int b )
 {
     switch( t )
     {
         case Token::PLUS  : return ( a + b );
         case Token::MINUS : return ( a - b );
+        default: __assume( false );
     }
 
-    assert( !"invalid p1 operator token" );
+    assert( !"invalid additive operator token" );
     return 0;
-} //run_operator_p1
+} //run_operator_additive
 
-__makeinline int run_operator_p0( int a, Token t, int b )
+__makeinline int run_operator_multiplicative( int a, Token t, int b )
 {
     switch( t )
     {
         case Token::MULT  : return ( a * b );
         case Token::DIV   : return ( a / b );
+        default: __assume( false );
     }
 
-    assert( !"invalid p0 operator token" );
+    assert( !"invalid multiplicative operator token" );
     return 0;
-} //run_operator_p0
-
-typedef int (*operator_func)( int a, Token t, int b );
+} //run_operator_multiplicative
 
 //
 // precedence: in parens first
@@ -1087,10 +1067,10 @@ __makeinline int Eval( int * explist, int expcount )
     else
 #endif
     {
-        expcount = Reduce( run_operator_p0, 0, explist, expcount );
-        expcount = Reduce( run_operator_p1, 1, explist, expcount );
-        expcount = Reduce( run_operator_p2, 2, explist, expcount );
-        expcount = Reduce( run_operator_p3, 3, explist, expcount );
+        expcount = Reduce( run_operator_multiplicative, 0, explist, expcount );   // * /
+        expcount = Reduce( run_operator_additive,       1, explist, expcount );   // + -
+        expcount = Reduce( run_operator_relational,     2, explist, expcount );   // > >= <= < = <>
+        expcount = Reduce( run_operator_logical,        3, explist, expcount );   // and or xor
 
         assert( 1 == expcount );
     }
@@ -1101,7 +1081,7 @@ __makeinline int Eval( int * explist, int expcount )
     return explist[ 0 ];
 } //Eval
 
-__makeinline int EvaluateExpression( int iToken, vector<TokenValue> & vals, map<string, Variable> & varmap, int line )
+__makeinline int EvaluateExpression( int iToken, vector<TokenValue> & vals, int line )
 {
     if ( EnableTracing && g_Tracing )
         printf( "evaluateexpression starting at line %d, token %d, which is %s, length %d\n",
@@ -1116,15 +1096,15 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> & vals, map<
 
 #ifdef EXPRESSION_OPTIMIZATIONS
     if ( 2 == tokenCount )
-        value = GetSimpleValue( vals[ iToken + 1 ], varmap );
+        value = GetSimpleValue( vals[ iToken + 1 ] );
     else if ( 3 == tokenCount )
     {
         if ( Token::NOT == vals[ iToken + 1 ].token )
-            value = ! GetVariableValue( vals[ iToken + 2 ], varmap );
+            value = ! ( vals[ iToken + 2 ].pVariable->value );
         else
         {
             assert( Token::MINUS == vals[ iToken + 1 ].token );
-            return - GetSimpleValue( vals[ iToken + 2 ], varmap );
+            return - GetSimpleValue( vals[ iToken + 2 ] );
         }
     }
     else if ( 4 == tokenCount )
@@ -1133,9 +1113,9 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> & vals, map<
         assert( isTokenOperator( vals[ iToken + 2 ].token ) );
         assert( isTokenSimpleValue( vals[ iToken + 3 ].token ) );
     
-        value = run_operator( GetSimpleValue( vals[ iToken + 1 ], varmap ),
+        value = run_operator( GetSimpleValue( vals[ iToken + 1 ] ),
                               vals[ iToken + 2 ].token,
-                              GetSimpleValue( vals[ iToken + 3 ], varmap ) );
+                              GetSimpleValue( vals[ iToken + 3 ] ) );
     }
     else if ( 6 == tokenCount &&
               Token::VARIABLE == vals[ iToken + 1 ].token &&
@@ -1148,11 +1128,10 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> & vals, map<
         // 4 token VARIABLE, value 0, strValue 'st%'   (this can optionally be a constant)
         // 5 token CLOSEPAREN, value 0, strValue ''
 
-        Variable *pvar = FindKnownVariable( vals[ iToken + 1 ], varmap );
-        if ( 1 != pvar->dimensions )
-            RuntimeFail( "expecting a 1-dimensional array", line );
+        Variable *pvar = vals[ iToken + 1 ].pVariable;
+        assert( 1 == pvar->dimensions );  // can't be more or the tokenCount would be greater
 
-        int offset = GetSimpleValue( vals[ iToken + 4 ], varmap );
+        int offset = GetSimpleValue( vals[ iToken + 4 ] );
         if ( RangeCheckArrays && offset >= pvar->array.size() )
             RuntimeFail( "index beyond the bounds of an array", line );
 
@@ -1162,7 +1141,7 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> & vals, map<
 #endif
     {
         // arbitrary expression cases
-    
+
         const int maxExpression = 60; // given the maximum line length, this is excessive
         int explist[ maxExpression ]; // values even and operators odd
         int expcount = 0;
@@ -1177,7 +1156,7 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> & vals, map<
         
             if ( Token::VARIABLE == val.token )
             {
-                Variable *pvar = FindKnownVariable( val, varmap );
+                Variable *pvar = val.pVariable;
     
                 if ( 0 == pvar->dimensions )
                     explist[ expcount++ ] = pvar->value;
@@ -1189,7 +1168,7 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> & vals, map<
                     if ( 2 == vals[ t ].value && Token::CONSTANT == vals[ t + 1 ].token ) // save recursion
                         offset = vals[ t + 1 ].value;
                     else
-                        offset = EvaluateExpression( t, vals, varmap, line );
+                        offset = EvaluateExpression( t, vals, line );
 
                     t += vals[ t ].value;
 
@@ -1204,7 +1183,7 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> & vals, map<
                 else if ( 2 == pvar->dimensions )
                 {
                     t += 2; // variable and openparen
-                    int offset1 = EvaluateExpression( t, vals, varmap, line );
+                    int offset1 = EvaluateExpression( t, vals, line );
                     t += vals[ t ].value;
 
                     if ( RangeCheckArrays && offset1 > pvar->dims[ 0 ] )
@@ -1213,7 +1192,7 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> & vals, map<
                     assert( Token::COMMA == vals[ t ].token );
                     t++; // comma
 
-                    int offset2 = EvaluateExpression( t, vals, varmap, line );
+                    int offset2 = EvaluateExpression( t, vals, line );
                     t += vals[ t ].value;
 
                     if ( RangeCheckArrays && offset2 > pvar->dims[ 1 ] )
@@ -1240,7 +1219,7 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> & vals, map<
             }
             else if ( Token::EXPRESSION == val.token )
             {
-                explist[ expcount++ ] = EvaluateExpression( t, vals, varmap, line );
+                explist[ expcount++ ] = EvaluateExpression( t, vals, line );
                 t += ( val.value - 1 );
             }
             else if ( Token::CONSTANT == val.token )
@@ -1249,7 +1228,7 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> & vals, map<
             }
             else if ( Token::NOT == val.token )
             {
-                explist[ expcount++ ] = ! GetVariableValue( vals[ t + 1 ], varmap );
+                explist[ expcount++ ] = ! ( vals[ t + 1 ].pVariable->value );
                 t++;
             }
             else if ( Token::OPENPAREN == val.token )
@@ -1665,6 +1644,22 @@ extern "C" int __cdecl main( int argc, char *argv[] )
         }
     }
 
+    // Make sure the last line is an END (even if that line isn't reachable)
+
+    bool addEnd = true;
+
+    if ( linesOfCode.size() && Token::END == linesOfCode[ linesOfCode.size() - 1 ].tokenValues[ 0 ].token )
+        addEnd = false;
+
+    if ( addEnd )
+    {
+        int lineno = 1 + linesOfCode[ linesOfCode.size() - 1 ].lineNumber;
+        LineOfCode loc( lineno );
+        linesOfCode.push_back( loc );
+        TokenValue tokenValue( Token::END );
+        linesOfCode[ linesOfCode.size() - 1 ].tokenValues.push_back( tokenValue );
+    }
+
     if ( showListing )
     {
         printf( "lines of code: %zd\n", linesOfCode.size() );
@@ -1836,12 +1831,30 @@ extern "C" int __cdecl main( int argc, char *argv[] )
         }
     }
 
+    // Create all non-array variables and update references so lookups are always fast later
+
+    map<string, Variable> varmap;
+
+    for ( size_t l = 0; l < linesOfCode.size(); l++ )
+    {
+        LineOfCode & loc = linesOfCode[ l ];
+    
+        for ( size_t t = 0; t < loc.tokenValues.size(); t++ )
+        {
+            TokenValue & tv = loc.tokenValues[ t ];
+            if ( ( Token::INC == tv.token ) ||
+                 ( Token::DEC == tv.token ) ||
+                 ( Token::VARIABLE == tv.token && 0 == tv.dimensions ) || // wait for arrays to be defined at runtime with DIM
+                 ( Token::FOR == tv.token ) )
+                GetVariablePerhapsCreate( tv, varmap );
+        }
+    }
+
     if ( !executeCode )
         exit( 0 );
 
     // interpret the code
 
-    map<string, Variable> varmap;
     Stack<ForGosubItem> forGosubStack;
     int pc = 0;
     int pcPrevious = 0;
@@ -1863,9 +1876,6 @@ extern "C" int __cdecl main( int argc, char *argv[] )
             pcPrevious = pc;
         }
 
-        if ( pc >= countOfLines )
-            break;
-
         LineOfCode & loc = linesOfCode[ pc ];
         vector<TokenValue> & vals = loc.tokenValues;
         int line = loc.lineNumber;
@@ -1881,10 +1891,15 @@ extern "C" int __cdecl main( int argc, char *argv[] )
             if ( EnableTracing && g_Tracing )
                 printf( "executing pc %d line number %d, token %d: %s\n", pc, line, t, TokenStr( vals[ t ].token ) );
 
+            // MSVC doesn't support goto jump tables like g++. MSVC will optimize switch statements if the default has
+            // an __assume(false), but the generated code for the lookup table is complex and slower than if/else if...
+            // If more tokens are added to the list below then at some point the lookup table will be faster.
+            // The order of the tokens is based on usage in the ttt app.
+
             if ( Token::IF == token )
             {
                 t++;
-                int val = EvaluateExpression( t, vals, varmap, line );
+                int val = EvaluateExpression( t, vals, line );
                 t += vals[ t ].value;
                 assert( Token::THEN == vals[ t ].token );
 
@@ -1910,25 +1925,24 @@ extern "C" int __cdecl main( int argc, char *argv[] )
             }
             else if ( Token::VARIABLE == token )
             {
+                Variable *pvar = vals[ t ].pVariable;
+                assert( pvar && "variable hasn't been declared or cached" );
+
                 t++;
 
                 if ( Token::OPENPAREN == vals[ t ].token )
                 {
-                    Variable *pvar = vals[ t - 1 ].pVariable;
-                    if ( !pvar )
-                    {
-                        pvar = FindVariable( varmap, vals[ t - 1 ].strValue );
-                        vals[ t - 1 ].pVariable = pvar;
-                    }
-
                     if ( 0 == pvar )
                         RuntimeFail( "array usage without DIM", line );
 
                     if ( 0 == pvar->dimensions )
+                    {
+                        printf( "pvar value %d, name %s, dimensions %d, array size %zd\n", pvar->value, pvar->name, pvar->dimensions, pvar->array.size() );
                         RuntimeFail( "variable used as array isn't an array", line );
+                    }
 
                     t++;
-                    int indexA = EvaluateExpression( t, vals, varmap, line );
+                    int indexA = EvaluateExpression( t, vals, line );
                     t += vals[ t ].value;
 
                     if ( RangeCheckArrays && indexA >= pvar->dims[ 0 ] )
@@ -1943,7 +1957,7 @@ extern "C" int __cdecl main( int argc, char *argv[] )
                         if ( 2 != pvar->dimensions )
                             RuntimeFail( "single-dimensional array used with 2 dimensions", line );
 
-                        int indexB = EvaluateExpression( t, vals, varmap, line );
+                        int indexB = EvaluateExpression( t, vals, line );
                         t += vals[ t ].value;
 
                         if ( RangeCheckArrays && indexB >= pvar->dims[ 1 ] )
@@ -1954,28 +1968,29 @@ extern "C" int __cdecl main( int argc, char *argv[] )
                     else
                         arrayIndex = indexA;
 
+                    assert( Token::CLOSEPAREN == vals[ t ].token );
+                    assert( Token::EQ == vals[ t + 1 ].token );
+
                     t += 2; // past ) and =
-                    int val = EvaluateExpression( t, vals, varmap, line );
+
+                    int val = EvaluateExpression( t, vals, line );
                     t += vals[ t ].value;
 
                     pvar->array[ arrayIndex ] = val;
                 }
-                else if ( Token::EQ == vals[ t ].token )
+                else
                 {
-                    t++;
-                    int val = EvaluateExpression( t, vals, varmap, line );
+                    assert( Token::EQ == vals[ t ].token );
 
-                    Variable * pvar = GetVariablePerhapsCreate( vals[ t - 2 ], varmap );
+                    t++;
+                    int val = EvaluateExpression( t, vals, line );
+                    t += vals[ t ].value;
 
                     if ( RangeCheckArrays && ( 0 != pvar->dimensions ) )
                         RuntimeFail( "array used as if it's a scalar", line );
 
-                    t += vals[ t ].value;
-
                     pvar->value = val;
                 }
-                else
-                    RuntimeFail( "( or = expected after a variable", line );
 
                 // have we consumed all tokens in the instruction?
 
@@ -1985,7 +2000,30 @@ extern "C" int __cdecl main( int argc, char *argv[] )
                     break;
                 }
             }
-            else if ( Token::ELSE == token || Token::ENDIF == token )
+            else if ( Token::GOTO == token )
+            {
+                pc = loc.tokenValues[ t ].value;
+                break;
+            }
+            else if ( Token::ATOMIC == token )
+            {
+                Variable * pvar = vals[ t + 1 ].pVariable;
+                assert( pvar && "atomic variable hasn't been declared or cached" );
+
+                if ( Token::INC == vals[ t + 1 ].token )
+                {
+                    pvar->value++;
+                }
+                else
+                {
+                    assert( Token::DEC == vals[ t + 1 ].token );
+                    pvar->value--;
+                }
+
+                pc++;
+                break;
+            }
+            else if ( Token::ENDIF == token || Token::ELSE == token )
             {
                 pc++;
                 break;
@@ -1995,11 +2033,6 @@ extern "C" int __cdecl main( int argc, char *argv[] )
                 ForGosubItem fgi( false, pc + 1 );
                 forGosubStack.push( fgi );
 
-                pc = loc.tokenValues[ t ].value;
-                break;
-            }
-            else if ( Token::GOTO == token )
-            {
                 pc = loc.tokenValues[ t ].value;
                 break;
             }
@@ -2034,15 +2067,15 @@ extern "C" int __cdecl main( int argc, char *argv[] )
                         continuation = true;
                 }
 
-                Variable * pvar = GetVariablePerhapsCreate( vals[ 0 ], varmap );
+                Variable * pvar = vals[ 0 ].pVariable;
 
                 if ( continuation )
                     pvar->value += 1;
                 else
-                    pvar->value = EvaluateExpression( t + 1, vals, varmap, line );
+                    pvar->value = EvaluateExpression( t + 1, vals, line );
 
                 int tokens = vals[ t + 1 ].value;
-                int endValue = EvaluateExpression( t + 1 + tokens, vals, varmap, line );
+                int endValue = EvaluateExpression( t + 1 + tokens, vals, line );
 
                 if ( EnableTracing && g_Tracing )
                     printf( "for loop for variable %s current %d, end value %d\n", vals[ 0 ].strValue.c_str(), pvar->value, endValue );
@@ -2087,20 +2120,6 @@ extern "C" int __cdecl main( int argc, char *argv[] )
                 pc = item.pc;
                 break;
             }
-            else if ( Token::ATOMIC == token )
-            {
-                Variable * pvar = FindKnownVariable( vals[ t + 1 ], varmap );
-
-                if ( Token::INC == vals[ t + 1 ].token )
-                    pvar->value++;
-                else if ( Token::DEC == vals[ t + 1 ].token )
-                    pvar->value--;
-                else
-                    assert( !"unknown ATOMIC token" );
-
-                pc++;
-                break;
-            }
             else if ( Token::PRINT == token )
             {
                 pc++;
@@ -2130,7 +2149,7 @@ extern "C" int __cdecl main( int argc, char *argv[] )
                         auto now = system_clock::now();
                         auto ms = duration_cast<milliseconds>( now.time_since_epoch() ) % 1000;
                         auto timer = system_clock::to_time_t( now );
-                        std::tm bt = *std::localtime( &timer );
+                        std::tm bt = * /*std::*/ localtime( &timer );
                         printf( "%d:%d:%d", bt.tm_hour, bt.tm_min, bt.tm_sec );
                         t += 2;
                     }
@@ -2144,7 +2163,7 @@ extern "C" int __cdecl main( int argc, char *argv[] )
                     }
                     else
                     {
-                        int val = EvaluateExpression( t, vals, varmap, line );
+                        int val = EvaluateExpression( t, vals, line );
                         t += vals[ t ].value;
                         printf( "%d", val );
                     }
@@ -2155,8 +2174,7 @@ extern "C" int __cdecl main( int argc, char *argv[] )
             }
             else if ( Token::END == token )
             {
-                pc = countOfLines;
-                break;
+                goto label_exit_execution;
             }
             else if ( Token::DIM == token )
             {
@@ -2164,7 +2182,10 @@ extern "C" int __cdecl main( int argc, char *argv[] )
 
                 Variable * pvar = FindVariable( varmap, vals[ 0 ].strValue );
                 if ( pvar )
+                {
+                    pvar = 0;
                     varmap.erase( vals[ 0 ].strValue.c_str() );
+                }
 
                 Variable var( vals[ 0 ].strValue.c_str() );
 
@@ -2176,6 +2197,23 @@ extern "C" int __cdecl main( int argc, char *argv[] )
                     items *= var.dims[ 1 ];
                 var.array.resize( items );
                 varmap.emplace( var.name, var );
+
+                // update all references to this array
+
+                pvar = FindVariable( varmap, vals[ 0 ].strValue );
+
+                for ( size_t l = 0; l < linesOfCode.size(); l++ )
+                {
+                    LineOfCode & loc = linesOfCode[ l ];
+    
+                    for ( size_t t = 0; t < loc.tokenValues.size(); t++ )
+                    {
+                        TokenValue & tv = loc.tokenValues[ t ];
+                        if ( Token::VARIABLE == tv.token && !tv.strValue.compare( vals[ 0 ].strValue ) )
+                            tv.pVariable = pvar;
+                    }
+                }
+
                 pc++;
                 break;
             }
@@ -2198,18 +2236,13 @@ extern "C" int __cdecl main( int argc, char *argv[] )
             }
             else
             {
-                // it's expected to hit these two, since execution continues until they are hit
-
-                if ( Token::ELSE != token && Token::ENDIF != token )
-                    RuntimeFail( "unexpected token during execution", line );
-
-                assert( Token::ELSE == token || Token::ENDIF == token );
-
-                pc++;
-                break;
+                printf( "unexpected token %s\n", TokenStr( token ) );
+                RuntimeFail( "internal error: unexpected token in top-level interpreter loop", line );
             }
         } while( true );
     } while( true );
+
+    label_exit_execution:
 
     if ( EnableExecutionTime && showExecutionTime )
     {

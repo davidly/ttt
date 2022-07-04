@@ -1,22 +1,20 @@
-1  REM Tic Tac Toe solving app that learns what WOPR learned: you can't win
-2  REM Only three starting positions are examined. Others are just reflections of these
-3  REM B%   -- The board
-4  REM AL%  -- Alpha, for pruning
-5  REM BE%  -- Beta, for pruning
-6  REM L%   -- Top-level loop iteration
-7  REM WI%  -- The winning piece (0 none, 1 X, 2, O )
-8  REM RE%  -- Resulting score of 4000/minmax board position. 5 draw, 6 X win, 4 Y win
-9  REM SX%  -- Stack array for "recursion"
-10 REM V%   -- Value of a board position
-11 REM ST%  -- Stack Pointer. Even for alpha/beta pruning Minimize plys, Odd for Maximize
-12 REM P%   -- Current position where a new piece is played
-14 REM RW%  -- Row in the Winner function (2000)
-15 REM CW%  -- Column in the Winner function (2000)
-16 REM RP%  -- Row when printing the board (1000)
-17 REM CA%, RC%, CC% -- result, row, and column in Cat's game detection (3000) (unused)
-18 REM MC%  -- Move count total for debugging
-19 REM Note: Can't use real recursion with GOSUB because stack is limited to roughly 5 deep
-20 REM       BASIC doesn't support goto/gosub using arrays for target line numbers
+1  rem Tic Tac Toe solving app that learns what WOPR learned: you can't win
+2  rem Only three starting positions are examined. Others are just reflections of these
+3  rem b%   -- The board
+4  rem al%  -- Alpha, for pruning
+5  rem be%  -- Beta, for pruning
+6  rem l%   -- Top-level loop iteration
+7  rem wi%  -- The winning piece (0 none, 1 X, 2, O )
+8  rem re%  -- Resulting score of 4000/minmax board position. 5 draw, 6 X win, 4 Y win
+9  rem sx%  -- Stack array for "recursion" X can be P, V, A, or B for those variables.
+10 rem v%   -- Value of a board position
+11 rem st%  -- Stack Pointer. Even for alpha/beta pruning Minimize plys, Odd for Maximize
+12 rem p%   -- Current position where a new piece is played
+14 rem rw%  -- Row in the Winner function (2000)
+15 rem cw%  -- Column in the Winner function (2000)
+18 rem mc%  -- Move count total for debugging. Should be a multiple of 6493
+19 rem Note: Can't use real recursion with GOSUB because stack is limited to roughly 5 deep
+20 rem       BASIC doesn't support goto/gosub using arrays for target line numbers
 30 dim b%(9)
 32 dim sp%(10)
 34 dim sv%(10)
@@ -41,8 +39,8 @@
 72 gosub 4000
 73 b%(4) = 0
 80 next l%
-85 rem print "end time for 1000 iterations "; time$
-86 print elap$ ; " for 1000 iterations"
+85 print elap$ ; " for 1000 iterations"
+86 rem print "end time for 1000 iterations "; time$
 87 print "final move count "; mc%
 100 end
 
