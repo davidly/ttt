@@ -51,23 +51,11 @@ vector<LineOfCode> g_linesOfCode;
     #define __assume( x )
     #undef __makeinline
     #define __makeinline
-    #define strnicmp strncasecmp
+    #define _strnicmp strncasecmp
 
     #ifndef _countof
         template < typename T, size_t N > size_t _countof( T ( & arr )[ N ] ) { return std::extent< T[ N ] >::value; }
     #endif
-
-    char * strlwr( char * str )
-    {
-        unsigned char *p = (unsigned char *) str;
-
-        while ( *p )
-        {
-            *p = tolower( *p );
-            p++;
-        }
-        return str;
-    }//strlwr
 #endif
 
 enum Token : int { VARIABLE, GOSUB, GOTO, PRINT, RETURN, END,                     // statements
@@ -127,13 +115,25 @@ bool isFirstPassOperator( Token t )
     return ( t >= Token::EQ && t <= Token::GT );
 } //isFirstPassOperator
 
+char * my_strlwr( char * str )
+{
+    unsigned char *p = (unsigned char *) str;
+
+    while ( *p )
+    {
+        *p = tolower( *p );
+        p++;
+    }
+    return str;
+}//my_strlwr
+
 struct Variable
 {
     Variable( const char * v )
     {
         memset( this, 0, sizeof *this );
         strcpy( name, v );
-        strlwr( name );
+        my_strlwr( name );
     }
 
     int value;           // when a scalar
@@ -409,13 +409,13 @@ Token readTokenInner( const char * p, int & len )
         return Token::INVALID;
     }
 
-    if ( !strnicmp( p, "TIME$", 5 ) )
+    if ( !_strnicmp( p, "TIME$", 5 ) )
     {
        len = 5;
        return Token::TIME;
     }
 
-    if ( !strnicmp( p, "ELAP$", 5 ) )
+    if ( !_strnicmp( p, "ELAP$", 5 ) )
     {
         len = 5;
         return Token::ELAP;
@@ -430,13 +430,13 @@ Token readTokenInner( const char * p, int & len )
 
     if ( 2 == len )
     {
-        if ( !strnicmp( p, "OR", 2 ) )
+        if ( !_strnicmp( p, "OR", 2 ) )
             return Token::OR;
 
-        if ( !strnicmp( p, "IF", 2 ) )
+        if ( !_strnicmp( p, "IF", 2 ) )
             return Token::IF;
 
-        if ( !strnicmp( p, "TO", 2 ) )
+        if ( !_strnicmp( p, "TO", 2 ) )
             return Token::TO;
 
         if ( isAlpha( *p ) && ( '%' == * ( p + 1 ) ) )
@@ -444,22 +444,22 @@ Token readTokenInner( const char * p, int & len )
     }
     else if ( 3 == len )
     {
-        if ( !strnicmp( p, "REM", 3 ) )
+        if ( !_strnicmp( p, "REM", 3 ) )
             return Token::REM;
 
-        if ( !strnicmp( p, "DIM", 3 ) )
+        if ( !_strnicmp( p, "DIM", 3 ) )
            return Token::DIM;
 
-        if ( !strnicmp( p, "AND", 3 ) )
+        if ( !_strnicmp( p, "AND", 3 ) )
            return Token::AND;
 
-        if ( !strnicmp( p, "FOR", 3 ) )
+        if ( !_strnicmp( p, "FOR", 3 ) )
            return Token::FOR;
 
-        if ( !strnicmp( p, "END", 3 ) )
+        if ( !_strnicmp( p, "END", 3 ) )
            return Token::END;
 
-        if ( !strnicmp( p, "XOR", 3 ) )
+        if ( !_strnicmp( p, "XOR", 3 ) )
             return Token::XOR;
 
         if ( isAlpha( *p ) && isAlpha( * ( p + 1 ) ) && ( '%' == * ( p + 2 ) ) )
@@ -467,36 +467,36 @@ Token readTokenInner( const char * p, int & len )
     }
     else if ( 4 == len )
     {
-        if ( !strnicmp( p, "GOTO", 4 ) )
+        if ( !_strnicmp( p, "GOTO", 4 ) )
            return Token::GOTO;
 
-        if ( !strnicmp( p, "NEXT", 4 ) )
+        if ( !_strnicmp( p, "NEXT", 4 ) )
            return Token::NEXT;
 
-        if ( !strnicmp( p, "THEN", 4 ) )
+        if ( !_strnicmp( p, "THEN", 4 ) )
            return Token::THEN;
 
-        if ( !strnicmp( p, "ELSE", 4 ) )
+        if ( !_strnicmp( p, "ELSE", 4 ) )
            return Token::ELSE;
 
-        if ( !strnicmp( p, "TRON", 4 ) )
+        if ( !_strnicmp( p, "TRON", 4 ) )
            return Token::TRON;
     }
     else if ( 5 == len )
     {
-        if ( !strnicmp( p, "GOSUB", 5 ) )
+        if ( !_strnicmp( p, "GOSUB", 5 ) )
            return Token::GOSUB;
 
-        if ( !strnicmp( p, "PRINT", 5 ) )
+        if ( !_strnicmp( p, "PRINT", 5 ) )
            return Token::PRINT;
 
-        if ( !strnicmp( p, "TROFF", 5 ) )
+        if ( !_strnicmp( p, "TROFF", 5 ) )
            return Token::TROFF;
     }
 
     else if ( 6 == len )
     {
-        if ( !strnicmp( p, "RETURN", 5 ) )
+        if ( !_strnicmp( p, "RETURN", 5 ) )
            return Token::RETURN;
     }
 
