@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <string>
+#include <cstring>
 #include <cctype>
 #include <map>
 #include <vector>
@@ -44,6 +45,12 @@ vector<LineOfCode> g_linesOfCode;
 
     #define __makeinline __forceinline
     //#define __makeinline
+#endif
+
+#ifndef _MSC_VER  // g++, etc.
+#define __assume( x )
+#undef __makeinline
+#define __makeinline
 #endif
 
 enum Token : int { VARIABLE, GOSUB, GOTO, PRINT, RETURN, END,                     // statements
@@ -1855,10 +1862,10 @@ extern "C" int __cdecl main( int argc, char *argv[] )
     int pcPrevious = 0;
     int countOfLines = g_linesOfCode.size();
     bool basicTracing = false;
-    g_pc = 0;
+    g_pc = 0;  // program counter
 
     #ifdef ENABLE_EXECUTION_TIME
-    g_linesOfCode[ 0 ].timesExecuted--; // avoid off by 1 on first iteration of loop
+        g_linesOfCode[ 0 ].timesExecuted--; // avoid off by 1 on first iteration of loop
     #endif
 
     high_resolution_clock::time_point timeBegin = high_resolution_clock::now();      
@@ -1881,7 +1888,7 @@ extern "C" int __cdecl main( int argc, char *argv[] )
         int t = 0;
 
         if ( EnableTracing && basicTracing )
-            printf( "executing lineno %d\n", lineno );
+            printf( "executing line %d\n", lineno );
 
         do
         {
