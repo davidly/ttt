@@ -48,9 +48,26 @@ vector<LineOfCode> g_linesOfCode;
 #endif
 
 #ifndef _MSC_VER  // g++, etc.
-#define __assume( x )
-#undef __makeinline
-#define __makeinline
+    #define __assume( x )
+    #undef __makeinline
+    #define __makeinline
+    #define strnicmp strncasecmp
+
+    #ifndef _countof
+        template < typename T, size_t N > size_t _countof( T ( & arr )[ N ] ) { return std::extent< T[ N ] >::value; }
+    #endif
+
+    char * strlwr( char * str )
+    {
+        unsigned char *p = (unsigned char *) str;
+
+        while ( *p )
+        {
+            *p = tolower( *p );
+            p++;
+        }
+        return str;
+    }//strlwr
 #endif
 
 enum Token : int { VARIABLE, GOSUB, GOTO, PRINT, RETURN, END,                     // statements
@@ -1374,7 +1391,7 @@ void ShowLocListing( LineOfCode & loc )
     }
 } //ShowLocListing
 
-extern "C" int __cdecl main( int argc, char *argv[] )
+extern int main( int argc, char *argv[] )
 {
     assert( ( Token::INVALID + 1 ) == _countof( Tokens ) );
     assert( ( Token::INVALID + 1 ) == _countof( Operators ) );
