@@ -24,8 +24,13 @@ using namespace std;
 using namespace std::chrono;
 
 bool g_Tracing = false;
+int g_pc = 0;
+struct LineOfCode;
+vector<LineOfCode> g_linesOfCode;
+#define lineno ( g_linesOfCode[ g_pc ].lineNumber )
 
-const bool EnableExecutionTime = false; // makes everything 5% slower
+//#define ENABLE_EXECUTION_TIME
+#define EXPRESSION_OPTIMIZATIONS
 
 #ifdef DEBUG
     const bool RangeCheckArrays = true;
@@ -40,8 +45,6 @@ const bool EnableExecutionTime = false; // makes everything 5% slower
     #define __makeinline __forceinline
     //#define __makeinline
 #endif
-
-#define EXPRESSION_OPTIMIZATIONS
 
 enum Token : int { VARIABLE, GOSUB, GOTO, PRINT, RETURN, END,                     // statements
                    REM, DIM, CONSTANT, OPENPAREN, CLOSEPAREN,
@@ -139,8 +142,8 @@ struct TokenValue
 
     Token token;
     int value;
-    int dimensions;    // 0 for scalar or 1-2 if an array
-    int dims[ 2 ];     // only support up to 2 dimensional arrays
+    int dimensions;    // 0 for scalar or 1-2 if an array. Only non-0 for DIM statements
+    int dims[ 2 ];     // only support up to 2 dimensional arrays. Only used for DIM statements
     Variable * pVariable;
     string strValue;
 };
@@ -149,20 +152,27 @@ struct TokenValue
 
 struct LineOfCode
 {
-    LineOfCode( int line ) : lineNumber( line ), timesExecuted( 0 ), duration( 0 )
+    LineOfCode( int line ) : lineNumber( line )
+
+    #ifdef ENABLE_EXECUTION_TIME
+        , timesExecuted( 0 ), duration( 0 )
+    #endif
+
     {
         tokenValues.reserve( 8 );
     }
-
-    int lineNumber;
 
     // These tokens will be scattered through memory. I tried making them all contiguous
     // and there was no performance benefit
 
     vector<TokenValue> tokenValues;
 
-    long long timesExecuted;    // # of times this line is executed
-    long long duration;         // execution time so far on this line of code
+    int lineNumber;
+
+    #ifdef ENABLE_EXECUTION_TIME
+        long long timesExecuted;    // # of times this line is executed
+        long long duration;         // execution time so far on this line of code
+    #endif
 };
 
 struct ParenItem
@@ -178,11 +188,11 @@ struct ForGosubItem
     ForGosubItem( int f, int p )
     {
         isFor = f;
-        pc = p;
+        pcReturn = p;
     }
 
     int isFor;  // true if FOR, false if GOSUB
-    int  pc;
+    int  pcReturn;
 };
 
 // this is faster than both <stack> and Stack using <vector> to implement a stack because there are no memory allocations.
@@ -195,7 +205,7 @@ template <class T> class Stack
     union { T items[ maxStack ]; };  // avoid constructors and destructors on each T by using a union
 
     public:
-        Stack() : current( 0 ) {}
+        __makeinline Stack() : current( 0 ) {}
         __makeinline void push( T & x ) { assert( current < maxStack ); items[ current++ ] = x; }
         __makeinline size_t size() { return current; }
         __makeinline void pop() { assert( current > 0 ); current--; }
@@ -209,11 +219,8 @@ class CFile
 
     public:
         CFile( FILE * file ) : fp( file ) {}
-
         ~CFile() { Close(); }
-
         FILE * get() { return fp; }
-
         void Close()
         {
             if ( NULL != fp )
@@ -226,16 +233,12 @@ class CFile
 
 static void Usage()
 {
-    printf( "Usage: ba filename.bas%s [-l]%s [-x]\n",
-            EnableExecutionTime ? " [e]" : "",
-            EnableTracing ? " [t]" : "" );
+    printf( "Usage: ba filename.bas [-e] [-l] [-t] [-x]\n" );
     printf( "  Basic interpreter\n" );
     printf( "  Arguments:     filename.bas     Subset of TRS-80 compatible BASIC\n" );
-    if ( EnableExecutionTime )
-        printf( "                 -e               Show execution count and time for each line\n" );
+    printf( "                 -e               Show execution count and time for each line\n" );
     printf( "                 -l               Show 'pcode' listing\n" );
-    if ( EnableTracing )
-        printf( "                 -t               Show debug tracing\n" );
+    printf( "                 -t               Show debug tracing\n" );
     printf( "                 -x               Parse only; don't execute the code\n" );
 
     exit( 1 );
@@ -899,12 +902,14 @@ __makeinline int GetSimpleValue( TokenValue & val )
     if ( Token::CONSTANT == val.token )
         return val.value;
 
+    assert( 0 != val.pVariable );
+
     return val.pVariable->value;
 } //GetSimpleValue
 
 __makeinline int run_operator( int a, Token t, int b )
 {
-    // in order of actual calls when running ttt
+    // in order of actual usage when running ttt
 
     switch( t )
     {
@@ -985,14 +990,6 @@ __makeinline int run_operator_multiplicative( int a, Token t, int b )
     return 0;
 } //run_operator_multiplicative
 
-//
-// precedence: in parens first
-//         0    multiplication and division left to right
-//         1    addition and subtraction left to right
-//         2    relational > < >= <= = left to right
-//         3    and and or left to right
-//           
-
 template<class T> __makeinline int Reduce( T op_func, int precedence, int * explist, int expcount )
 {
     if ( EnableTracing && g_Tracing )
@@ -1067,6 +1064,8 @@ __makeinline int Eval( int * explist, int expcount )
     else
 #endif
     {
+        // BASIC doesn't distinguish between logical and bitwise operators. they are the same.
+
         expcount = Reduce( run_operator_multiplicative, 0, explist, expcount );   // * /
         expcount = Reduce( run_operator_additive,       1, explist, expcount );   // + -
         expcount = Reduce( run_operator_relational,     2, explist, expcount );   // > >= <= < = <>
@@ -1081,11 +1080,11 @@ __makeinline int Eval( int * explist, int expcount )
     return explist[ 0 ];
 } //Eval
 
-__makeinline int EvaluateExpression( int iToken, vector<TokenValue> & vals, int line )
+__makeinline int EvaluateExpression( int iToken, vector<TokenValue> & vals )
 {
     if ( EnableTracing && g_Tracing )
         printf( "evaluateexpression starting at line %d, token %d, which is %s, length %d\n",
-                line, iToken, TokenStr( vals[ iToken ].token ), vals[ iToken ].value );
+                lineno, iToken, TokenStr( vals[ iToken ].token ), vals[ iToken ].value );
 
     assert( Token::EXPRESSION == vals[ iToken ].token );
 
@@ -1133,7 +1132,7 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> & vals, int 
 
         int offset = GetSimpleValue( vals[ iToken + 4 ] );
         if ( RangeCheckArrays && offset >= pvar->array.size() )
-            RuntimeFail( "index beyond the bounds of an array", line );
+            RuntimeFail( "index beyond the bounds of an array", lineno );
 
         value = pvar->array[ offset ];
     }
@@ -1168,35 +1167,35 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> & vals, int 
                     if ( 2 == vals[ t ].value && Token::CONSTANT == vals[ t + 1 ].token ) // save recursion
                         offset = vals[ t + 1 ].value;
                     else
-                        offset = EvaluateExpression( t, vals, line );
+                        offset = EvaluateExpression( t, vals );
 
                     t += vals[ t ].value;
 
                     if ( RangeCheckArrays && offset >= pvar->array.size() )
-                        RuntimeFail( "access of array beyond end", line );
+                        RuntimeFail( "access of array beyond end", lineno );
 
                     if ( RangeCheckArrays && t < limit && Token::COMMA == vals[ t ].token )
-                        RuntimeFail( "accessed 1-dimensional array with 2 dimensions", line );
+                        RuntimeFail( "accessed 1-dimensional array with 2 dimensions", lineno );
 
                     explist[ expcount++ ] = pvar->array[ offset ];
                 }
                 else if ( 2 == pvar->dimensions )
                 {
                     t += 2; // variable and openparen
-                    int offset1 = EvaluateExpression( t, vals, line );
+                    int offset1 = EvaluateExpression( t, vals );
                     t += vals[ t ].value;
 
                     if ( RangeCheckArrays && offset1 > pvar->dims[ 0 ] )
-                        RuntimeFail( "access of first dimension in 2-dimensional array beyond end", line );
+                        RuntimeFail( "access of first dimension in 2-dimensional array beyond end", lineno );
 
                     assert( Token::COMMA == vals[ t ].token );
                     t++; // comma
 
-                    int offset2 = EvaluateExpression( t, vals, line );
+                    int offset2 = EvaluateExpression( t, vals );
                     t += vals[ t ].value;
 
                     if ( RangeCheckArrays && offset2 > pvar->dims[ 1 ] )
-                        RuntimeFail( "access of second dimension in 2-dimensional array beyond end", line );
+                        RuntimeFail( "access of second dimension in 2-dimensional array beyond end", lineno );
 
                     int arrayoffset = offset1 * pvar->dims[ 1 ] + offset2;
                     assert( arrayoffset < pvar->array.size() );
@@ -1219,7 +1218,7 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> & vals, int 
             }
             else if ( Token::EXPRESSION == val.token )
             {
-                explist[ expcount++ ] = EvaluateExpression( t, vals, line );
+                explist[ expcount++ ] = EvaluateExpression( t, vals );
                 t += ( val.value - 1 );
             }
             else if ( Token::CONSTANT == val.token )
@@ -1248,7 +1247,7 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> & vals, int 
             else
             {
                 printf( "unexpected token: %s\n", TokenStr( val.token ) );
-                RuntimeFail( "unexpected token in arbitrary expression evaluation", line );
+                RuntimeFail( "unexpected token in arbitrary expression evaluation", lineno );
             }
 
             // basic lines can only be so long, so expressions can only be so complex
@@ -1274,7 +1273,7 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> & vals, int 
                 if ( item.open )
                 {
                     if ( 0 == closeStack.size() )
-                        RuntimeFail( "mismatched parenthesis; too many opens", line );
+                        RuntimeFail( "mismatched parenthesis; too many opens", lineno );
     
                     ParenItem & closed = closeStack.top();
                     int closeLocation = closed.offset;
@@ -1312,7 +1311,7 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> & vals, int 
             } while ( 0 != parenStack.size() );
     
             if ( 0 != closeStack.size() )
-                RuntimeFail( "mismatched parenthesis; too many closes", line );
+                RuntimeFail( "mismatched parenthesis; too many closes", lineno );
         }
 
         assert( "expression count should be odd" && ( expcount & 1 ) );
@@ -1328,23 +1327,23 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> & vals, int 
     return value;
 } //EvaluateExpression
 
-void PrintNumberWithCommas( long long n )
+void PrintNumberWithCommas( char *pchars, long long n )
 {
     if ( n < 0 )
     {
-        printf( "-" );
-        PrintNumberWithCommas( -n );
+        sprintf( pchars, "-" );
+        PrintNumberWithCommas( pchars, -n );
         return;
     }
 
     if ( n < 1000 )
     {
-        printf( "%lld", n );
+        sprintf( pchars + strlen( pchars ), "%lld", n );
         return;
     }
 
-    PrintNumberWithCommas( n / 1000 );
-    printf( ",%03lld", n % 1000 );
+    PrintNumberWithCommas( pchars, n / 1000 );
+    sprintf( pchars + strlen( pchars ), ",%03lld", n % 1000 );
 } //PrintNumberWithCommas
 
 void ShowLocListing( LineOfCode & loc )
@@ -1439,7 +1438,6 @@ extern "C" int __cdecl main( int argc, char *argv[] )
     char line[ 300 ];
     const int MaxLineLen = _countof( line ) - 1;
     int fileLine = 0;
-    vector<LineOfCode> linesOfCode;
     int prevLineNum = 0;
 
     while ( pbuf < pbeyond )
@@ -1477,13 +1475,11 @@ extern "C" int __cdecl main( int argc, char *argv[] )
             if ( Token::INVALID == token )
                 Fail( "invalid token", fileLine, 0, line );
 
-            //printf( "line: %s\n", line );
-            //printf( "first token: %d %s\n", token, TokenStr( token ) );
             LineOfCode loc( lineNum );
-            linesOfCode.push_back( loc );
+            g_linesOfCode.push_back( loc );
 
             TokenValue tokenValue( token );
-            vector<TokenValue> & lineTokens = linesOfCode[ linesOfCode.size() - 1 ].tokenValues;
+            vector<TokenValue> & lineTokens = g_linesOfCode[ g_linesOfCode.size() - 1 ].tokenValues;
 
             if ( isTokenStatement( token ) )
             {
@@ -1648,31 +1644,31 @@ extern "C" int __cdecl main( int argc, char *argv[] )
 
     bool addEnd = true;
 
-    if ( linesOfCode.size() && Token::END == linesOfCode[ linesOfCode.size() - 1 ].tokenValues[ 0 ].token )
+    if ( g_linesOfCode.size() && Token::END == g_linesOfCode[ g_linesOfCode.size() - 1 ].tokenValues[ 0 ].token )
         addEnd = false;
 
     if ( addEnd )
     {
-        int lineno = 1 + linesOfCode[ linesOfCode.size() - 1 ].lineNumber;
-        LineOfCode loc( lineno );
-        linesOfCode.push_back( loc );
+        int linenumber = 1 + g_linesOfCode[ g_linesOfCode.size() - 1 ].lineNumber;
+        LineOfCode loc( linenumber );
+        g_linesOfCode.push_back( loc );
         TokenValue tokenValue( Token::END );
-        linesOfCode[ linesOfCode.size() - 1 ].tokenValues.push_back( tokenValue );
+        g_linesOfCode[ g_linesOfCode.size() - 1 ].tokenValues.push_back( tokenValue );
     }
 
     if ( showListing )
     {
-        printf( "lines of code: %zd\n", linesOfCode.size() );
+        printf( "lines of code: %zd\n", g_linesOfCode.size() );
     
-        for ( size_t l = 0; l < linesOfCode.size(); l++ )
-            ShowLocListing( linesOfCode[ l ] );
+        for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
+            ShowLocListing( g_linesOfCode[ l ] );
     }
 
     // patch goto/gosub line numbers with actual offsets to remove runtime searches
 
-    for ( size_t l = 0; l < linesOfCode.size(); l++ )
+    for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
     {
-        LineOfCode & loc = linesOfCode[ l ];
+        LineOfCode & loc = g_linesOfCode[ l ];
     
         for ( size_t t = 0; t < loc.tokenValues.size(); t++ )
         {
@@ -1681,9 +1677,9 @@ extern "C" int __cdecl main( int argc, char *argv[] )
 
             if ( Token::GOTO == tv.token || Token::GOSUB == tv.token )
             {
-                for ( size_t lo = 0; lo < linesOfCode.size(); lo++ )
+                for ( size_t lo = 0; lo < g_linesOfCode.size(); lo++ )
                 {
-                    if ( linesOfCode[ lo ].lineNumber == tv.value )
+                    if ( g_linesOfCode[ lo ].lineNumber == tv.value )
                     {
                         tv.value = lo;
                         found = true;
@@ -1702,9 +1698,9 @@ extern "C" int __cdecl main( int argc, char *argv[] )
 
     // optimize the code
 
-    for ( size_t l = 0; l < linesOfCode.size(); l++ )
+    for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
     {
-        LineOfCode & loc = linesOfCode[ l ];
+        LineOfCode & loc = g_linesOfCode[ l ];
         vector<TokenValue> & vals = loc.tokenValues;
         bool rewritten = false;
 
@@ -1835,9 +1831,9 @@ extern "C" int __cdecl main( int argc, char *argv[] )
 
     map<string, Variable> varmap;
 
-    for ( size_t l = 0; l < linesOfCode.size(); l++ )
+    for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
     {
-        LineOfCode & loc = linesOfCode[ l ];
+        LineOfCode & loc = g_linesOfCode[ l ];
     
         for ( size_t t = 0; t < loc.tokenValues.size(); t++ )
         {
@@ -1855,41 +1851,44 @@ extern "C" int __cdecl main( int argc, char *argv[] )
 
     // interpret the code
 
-    Stack<ForGosubItem> forGosubStack;
-    int pc = 0;
+    static Stack<ForGosubItem> forGosubStack;
     int pcPrevious = 0;
-    int countOfLines = linesOfCode.size();
+    int countOfLines = g_linesOfCode.size();
     bool basicTracing = false;
-    linesOfCode[ 0 ].timesExecuted--; // avoid off by 1 on first iteration of loop
+    g_pc = 0;
+
+    #ifdef ENABLE_EXECUTION_TIME
+    g_linesOfCode[ 0 ].timesExecuted--; // avoid off by 1 on first iteration of loop
+    #endif
 
     high_resolution_clock::time_point timeBegin = high_resolution_clock::now();      
     high_resolution_clock::time_point timePrevious = timeBegin;
 
     do
     {
-        if ( EnableExecutionTime && showExecutionTime )
-        {
-            high_resolution_clock::time_point timeNow = high_resolution_clock::now();
-            linesOfCode[ pcPrevious ].duration += duration_cast<std::chrono::nanoseconds>( timeNow - timePrevious ).count();
-            linesOfCode[ pcPrevious ].timesExecuted++;
-            timePrevious = timeNow;
-            pcPrevious = pc;
-        }
+        #ifdef ENABLE_EXECUTION_TIME
+            if ( showExecutionTime )
+            {
+                high_resolution_clock::time_point timeNow = high_resolution_clock::now();
+                g_linesOfCode[ pcPrevious ].duration += duration_cast<std::chrono::nanoseconds>( timeNow - timePrevious ).count();
+                g_linesOfCode[ pcPrevious ].timesExecuted++;
+                timePrevious = timeNow;
+                pcPrevious = pc;
+            }
+        #endif
 
-        LineOfCode & loc = linesOfCode[ pc ];
-        vector<TokenValue> & vals = loc.tokenValues;
-        int line = loc.lineNumber;
+        vector<TokenValue> & vals = g_linesOfCode[ g_pc ].tokenValues;
         int t = 0;
 
         if ( EnableTracing && basicTracing )
-            printf( "executing line %d\n", line );
+            printf( "executing lineno %d\n", lineno );
 
         do
         {
             Token token = vals[ t ].token;
 
             if ( EnableTracing && g_Tracing )
-                printf( "executing pc %d line number %d, token %d: %s\n", pc, line, t, TokenStr( vals[ t ].token ) );
+                printf( "executing pc %d line number %d, token %d: %s\n", g_pc, lineno, t, TokenStr( token ) );
 
             // MSVC doesn't support goto jump tables like g++. MSVC will optimize switch statements if the default has
             // an __assume(false), but the generated code for the lookup table is complex and slower than if/else if...
@@ -1899,7 +1898,7 @@ extern "C" int __cdecl main( int argc, char *argv[] )
             if ( Token::IF == token )
             {
                 t++;
-                int val = EvaluateExpression( t, vals, line );
+                int val = EvaluateExpression( t, vals );
                 t += vals[ t ].value;
                 assert( Token::THEN == vals[ t ].token );
 
@@ -1913,7 +1912,7 @@ extern "C" int __cdecl main( int argc, char *argv[] )
 
                     if ( 0 == elseOffset )
                     {
-                        pc++;
+                        g_pc++;
                         break;
                     }
                     else
@@ -1933,20 +1932,20 @@ extern "C" int __cdecl main( int argc, char *argv[] )
                 if ( Token::OPENPAREN == vals[ t ].token )
                 {
                     if ( 0 == pvar )
-                        RuntimeFail( "array usage without DIM", line );
+                        RuntimeFail( "array usage without DIM", lineno );
 
                     if ( 0 == pvar->dimensions )
                     {
                         printf( "pvar value %d, name %s, dimensions %d, array size %zd\n", pvar->value, pvar->name, pvar->dimensions, pvar->array.size() );
-                        RuntimeFail( "variable used as array isn't an array", line );
+                        RuntimeFail( "variable used as array isn't an array", lineno );
                     }
 
                     t++;
-                    int indexA = EvaluateExpression( t, vals, line );
+                    int indexA = EvaluateExpression( t, vals );
                     t += vals[ t ].value;
 
                     if ( RangeCheckArrays && indexA >= pvar->dims[ 0 ] )
-                        RuntimeFail( "array offset out of bounds", line );
+                        RuntimeFail( "array offset out of bounds", lineno );
 
                     int arrayIndex;
 
@@ -1955,13 +1954,13 @@ extern "C" int __cdecl main( int argc, char *argv[] )
                         t++;
 
                         if ( 2 != pvar->dimensions )
-                            RuntimeFail( "single-dimensional array used with 2 dimensions", line );
+                            RuntimeFail( "single-dimensional array used with 2 dimensions", lineno );
 
-                        int indexB = EvaluateExpression( t, vals, line );
+                        int indexB = EvaluateExpression( t, vals );
                         t += vals[ t ].value;
 
                         if ( RangeCheckArrays && indexB >= pvar->dims[ 1 ] )
-                            RuntimeFail( "second dimension array offset out of bounds", line );
+                            RuntimeFail( "second dimension array offset out of bounds", lineno );
 
                         arrayIndex = indexA * pvar->dims[ 1 ] + indexB;
                     }
@@ -1973,7 +1972,7 @@ extern "C" int __cdecl main( int argc, char *argv[] )
 
                     t += 2; // past ) and =
 
-                    int val = EvaluateExpression( t, vals, line );
+                    int val = EvaluateExpression( t, vals );
                     t += vals[ t ].value;
 
                     pvar->array[ arrayIndex ] = val;
@@ -1983,11 +1982,11 @@ extern "C" int __cdecl main( int argc, char *argv[] )
                     assert( Token::EQ == vals[ t ].token );
 
                     t++;
-                    int val = EvaluateExpression( t, vals, line );
+                    int val = EvaluateExpression( t, vals );
                     t += vals[ t ].value;
 
                     if ( RangeCheckArrays && ( 0 != pvar->dimensions ) )
-                        RuntimeFail( "array used as if it's a scalar", line );
+                        RuntimeFail( "array used as if it's a scalar", lineno );
 
                     pvar->value = val;
                 }
@@ -1996,13 +1995,13 @@ extern "C" int __cdecl main( int argc, char *argv[] )
 
                 if ( t == vals.size() )
                 {
-                    pc++;
+                    g_pc++;
                     break;
                 }
             }
             else if ( Token::GOTO == token )
             {
-                pc = loc.tokenValues[ t ].value;
+                g_pc = vals[ t ].value;
                 break;
             }
             else if ( Token::ATOMIC == token )
@@ -2020,20 +2019,20 @@ extern "C" int __cdecl main( int argc, char *argv[] )
                     pvar->value--;
                 }
 
-                pc++;
+                g_pc++;
                 break;
             }
             else if ( Token::ENDIF == token || Token::ELSE == token )
             {
-                pc++;
+                g_pc++;
                 break;
             }
             else if ( Token::GOSUB == token )
             {
-                ForGosubItem fgi( false, pc + 1 );
+                ForGosubItem fgi( false, g_pc + 1 );
                 forGosubStack.push( fgi );
 
-                pc = loc.tokenValues[ t ].value;
+                g_pc = vals[ t ].value;
                 break;
             }
             else if ( Token::RETURN == token )
@@ -2041,7 +2040,7 @@ extern "C" int __cdecl main( int argc, char *argv[] )
                 do 
                 {
                     if ( 0 == forGosubStack.size() )
-                        RuntimeFail( "return without gosub", line );
+                        RuntimeFail( "return without gosub", lineno );
 
                     // remove any active FOR items to get to the next GOSUB item and return
 
@@ -2049,7 +2048,7 @@ extern "C" int __cdecl main( int argc, char *argv[] )
                     forGosubStack.pop();
                     if ( !item.isFor )
                     {
-                        pc = item.pc;
+                        g_pc = item.pcReturn;
                         break;
                     }
                 } while( true );
@@ -2063,7 +2062,7 @@ extern "C" int __cdecl main( int argc, char *argv[] )
                 if  ( forGosubStack.size() >  0 )
                 {
                     ForGosubItem & item = forGosubStack.top();
-                    if ( item.isFor && item.pc == pc )
+                    if ( item.isFor && item.pcReturn == g_pc )
                         continuation = true;
                 }
 
@@ -2072,57 +2071,57 @@ extern "C" int __cdecl main( int argc, char *argv[] )
                 if ( continuation )
                     pvar->value += 1;
                 else
-                    pvar->value = EvaluateExpression( t + 1, vals, line );
+                    pvar->value = EvaluateExpression( t + 1, vals );
 
                 int tokens = vals[ t + 1 ].value;
-                int endValue = EvaluateExpression( t + 1 + tokens, vals, line );
+                int endValue = EvaluateExpression( t + 1 + tokens, vals );
 
                 if ( EnableTracing && g_Tracing )
                     printf( "for loop for variable %s current %d, end value %d\n", vals[ 0 ].strValue.c_str(), pvar->value, endValue );
 
                 if ( !continuation )
                 {
-                    ForGosubItem item( true, pc );
+                    ForGosubItem item( true, g_pc );
                     forGosubStack.push( item );
                 }
 
                 if ( pvar->value > endValue )
                 {
-                    // find NEXT and set pc to one beyond it.
+                    // find NEXT and set g_pc to one beyond it.
 
                     forGosubStack.pop();
 
                     do
                     {
-                        pc++;
+                        g_pc++;
 
-                        if ( pc >= linesOfCode.size() )
-                            RuntimeFail( "no matching NEXT found for FOR", line );
+                        if ( g_pc >= g_linesOfCode.size() )
+                            RuntimeFail( "no matching NEXT found for FOR", lineno );
 
-                        if ( linesOfCode[ pc ].tokenValues.size() > 0 &&
-                             Token::NEXT == linesOfCode[ pc ].tokenValues[ 0 ].token )
+                        if ( g_linesOfCode[ g_pc ].tokenValues.size() > 0 &&
+                             Token::NEXT == g_linesOfCode[ g_pc ].tokenValues[ 0 ].token )
                             break;
                     } while ( true );
                 }
 
-                pc++;
+                g_pc++;
                 break; // done processing tokens for FOR
             }
             else if ( Token::NEXT == token )
             {
                 if ( 0 == forGosubStack.size() )
-                    RuntimeFail( "NEXT without FOR", line );
+                    RuntimeFail( "NEXT without FOR", lineno );
 
                 ForGosubItem & item = forGosubStack.top();
                 if ( !item.isFor )
-                    RuntimeFail( "NEXT without FOR", line );
+                    RuntimeFail( "NEXT without FOR", lineno );
 
-                pc = item.pc;
+                g_pc = item.pcReturn;
                 break;
             }
             else if ( Token::PRINT == token )
             {
-                pc++;
+                g_pc++;
                 t++;
 
                 while ( t < vals.size() )
@@ -2157,13 +2156,15 @@ extern "C" int __cdecl main( int argc, char *argv[] )
                     {
                         high_resolution_clock::time_point timeNow = high_resolution_clock::now();
                         long long duration = duration_cast<std::chrono::milliseconds>( timeNow - timeBegin ).count();
-                        PrintNumberWithCommas( duration );
-                        printf( " ms" );
+                        static char acElap[ 100 ];
+                        acElap[ 0 ] = 0;
+                        PrintNumberWithCommas( acElap, duration );
+                        printf( "%s ms", acElap );
                         t += 2;
                     }
                     else
                     {
-                        int val = EvaluateExpression( t, vals, line );
+                        int val = EvaluateExpression( t, vals );
                         t += vals[ t ].value;
                         printf( "%d", val );
                     }
@@ -2202,62 +2203,68 @@ extern "C" int __cdecl main( int argc, char *argv[] )
 
                 pvar = FindVariable( varmap, vals[ 0 ].strValue );
 
-                for ( size_t l = 0; l < linesOfCode.size(); l++ )
+                for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
                 {
-                    LineOfCode & loc = linesOfCode[ l ];
+                    LineOfCode & lineOC = g_linesOfCode[ l ];
     
-                    for ( size_t t = 0; t < loc.tokenValues.size(); t++ )
+                    for ( size_t t = 0; t < lineOC.tokenValues.size(); t++ )
                     {
-                        TokenValue & tv = loc.tokenValues[ t ];
+                        TokenValue & tv = lineOC.tokenValues[ t ];
                         if ( Token::VARIABLE == tv.token && !tv.strValue.compare( vals[ 0 ].strValue ) )
                             tv.pVariable = pvar;
                     }
                 }
 
-                pc++;
-                break;
-            }
-            else if ( Token::REM == token )
-            {
-                pc++;
+                g_pc++;
                 break;
             }
             else if ( Token::TRON == token )
             {
                 basicTracing = true;
-                pc++;
+                g_pc++;
                 break;
             }
             else if ( Token::TROFF == token )
             {
                 basicTracing = false;
-                pc++;
+                g_pc++;
+                break;
+            }
+            else if ( Token::REM == token )
+            {
+                g_pc++;
                 break;
             }
             else
             {
                 printf( "unexpected token %s\n", TokenStr( token ) );
-                RuntimeFail( "internal error: unexpected token in top-level interpreter loop", line );
+                RuntimeFail( "internal error: unexpected token in top-level interpreter loop", lineno );
             }
         } while( true );
     } while( true );
 
     label_exit_execution:
 
-    if ( EnableExecutionTime && showExecutionTime )
-    {
-        printf( "execution times in hundred nanoseconds (10 microsecends):\n" );
-        printf( "   line #       times      duration\n" );
-        for ( size_t l = 0; l < linesOfCode.size(); l++ )
+    #ifdef ENABLE_EXECUTION_TIME
+        if ( showExecutionTime )
         {
-            LineOfCode & loc = linesOfCode[ l ];
-
-            printf( "  %7d  %10lld  %12lld", loc.lineNumber, loc.timesExecuted, loc.duration / 100 );
-            printf( "\n" );
+            static char acTimes[ 100 ];
+            static char acDuration[ 100 ];
+            printf( "execution times in hundred nanoseconds:\n" );
+            printf( "   line #          times           duration\n" );
+            for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
+            {
+                LineOfCode & loc = g_linesOfCode[ l ];
+    
+                acTimes[ 0 ] = 0;
+                acDuration[ 0 ] = 0;
+                PrintNumberWithCommas( acTimes, loc.timesExecuted );
+                PrintNumberWithCommas( acDuration, loc.duration / 100 );
+                printf( "  %7d  %13s    %15s", loc.lineNumber, acTimes, acDuration );
+                printf( "\n" );
+            }
         }
-    }
+    #endif
 
     printf( "exiting the basic interpreter\n" );
 } //main
-
-
