@@ -47,10 +47,10 @@ vector<LineOfCode> g_linesOfCode;
     //#define __makeinline
 #endif
 
-#ifndef _MSC_VER  // g++, etc.
+#ifndef _MSC_VER  // g++, clang, etc.
     #define __assume( x )
     #undef __makeinline
-    #define __makeinline
+    #define __makeinline inline
     #define _strnicmp strncasecmp
 
     #ifndef _countof
