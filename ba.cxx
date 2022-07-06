@@ -62,21 +62,21 @@ enum Token : int { VARIABLE, GOSUB, GOTO, PRINT, RETURN, END,                   
                    REM, DIM, CONSTANT, OPENPAREN, CLOSEPAREN,
                    MULT, DIV, PLUS, MINUS, EQ, NE, LE, GE, LT, GT, AND, OR, XOR,  // operators in order of precedence
                    FOR, NEXT, IF, THEN, ELSE, LINENUM, STRING, TO, COMMA,
-                   COLON, SEMICOLON, EXPRESSION, ENDIF, TIME, ELAP, TRON, TROFF,
+                   COLON, SEMICOLON, EXPRESSION, TIME, ELAP, TRON, TROFF,
                    ATOMIC, INC, DEC, NOT, INVALID };
 
 const char * Tokens[] = { "VARIABLE", "GOSUB", "GOTO", "PRINT", "RETURN", "END",
                           "REM", "DIM", "CONSTANT", "OPENPAREN", "CLOSEPAREN",
                           "MULT", "DIV", "PLUS", "MINUS", "EQ", "NE", "LE", "GE", "LT", "GT", "AND", "OR", "XOR",
                           "FOR", "NEXT", "IF", "THEN", "ELSE", "LINENUM", "STRING", "TO", "COMMA",
-                          "COLON", "SEMICOLON", "EXPRESSION", "ENDIF", "TIME$", "ELAP$", "TRON", "TROFF",
+                          "COLON", "SEMICOLON", "EXPRESSION", "TIME$", "ELAP$", "TRON", "TROFF",
                           "ATOMIC", "INC", "DEC", "NOT", "INVALID" };
 
 const char * Operators[] = { "VARIABLE", "GOSUB", "GOTO", "PRINT", "RETURN", "END",
                              "REM", "DIM", "CONSTANT", "(", ")",
                              "*", "/", "+", "-", "=", "<>", "<=", ">=", "<", ">", "&", "|", "^", 
                              "FOR", "NEXT", "IF", "THEN", "ELSE", "LINENUM", "STRING", "TO", "COMMA",
-                             "COLON", "SEMICOLON", "EXPRESSION", "ENDIF", "TIME$", "ELAP$", "TRON", "TROFF",
+                             "COLON", "SEMICOLON", "EXPRESSION", "TIME$", "ELAP$", "TRON", "TROFF",
                              "ATOMIC", "INC", "DEC", "NOT", "INVALID" };
 
 const int OperatorPrecedence[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,           // filler
@@ -176,7 +176,7 @@ struct TokenValue
 
 struct LineOfCode
 {
-    LineOfCode( int line ) : lineNumber( line )
+    LineOfCode( int line ) : lineNumber( line ), firstToken( Token::INVALID )
 
     #ifdef ENABLE_EXECUTION_TIME
         , timesExecuted( 0 ), duration( 0 )
@@ -189,6 +189,7 @@ struct LineOfCode
     // These tokens will be scattered through memory. I tried making them all contiguous
     // and there was no performance benefit
 
+    Token firstToken;
     vector<TokenValue> tokenValues;
 
     int lineNumber;
@@ -876,7 +877,7 @@ const char * ParseStatements( Token token, vector<TokenValue> & lineTokens, cons
     return pline;
 } //ParseStatements
 
-void ListVariables( vector<Variable> & variables )
+void ListVariables( vector<Variable> const & variables )
 {
     for ( size_t i = 0; i < variables.size(); i++ )
     {
@@ -919,7 +920,7 @@ __makeinline Variable * GetVariablePerhapsCreate( TokenValue & val, map<string, 
     return pvar;
 } //GetVariablePerhapsCreate
 
-__makeinline int GetSimpleValue( TokenValue & val )
+__makeinline int GetSimpleValue( TokenValue const & val )
 {
     assert( isTokenSimpleValue( val.token ) );
 
@@ -1104,7 +1105,7 @@ __makeinline int Eval( int * explist, int expcount )
     return explist[ 0 ];
 } //Eval
 
-__makeinline int EvaluateExpression( int iToken, vector<TokenValue> & vals )
+__makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals )
 {
     if ( EnableTracing && g_Tracing )
         printf( "evaluateexpression starting at line %d, token %d, which is %s, length %d\n",
@@ -1175,7 +1176,7 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> & vals )
 
         for ( int t = iToken + 1; t < limit; t++ )
         {
-            TokenValue & val = vals[ t ];
+            TokenValue const & val = vals[ t ];
         
             if ( Token::VARIABLE == val.token )
             {
@@ -1582,10 +1583,6 @@ extern int main( int argc, char *argv[] )
                     if ( Token::ELSE == lineTokens[ lineTokens.size() - 1 ].token )
                         Fail( "expected a statement after an ELSE", fileLine, 1 + pline - line, line );
                 }
-
-                tokenValue.Clear();
-                tokenValue.token = Token::ENDIF;
-                lineTokens.push_back( tokenValue );
             }
             else if ( Token::REM == token )
             {
@@ -1689,10 +1686,12 @@ extern int main( int argc, char *argv[] )
     }
 
     // patch goto/gosub line numbers with actual offsets to remove runtime searches
+    // also, pull out the first token for better memory locality
 
     for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
     {
         LineOfCode & loc = g_linesOfCode[ l ];
+        loc.firstToken = loc.tokenValues[ 0 ].token;
     
         for ( size_t t = 0; t < loc.tokenValues.size(); t++ )
         {
@@ -1774,6 +1773,7 @@ extern int main( int argc, char *argv[] )
             Token::CONSTANT == vals[ 5 ].token &&
             1 == vals[ 5 ].value )
         {
+            loc.firstToken = Token::ATOMIC;
             string varname = vals[ 3 ].strValue;
             vals.clear();
 
@@ -1805,6 +1805,7 @@ extern int main( int argc, char *argv[] )
             Token::CONSTANT == vals[ 5 ].token &&
             1 == vals[ 5 ].value )
         {
+            loc.firstToken = Token::ATOMIC;
             string varname = vals[ 3 ].strValue;
             vals.clear();
 
@@ -1901,7 +1902,8 @@ extern int main( int argc, char *argv[] )
             }
         #endif
 
-        vector<TokenValue> & vals = g_linesOfCode[ g_pc ].tokenValues;
+        vector<TokenValue> const & vals = g_linesOfCode[ g_pc ].tokenValues;
+        Token token = g_linesOfCode[ g_pc ].firstToken;
         int t = 0;
 
         if ( EnableTracing && basicTracing )
@@ -1909,14 +1911,13 @@ extern int main( int argc, char *argv[] )
 
         do
         {
-            Token token = vals[ t ].token;
-
             if ( EnableTracing && g_Tracing )
                 printf( "executing pc %d line number %d, token %d: %s\n", g_pc, lineno, t, TokenStr( token ) );
 
             // MSVC doesn't support goto jump tables like g++. MSVC will optimize switch statements if the default has
             // an __assume(false), but the generated code for the lookup table is complex and slower than if/else if...
             // If more tokens are added to the list below then at some point the lookup table will be faster.
+            // A table of function pointers is much slower.
             // The order of the tokens is based on usage in the ttt app.
 
             if ( Token::IF == token )
@@ -1932,15 +1933,16 @@ extern int main( int argc, char *argv[] )
                 }
                 else
                 {
-                    int elseOffset = vals[ t ].value;
+                    // value is the else offset or 0 if there is no else clause
 
-                    if ( 0 == elseOffset )
+                    if ( 0 == vals[ t ].value )
                     {
                         g_pc++;
                         break;
                     }
                     else
                     {
+                        int elseOffset = vals[ t ].value;
                         assert( Token::ELSE == vals[ t + elseOffset ].token );
                         t += ( elseOffset + 1 );
                     }
@@ -2043,11 +2045,6 @@ extern int main( int argc, char *argv[] )
                     pvar->value--;
                 }
 
-                g_pc++;
-                break;
-            }
-            else if ( Token::ENDIF == token || Token::ELSE == token )
-            {
                 g_pc++;
                 break;
             }
@@ -2197,6 +2194,11 @@ extern int main( int argc, char *argv[] )
                 printf( "\n" );
                 break;
             }
+            else if ( Token::ELSE == token )
+            {
+                g_pc++;
+                break;
+            }
             else if ( Token::END == token )
             {
                 goto label_exit_execution;
@@ -2264,6 +2266,8 @@ extern int main( int argc, char *argv[] )
                 printf( "unexpected token %s\n", TokenStr( token ) );
                 RuntimeFail( "internal error: unexpected token in top-level interpreter loop", lineno );
             }
+
+            token = vals[ t ].token;
         } while( true );
     } while( true );
 
