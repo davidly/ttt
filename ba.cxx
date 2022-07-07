@@ -1191,6 +1191,17 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
         // crazy optimization just for ttt that yields a 10% overall win.
         // this is unlikely to help any other basic app.
 
+        if ( RangeCheckArrays )
+        {
+            if ( ( vals[ iToken + 6 ].value > vals[ iToken + 3 ].pVariable->array.size() ) ||
+                 ( vals[ iToken + 14 ].value > vals[ iToken + 11 ].pVariable->array.size() ) )
+            RuntimeFail( "index beyond the bounds of an array", lineno );
+
+            if ( ( 1 != vals[ iToken + 3 ].pVariable->dimensions ) ||
+                 ( 1 != vals[ iToken + 11 ].pVariable->dimensions ) )
+            RuntimeFail( "variable used as if it has one array dimension when it does not", lineno );
+        }
+
         value = run_operator( run_operator( vals[ iToken + 1 ].pVariable->value,
                                             vals[ iToken + 2 ].token,
                                             vals[ iToken + 3 ].pVariable->array[ vals[ iToken + 6 ].value ] ),
@@ -1557,7 +1568,7 @@ void OptimizeWithRewrites( bool showListing )
         bool rewritten = false;
 
         // if 0 <> EXPRESSION   ========>>>>>>>>  if EXPRESSION
-        // 4180 has 12 tokens
+        // 4180 has 11 tokens
         //   token   0 IF, value 0, strValue ''
         //   token   1 EXPRESSION, value 8, strValue ''
         //   token   2 CONSTANT, value 0, strValue ''
@@ -1569,7 +1580,6 @@ void OptimizeWithRewrites( bool showListing )
         //   token   8 CLOSEPAREN, value 0, strValue ''
         //   token   9 THEN, value 0, strValue ''
         //   token  10 GOTO, value 4500, strValue ''
-        //   token  11 ENDIF, value 0, strValue ''
 
         if ( Token::IF == vals[ 0 ].token &&
              Token::EXPRESSION == vals[ 1 ].token &&
@@ -1649,7 +1659,7 @@ void OptimizeWithRewrites( bool showListing )
         }
 
         // IF 0 = VARIABLE  =============>  IF NOT VARIABLE
-        // 2410 has 8 tokens
+        // 2410 has 7 tokens
         //   token   0 IF, value 0, strValue ''
         //   token   1 EXPRESSION, value 4, strValue ''
         //   token   2 CONSTANT, value 0, strValue ''
@@ -1657,8 +1667,8 @@ void OptimizeWithRewrites( bool showListing )
         //   token   4 VARIABLE, value 0, strValue 'wi%'
         //   token   5 THEN, value 0, strValue ''
         //   token   6 GOTO, value 2500, strValue ''
-        //   token   7 ENDIF, value 0, strValue ''
-        else if ( 8 == vals.size() &&
+
+        else if ( 7 == vals.size() &&
                   Token::IF == vals[ 0 ].token &&
                   Token::EXPRESSION == vals[ 1 ].token &&
                   4 == vals[ 1 ].value &&
@@ -2270,7 +2280,7 @@ extern int main( int argc, char *argv[] )
                         t++;
                         continue;
                     }
-                    else if ( Token::EXPRESSION != vals[ t ].token ) // ENDIF, ELSE are typical
+                    else if ( Token::EXPRESSION != vals[ t ].token ) // ELSE is typical
                     {
                         break;
                     }
