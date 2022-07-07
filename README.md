@@ -48,10 +48,14 @@ The BA version is faster than Python even when Python is using function pointers
 
 I'm not really proud of BA -- it was a very quickly written hack. But it shows that Python could benefit from some performance work.
 
-BA.cxx can be built from a CMD prompt initialized with Visual Studio's vcvars64.bat using m.bat (for retail) or mdbg (for debug).
-To build BA.cxx on linux: g++ -DNDEBUG ba.cxx -o ba -O3
+To build BA:
 
-![image](https://user-images.githubusercontent.com/1497921/177211926-f6d2c542-7beb-4160-8a1e-0ea2fe4c5dac.png)
+    On Windows in CMD with Visual Studio's vcvars64.bat use m.bat (for retail) or mdbg (for debug).
+    On Linux: g++ -DNDEBUG ba.cxx -o ba -O3
+    On a Mac: clang++ ba.cxx -DNDEBUG -o ba -O3 -std=c++11
+
+![image](https://user-images.githubusercontent.com/1497921/177594602-5729d744-421f-4c94-a048-5248f851840f.png)
+
 
 
 
