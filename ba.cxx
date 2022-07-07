@@ -1145,12 +1145,12 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
               Token::VARIABLE == vals[ iToken + 1 ].token &&
               Token::OPENPAREN == vals[ iToken + 2 ].token )
     {
-        // 0 token EXPRESSION, value 6, strValue ''
-        // 1 token VARIABLE, value 0, strValue 'sa%'
-        // 2 token OPENPAREN, value 0, strValue ''
-        // 3 token EXPRESSION, value 2, strValue ''
-        // 4 token VARIABLE, value 0, strValue 'st%'   (this can optionally be a constant)
-        // 5 token CLOSEPAREN, value 0, strValue ''
+        // 0 EXPRESSION, value 6, strValue ''
+        // 1 VARIABLE, value 0, strValue 'sa%'
+        // 2 OPENPAREN, value 0, strValue ''
+        // 3 EXPRESSION, value 2, strValue ''
+        // 4 VARIABLE, value 0, strValue 'st%'   (this can optionally be a constant)
+        // 5 CLOSEPAREN, value 0, strValue ''
 
         Variable *pvar = vals[ iToken + 1 ].pVariable;
         assert( 1 == pvar->dimensions );  // can't be more or the tokenCount would be greater
@@ -1160,6 +1160,44 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
             RuntimeFail( "index beyond the bounds of an array", lineno );
 
         value = pvar->array[ offset ];
+    }
+    else if ( 16 == tokenCount &&
+              Token::VARIABLE == vals[ iToken + 1 ].token &&
+              Token::OPENPAREN == vals[ iToken + 4 ].token &&
+              Token::CONSTANT == vals[ iToken + 6 ].token &&
+              Token::VARIABLE == vals[ iToken + 9 ].token &&
+              Token::OPENPAREN == vals[ iToken + 12 ].token &&
+              Token::CONSTANT == vals[ iToken + 14 ].token &&
+              isFirstPassOperator( vals[ iToken + 2 ].token ) &&
+              isFirstPassOperator( vals[ iToken + 10 ].token ) )
+    {
+        //  0 EXPRESSION, value 16, strValue ''
+        //  1 VARIABLE, value 0, strValue 'wi%'
+        //  2 EQ, value 0, strValue ''
+        //  3 VARIABLE, value 0, strValue 'b%'
+        //  4 OPENPAREN, value 0, strValue ''
+        //  5 EXPRESSION, value 2, strValue ''
+        //  6 CONSTANT, value 5, strValue ''
+        //  7 CLOSEPAREN, value 0, strValue ''
+        //  8 AND, value 0, strValue ''
+        //  9 VARIABLE, value 0, strValue 'wi%'
+        // 10 EQ, value 0, strValue ''
+        // 11 VARIABLE, value 0, strValue 'b%'
+        // 12 OPENPAREN, value 0, strValue ''
+        // 13 EXPRESSION, value 2, strValue ''
+        // 14 CONSTANT, value 8, strValue ''
+        // 15 CLOSEPAREN, value 0, strValue ''
+
+        // crazy optimization just for ttt that yields a 10% overall win.
+        // this is unlikely to help any other basic app.
+
+        value = run_operator( run_operator( vals[ iToken + 1 ].pVariable->value,
+                                            vals[ iToken + 2 ].token,
+                                            vals[ iToken + 3 ].pVariable->array[ vals[ iToken + 6 ].value ] ),
+                              vals[ iToken + 8 ].token,
+                              run_operator( vals[ iToken + 9 ].pVariable->value,
+                                            vals[ iToken + 10 ].token,
+                                            vals[ iToken + 11 ].pVariable->array[ vals[ iToken + 14 ].value ] ) );
     }
     else
 #endif
@@ -1391,6 +1429,276 @@ void ShowLocListing( LineOfCode & loc )
         printf( "\n" );
     }
 } //ShowLocListing
+
+void RemoveREMStatements()
+{
+    // 1st pass: move goto/gosub targets to the first following non-REM statement 
+
+    for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
+    {
+        LineOfCode & loc = g_linesOfCode[ l ];
+
+        for ( size_t t = 0; t < loc.tokenValues.size(); t++ )
+        {
+            TokenValue & tv = loc.tokenValues[ t ];
+            bool found = false;
+
+            if ( Token::GOTO == tv.token || Token::GOSUB == tv.token )
+            {
+                int reference = tv.value;
+
+                for ( size_t lo = 0; lo < g_linesOfCode.size(); lo++ )
+                {
+                    if ( ( g_linesOfCode[ lo ].lineNumber == tv.value ) &&
+                         ( Token::REM == g_linesOfCode[ lo ].tokenValues[ 0 ].token ) )
+                    {
+                        // look for the next statement that's not REM
+
+                        bool foundOne = false;
+                        for ( size_t h = lo + 1; h < g_linesOfCode.size(); h++ )
+                        {
+                            if ( Token::REM != g_linesOfCode[ h ].tokenValues[ 0 ].token )
+                            {
+                                foundOne = true;
+                                tv.value = g_linesOfCode[ h ].lineNumber;
+                                break;
+                            }
+                        }
+
+                        // There is always an END statement, so we'll find one
+
+                        assert( foundOne );
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // 2nd pass: remove all REM statements
+
+    int endloc = g_linesOfCode.size();
+    size_t curloc = 0;
+
+    while ( curloc < endloc )
+    {
+        LineOfCode & loc = g_linesOfCode[ curloc ];
+
+        if ( Token::REM == loc.tokenValues[ 0 ].token ) 
+        {
+            g_linesOfCode.erase( g_linesOfCode.begin() + curloc );
+            endloc--;
+        }
+        else
+            curloc++;
+    }
+} //RemoveREMStatements
+
+void AddENDStatement()
+{
+    bool addEnd = true;
+
+    if ( g_linesOfCode.size() && Token::END == g_linesOfCode[ g_linesOfCode.size() - 1 ].tokenValues[ 0 ].token )
+        addEnd = false;
+
+    if ( addEnd )
+    {
+        int linenumber = 1 + g_linesOfCode[ g_linesOfCode.size() - 1 ].lineNumber;
+        LineOfCode loc( linenumber );
+        g_linesOfCode.push_back( loc );
+        TokenValue tokenValue( Token::END );
+        g_linesOfCode[ g_linesOfCode.size() - 1 ].tokenValues.push_back( tokenValue );
+    }
+} //AddENDStatement
+
+void PatchGOTOGOSUBNumbers()
+{
+    // patch goto/gosub line numbers with actual offsets to remove runtime searches
+    // also, pull out the first token for better memory locality
+
+    for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
+    {
+        LineOfCode & loc = g_linesOfCode[ l ];
+        loc.firstToken = loc.tokenValues[ 0 ].token;
+    
+        for ( size_t t = 0; t < loc.tokenValues.size(); t++ )
+        {
+            TokenValue & tv = loc.tokenValues[ t ];
+            bool found = false;
+
+            if ( Token::GOTO == tv.token || Token::GOSUB == tv.token )
+            {
+                for ( size_t lo = 0; lo < g_linesOfCode.size(); lo++ )
+                {
+                    if ( g_linesOfCode[ lo ].lineNumber == tv.value )
+                    {
+                        tv.value = lo;
+                        found = true;
+                        break;
+                    }
+                }
+
+                if ( !found )
+                {
+                    printf( "Error: statement %s referenced undefined line number %d\n", TokenStr( tv.token ), tv.value );
+                    exit( 1 );
+                }
+            }
+        }
+    }
+} //PatchGOTOGOSUBNumbers
+
+void OptimizeWithRewrites( bool showListing )
+{
+    for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
+    {
+        LineOfCode & loc = g_linesOfCode[ l ];
+        vector<TokenValue> & vals = loc.tokenValues;
+        bool rewritten = false;
+
+        // if 0 <> EXPRESSION   ========>>>>>>>>  if EXPRESSION
+        // 4180 has 12 tokens
+        //   token   0 IF, value 0, strValue ''
+        //   token   1 EXPRESSION, value 8, strValue ''
+        //   token   2 CONSTANT, value 0, strValue ''
+        //   token   3 NE, value 0, strValue ''
+        //   token   4 VARIABLE, value 0, strValue 'b%'
+        //   token   5 OPENPAREN, value 0, strValue ''
+        //   token   6 EXPRESSION, value 2, strValue ''
+        //   token   7 VARIABLE, value 0, strValue 'p%'
+        //   token   8 CLOSEPAREN, value 0, strValue ''
+        //   token   9 THEN, value 0, strValue ''
+        //   token  10 GOTO, value 4500, strValue ''
+        //   token  11 ENDIF, value 0, strValue ''
+
+        if ( Token::IF == vals[ 0 ].token &&
+             Token::EXPRESSION == vals[ 1 ].token &&
+             Token::CONSTANT == vals[ 2 ].token &&
+             0 == vals[ 2 ].value &&
+             Token::NE == vals[ 3 ].token )
+        {
+            vals.erase( vals.begin() + 2 );
+            vals.erase( vals.begin() + 2 );
+            vals[ 1 ].value -= 2;
+
+            rewritten = true;
+        }
+
+        // VARIABLE = VARIABLE + 1  =============>  ATOMIC INC VARIABLE
+        // 4500 has 6 tokens
+        //   token   0 VARIABLE, value 0, strValue 'p%'
+        //   token   1 EQ, value 0, strValue ''
+        //   token   2 EXPRESSION, value 4, strValue ''
+        //   token   3 VARIABLE, value 0, strValue 'p%'
+        //   token   4 PLUS, value 0, strValue ''
+        //   token   5 CONSTANT, value 1, strValue ''
+
+        else if ( 6 == vals.size() &&
+            Token::VARIABLE == vals[ 0 ].token &&
+            Token::EQ == vals[ 1 ].token &&
+            Token::VARIABLE == vals[ 3 ].token &&
+            !vals[ 0 ].strValue.compare( vals[ 3 ].strValue ) &&
+            Token::PLUS == vals[ 4 ].token &&
+            Token::CONSTANT == vals[ 5 ].token &&
+            1 == vals[ 5 ].value )
+        {
+            loc.firstToken = Token::ATOMIC;
+            string varname = vals[ 3 ].strValue;
+            vals.clear();
+
+            TokenValue tval( Token::ATOMIC );
+            vals.push_back( tval );
+
+            tval.token = Token::INC;
+            tval.strValue = varname;
+            vals.push_back( tval );
+
+            rewritten = true;
+        }
+
+        // VARIABLE = VARIABLE - 1  =============>  ATOMIC DEC VARIABLE
+        // 4500 has 6 tokens
+        //   token   0 VARIABLE, value 0, strValue 'p%'
+        //   token   1 EQ, value 0, strValue ''
+        //   token   2 EXPRESSION, value 4, strValue ''
+        //   token   3 VARIABLE, value 0, strValue 'p%'
+        //   token   4 MINUS, value 0, strValue ''
+        //   token   5 CONSTANT, value 1, strValue ''
+
+        else if ( 6 == vals.size() &&
+            Token::VARIABLE == vals[ 0 ].token &&
+            Token::EQ == vals[ 1 ].token &&
+            Token::VARIABLE == vals[ 3 ].token &&
+            !vals[ 0 ].strValue.compare( vals[ 3 ].strValue ) &&
+            Token::MINUS == vals[ 4 ].token &&
+            Token::CONSTANT == vals[ 5 ].token &&
+            1 == vals[ 5 ].value )
+        {
+            loc.firstToken = Token::ATOMIC;
+            string varname = vals[ 3 ].strValue;
+            vals.clear();
+
+            TokenValue tval( Token::ATOMIC );
+            vals.push_back( tval );
+
+            tval.token = Token::DEC;
+            tval.strValue = varname;
+            vals.push_back( tval );
+
+            rewritten = true;
+        }
+
+        // IF 0 = VARIABLE  =============>  IF NOT VARIABLE
+        // 2410 has 8 tokens
+        //   token   0 IF, value 0, strValue ''
+        //   token   1 EXPRESSION, value 4, strValue ''
+        //   token   2 CONSTANT, value 0, strValue ''
+        //   token   3 EQ, value 0, strValue ''
+        //   token   4 VARIABLE, value 0, strValue 'wi%'
+        //   token   5 THEN, value 0, strValue ''
+        //   token   6 GOTO, value 2500, strValue ''
+        //   token   7 ENDIF, value 0, strValue ''
+        else if ( 8 == vals.size() &&
+                  Token::IF == vals[ 0 ].token &&
+                  Token::EXPRESSION == vals[ 1 ].token &&
+                  4 == vals[ 1 ].value &&
+                  Token::CONSTANT == vals[ 2 ].token &&
+                  0 == vals[ 2 ].value &&
+                  Token::EQ == vals[ 3 ].token &&
+                  Token::VARIABLE == vals[ 4 ].token )
+        {
+            vals.erase( vals.begin() + 2 );
+            vals[ 2 ].token = Token::NOT;
+            vals[ 1 ].value = 3;
+
+            rewritten = true;
+        }
+
+        if ( showListing && rewritten )
+        {
+            printf( "line rewritten as:\n" );
+            ShowLocListing( loc );
+        }
+    }
+} //OptimizeWithRewrites
+
+void CreateVariables( map<string, Variable> & varmap )
+{
+    for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
+    {
+        LineOfCode & loc = g_linesOfCode[ l ];
+    
+        for ( size_t t = 0; t < loc.tokenValues.size(); t++ )
+        {
+            TokenValue & tv = loc.tokenValues[ t ];
+            if ( ( Token::INC == tv.token ) ||
+                 ( Token::DEC == tv.token ) ||
+                 ( Token::VARIABLE == tv.token && 0 == tv.dimensions ) || // wait for arrays to be defined at runtime with DIM
+                 ( Token::FOR == tv.token ) )
+                GetVariablePerhapsCreate( tv, varmap );
+        }
+    }
+} //CreateVariables
 
 extern int main( int argc, char *argv[] )
 {
@@ -1661,21 +1969,8 @@ extern int main( int argc, char *argv[] )
         }
     }
 
-    // Make sure the last line is an END (even if that line isn't reachable)
-
-    bool addEnd = true;
-
-    if ( g_linesOfCode.size() && Token::END == g_linesOfCode[ g_linesOfCode.size() - 1 ].tokenValues[ 0 ].token )
-        addEnd = false;
-
-    if ( addEnd )
-    {
-        int linenumber = 1 + g_linesOfCode[ g_linesOfCode.size() - 1 ].lineNumber;
-        LineOfCode loc( linenumber );
-        g_linesOfCode.push_back( loc );
-        TokenValue tokenValue( Token::END );
-        g_linesOfCode[ g_linesOfCode.size() - 1 ].tokenValues.push_back( tokenValue );
-    }
+    AddENDStatement();
+    RemoveREMStatements();
 
     if ( showListing )
     {
@@ -1685,191 +1980,13 @@ extern int main( int argc, char *argv[] )
             ShowLocListing( g_linesOfCode[ l ] );
     }
 
-    // patch goto/gosub line numbers with actual offsets to remove runtime searches
-    // also, pull out the first token for better memory locality
-
-    for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
-    {
-        LineOfCode & loc = g_linesOfCode[ l ];
-        loc.firstToken = loc.tokenValues[ 0 ].token;
-    
-        for ( size_t t = 0; t < loc.tokenValues.size(); t++ )
-        {
-            TokenValue & tv = loc.tokenValues[ t ];
-            bool found = false;
-
-            if ( Token::GOTO == tv.token || Token::GOSUB == tv.token )
-            {
-                for ( size_t lo = 0; lo < g_linesOfCode.size(); lo++ )
-                {
-                    if ( g_linesOfCode[ lo ].lineNumber == tv.value )
-                    {
-                        tv.value = lo;
-                        found = true;
-                        break;
-                    }
-                }
-
-                if ( !found )
-                {
-                    printf( "Error: statement %s referenced undefined line number %d\n", TokenStr( tv.token ), tv.value );
-                    exit( 1 );
-                }
-            }
-        }
-    }
-
-    // optimize the code
-
-    for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
-    {
-        LineOfCode & loc = g_linesOfCode[ l ];
-        vector<TokenValue> & vals = loc.tokenValues;
-        bool rewritten = false;
-
-        // if 0 <> EXPRESSION   ========>>>>>>>>  if EXPRESSION
-        // 4180 has 12 tokens
-        //   token   0 IF, value 0, strValue ''
-        //   token   1 EXPRESSION, value 8, strValue ''
-        //   token   2 CONSTANT, value 0, strValue ''
-        //   token   3 NE, value 0, strValue ''
-        //   token   4 VARIABLE, value 0, strValue 'b%'
-        //   token   5 OPENPAREN, value 0, strValue ''
-        //   token   6 EXPRESSION, value 2, strValue ''
-        //   token   7 VARIABLE, value 0, strValue 'p%'
-        //   token   8 CLOSEPAREN, value 0, strValue ''
-        //   token   9 THEN, value 0, strValue ''
-        //   token  10 GOTO, value 4500, strValue ''
-        //   token  11 ENDIF, value 0, strValue ''
-
-        if ( Token::IF == vals[ 0 ].token &&
-             Token::EXPRESSION == vals[ 1 ].token &&
-             Token::CONSTANT == vals[ 2 ].token &&
-             0 == vals[ 2 ].value &&
-             Token::NE == vals[ 3 ].token )
-        {
-            vals.erase( vals.begin() + 2 );
-            vals.erase( vals.begin() + 2 );
-            vals[ 1 ].value -= 2;
-
-            rewritten = true;
-        }
-
-        // VARIABLE = VARIABLE + 1  =============>  ATOMIC INC VARIABLE
-        // 4500 has 6 tokens
-        //   token   0 VARIABLE, value 0, strValue 'p%'
-        //   token   1 EQ, value 0, strValue ''
-        //   token   2 EXPRESSION, value 4, strValue ''
-        //   token   3 VARIABLE, value 0, strValue 'p%'
-        //   token   4 PLUS, value 0, strValue ''
-        //   token   5 CONSTANT, value 1, strValue ''
-
-        else if ( 6 == vals.size() &&
-            Token::VARIABLE == vals[ 0 ].token &&
-            Token::EQ == vals[ 1 ].token &&
-            Token::VARIABLE == vals[ 3 ].token &&
-            !vals[ 0 ].strValue.compare( vals[ 3 ].strValue ) &&
-            Token::PLUS == vals[ 4 ].token &&
-            Token::CONSTANT == vals[ 5 ].token &&
-            1 == vals[ 5 ].value )
-        {
-            loc.firstToken = Token::ATOMIC;
-            string varname = vals[ 3 ].strValue;
-            vals.clear();
-
-            TokenValue tval( Token::ATOMIC );
-            vals.push_back( tval );
-
-            tval.token = Token::INC;
-            tval.strValue = varname;
-            vals.push_back( tval );
-
-            rewritten = true;
-        }
-
-        // VARIABLE = VARIABLE - 1  =============>  ATOMIC DEC VARIABLE
-        // 4500 has 6 tokens
-        //   token   0 VARIABLE, value 0, strValue 'p%'
-        //   token   1 EQ, value 0, strValue ''
-        //   token   2 EXPRESSION, value 4, strValue ''
-        //   token   3 VARIABLE, value 0, strValue 'p%'
-        //   token   4 MINUS, value 0, strValue ''
-        //   token   5 CONSTANT, value 1, strValue ''
-
-        else if ( 6 == vals.size() &&
-            Token::VARIABLE == vals[ 0 ].token &&
-            Token::EQ == vals[ 1 ].token &&
-            Token::VARIABLE == vals[ 3 ].token &&
-            !vals[ 0 ].strValue.compare( vals[ 3 ].strValue ) &&
-            Token::MINUS == vals[ 4 ].token &&
-            Token::CONSTANT == vals[ 5 ].token &&
-            1 == vals[ 5 ].value )
-        {
-            loc.firstToken = Token::ATOMIC;
-            string varname = vals[ 3 ].strValue;
-            vals.clear();
-
-            TokenValue tval( Token::ATOMIC );
-            vals.push_back( tval );
-
-            tval.token = Token::DEC;
-            tval.strValue = varname;
-            vals.push_back( tval );
-
-            rewritten = true;
-        }
-
-        // IF 0 = VARIABLE  =============>  IF NOT VARIABLE
-        // 2410 has 8 tokens
-        //   token   0 IF, value 0, strValue ''
-        //   token   1 EXPRESSION, value 4, strValue ''
-        //   token   2 CONSTANT, value 0, strValue ''
-        //   token   3 EQ, value 0, strValue ''
-        //   token   4 VARIABLE, value 0, strValue 'wi%'
-        //   token   5 THEN, value 0, strValue ''
-        //   token   6 GOTO, value 2500, strValue ''
-        //   token   7 ENDIF, value 0, strValue ''
-        else if ( 8 == vals.size() &&
-                  Token::IF == vals[ 0 ].token &&
-                  Token::EXPRESSION == vals[ 1 ].token &&
-                  4 == vals[ 1 ].value &&
-                  Token::CONSTANT == vals[ 2 ].token &&
-                  0 == vals[ 2 ].value &&
-                  Token::EQ == vals[ 3 ].token &&
-                  Token::VARIABLE == vals[ 4 ].token )
-        {
-            vals.erase( vals.begin() + 2 );
-            vals[ 2 ].token = Token::NOT;
-            vals[ 1 ].value = 3;
-
-            rewritten = true;
-        }
-
-        if ( showListing && rewritten )
-        {
-            printf( "line rewritten as:\n" );
-            ShowLocListing( loc );
-        }
-    }
+    PatchGOTOGOSUBNumbers();
+    OptimizeWithRewrites( showListing );
 
     // Create all non-array variables and update references so lookups are always fast later
 
     map<string, Variable> varmap;
-
-    for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
-    {
-        LineOfCode & loc = g_linesOfCode[ l ];
-    
-        for ( size_t t = 0; t < loc.tokenValues.size(); t++ )
-        {
-            TokenValue & tv = loc.tokenValues[ t ];
-            if ( ( Token::INC == tv.token ) ||
-                 ( Token::DEC == tv.token ) ||
-                 ( Token::VARIABLE == tv.token && 0 == tv.dimensions ) || // wait for arrays to be defined at runtime with DIM
-                 ( Token::FOR == tv.token ) )
-                GetVariablePerhapsCreate( tv, varmap );
-        }
-    }
+    CreateVariables( varmap );
 
     if ( !executeCode )
         exit( 0 );
@@ -1898,7 +2015,7 @@ extern int main( int argc, char *argv[] )
                 g_linesOfCode[ pcPrevious ].duration += duration_cast<std::chrono::nanoseconds>( timeNow - timePrevious ).count();
                 g_linesOfCode[ pcPrevious ].timesExecuted++;
                 timePrevious = timeNow;
-                pcPrevious = pc;
+                pcPrevious = g_pc;
             }
         #endif
 
@@ -2120,7 +2237,8 @@ extern int main( int argc, char *argv[] )
                             RuntimeFail( "no matching NEXT found for FOR", lineno );
 
                         if ( g_linesOfCode[ g_pc ].tokenValues.size() > 0 &&
-                             Token::NEXT == g_linesOfCode[ g_pc ].tokenValues[ 0 ].token )
+                             Token::NEXT == g_linesOfCode[ g_pc ].tokenValues[ 0 ].token &&
+                             ! g_linesOfCode[ g_pc ].tokenValues[ 0 ].strValue.compare( vals[ 0 ].strValue ) )
                             break;
                     } while ( true );
                 }

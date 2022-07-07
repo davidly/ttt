@@ -41,7 +41,7 @@
 80 next l%
 85 print elap$ ; " for 1000 iterations"
 86 rem print "end time for 1000 iterations "; time$
-87 print "final move count "; mc%
+87 rem print "final move count "; mc%
 100 end
 
 2000 wi% = b%( 0 )
@@ -67,12 +67,12 @@
 2540 wi% = 0
 2550 return
 
-3998 rem minmax function to find score of a board position
-3999 rem recursion is simulated with gotos
-4000 st% = 0
+4000 rem minmax function to find score of a board position
+4010 rem recursion is simulated with gotos
+4030 st% = 0
 4040 v% = 0
 4060 re% = 0
-4100 mc% = mc% + 1
+4100 rem mc% = mc% + 1
 4102 if st% < 4 then goto 4150
 4105 gosub 2000
 4110 if wi% = 1 then re% = 6: goto 4280
