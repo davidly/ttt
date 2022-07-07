@@ -54,7 +54,7 @@ To build BA:
     On Linux: g++ -DNDEBUG ba.cxx -o ba -O3
     On a Mac: clang++ ba.cxx -DNDEBUG -o ba -O3 -std=c++11
 
-![image](https://user-images.githubusercontent.com/1497921/177594602-5729d744-421f-4c94-a048-5248f851840f.png)
+![image](https://user-images.githubusercontent.com/1497921/177687133-65b128e1-f3a0-43da-a9dd-7598036359a1.png)
 
 
 
