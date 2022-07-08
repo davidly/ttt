@@ -47,7 +47,7 @@ vector<LineOfCode> g_linesOfCode;
     //#define __makeinline
 #endif
 
-#ifndef _MSC_VER  // g++, clang, etc.
+#ifndef _MSC_VER  // g++, clang++
     #define __assume( x )
     #undef __makeinline
     #define __makeinline inline
@@ -231,7 +231,7 @@ template <class T> class Stack
 
     public:
         __makeinline Stack() : current( 0 ) {}
-        __makeinline void push( T & x ) { assert( current < maxStack ); items[ current++ ] = x; }
+        __makeinline void push( T const & x ) { assert( current < maxStack ); items[ current++ ] = x; }
         __makeinline size_t size() { return current; }
         __makeinline void pop() { assert( current > 0 ); current--; }
         __makeinline T & top() { assert( current > 0 ); return items[ current - 1 ]; }
@@ -258,11 +258,12 @@ class CFile
 
 static void Usage()
 {
-    printf( "Usage: ba filename.bas [-e] [-l] [-t] [-x]\n" );
+    printf( "Usage: ba filename.bas [-e] [-l] [-p] [-t] [-x]\n" );
     printf( "  Basic interpreter\n" );
     printf( "  Arguments:     filename.bas     Subset of TRS-80 compatible BASIC\n" );
     printf( "                 -e               Show execution count and time for each line\n" );
     printf( "                 -l               Show 'pcode' listing\n" );
+    printf( "                 -p               Show parse time for input file\n" );
     printf( "                 -t               Show debug tracing\n" );
     printf( "                 -x               Parse only; don't execute the code\n" );
 
@@ -877,16 +878,6 @@ const char * ParseStatements( Token token, vector<TokenValue> & lineTokens, cons
     return pline;
 } //ParseStatements
 
-void ListVariables( vector<Variable> const & variables )
-{
-    for ( size_t i = 0; i < variables.size(); i++ )
-    {
-        Variable v = variables[ i ];
-
-        printf( "variable %zd, name '%s', value %d\n", i, v.name, v.value );
-    }
-} //ListVariables
-
 __makeinline Variable * FindVariable( map<string, Variable> & varmap, string const & name )
 {
     map<string,Variable>::iterator it;
@@ -1422,7 +1413,7 @@ void PrintNumberWithCommas( char *pchars, long long n )
 
 void ShowLocListing( LineOfCode & loc )
 {
-    printf( "%d has %zd tokens\n", loc.lineNumber, loc.tokenValues.size() );
+    printf( "line %d has %zd tokens\n", loc.lineNumber, loc.tokenValues.size() );
     
     for ( size_t t = 0; t < loc.tokenValues.size(); t++ )
     {
@@ -1530,7 +1521,6 @@ void PatchGOTOGOSUBNumbers()
     for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
     {
         LineOfCode & loc = g_linesOfCode[ l ];
-        loc.firstToken = loc.tokenValues[ 0 ].token;
     
         for ( size_t t = 0; t < loc.tokenValues.size(); t++ )
         {
@@ -1612,7 +1602,6 @@ void OptimizeWithRewrites( bool showListing )
             Token::CONSTANT == vals[ 5 ].token &&
             1 == vals[ 5 ].value )
         {
-            loc.firstToken = Token::ATOMIC;
             string varname = vals[ 3 ].strValue;
             vals.clear();
 
@@ -1644,7 +1633,6 @@ void OptimizeWithRewrites( bool showListing )
             Token::CONSTANT == vals[ 5 ].token &&
             1 == vals[ 5 ].value )
         {
-            loc.firstToken = Token::ATOMIC;
             string varname = vals[ 3 ].strValue;
             vals.clear();
 
@@ -1692,6 +1680,15 @@ void OptimizeWithRewrites( bool showListing )
     }
 } //OptimizeWithRewrites
 
+void SetFirstTokens()
+{
+    for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
+    {
+        LineOfCode & loc = g_linesOfCode[ l ];
+        loc.firstToken = loc.tokenValues[ 0 ].token;
+    }
+} //SetFirstTokens
+
 void CreateVariables( map<string, Variable> & varmap )
 {
     for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
@@ -1712,12 +1709,15 @@ void CreateVariables( map<string, Variable> & varmap )
 
 extern int main( int argc, char *argv[] )
 {
+    high_resolution_clock::time_point timeAppStart = high_resolution_clock::now();
+
     assert( ( Token::INVALID + 1 ) == _countof( Tokens ) );
     assert( ( Token::INVALID + 1 ) == _countof( Operators ) );
 
     bool showListing = false;
     bool executeCode = true;
     bool showExecutionTime = false;
+    bool showParseTime = false;
     static char inputfile[ 300 ] = {0};
 
     for ( int i = 1; i < argc; i++ )
@@ -1733,6 +1733,8 @@ extern int main( int argc, char *argv[] )
                 showExecutionTime = true;
             else if ( 'l' == c1 )
                 showListing = true;
+            else if ( 'p' == c1 )
+                showParseTime = true;
             else if ( 't' == c1 )
                 g_Tracing = true;
             else if ( 'x' == c1 )
@@ -1892,7 +1894,6 @@ extern int main( int argc, char *argv[] )
                     tokenValue.Clear();
                     tokenValue.token = token;
                     lineTokens.push_back( tokenValue );
-                    //lineTokens[ thenOffset ].value = lineTokens.size() - 1;
                     lineTokens[ thenOffset ].value = lineTokens.size() - thenOffset - 1;
                     
                     pline = pastWhite( pline + tokenLen );
@@ -1992,11 +1993,20 @@ extern int main( int argc, char *argv[] )
 
     PatchGOTOGOSUBNumbers();
     OptimizeWithRewrites( showListing );
+    SetFirstTokens();
 
     // Create all non-array variables and update references so lookups are always fast later
 
     map<string, Variable> varmap;
     CreateVariables( varmap );
+
+    if ( showParseTime )
+    {
+        high_resolution_clock::time_point timeParseComplete = high_resolution_clock::now();      
+        long long durationParse = duration_cast<std::chrono::nanoseconds>( timeParseComplete - timeAppStart ).count();
+        double parseInMS = (double) durationParse / 1000000.0;
+        printf( "Time to parse %s: %lf ms\n", inputfile, parseInMS );
+    }
 
     if ( !executeCode )
         exit( 0 );
@@ -2041,9 +2051,11 @@ extern int main( int argc, char *argv[] )
             if ( EnableTracing && g_Tracing )
                 printf( "executing pc %d line number %d, token %d: %s\n", g_pc, lineno, t, TokenStr( token ) );
 
-            // MSVC doesn't support goto jump tables like g++. MSVC will optimize switch statements if the default has
+            // MSC doesn't support goto jump tables like g++. MSC will optimize switch statements if the default has
             // an __assume(false), but the generated code for the lookup table is complex and slower than if/else if...
             // If more tokens are added to the list below then at some point the lookup table will be faster.
+            // Note that g++ and clang++ generate slower code overall than MSC, and use of a goto jump table
+            // with those compilers is still slower than MSC without a jump table.
             // A table of function pointers is much slower.
             // The order of the tokens is based on usage in the ttt app.
 
@@ -2381,11 +2393,6 @@ extern int main( int argc, char *argv[] )
             else if ( Token::TROFF == token )
             {
                 basicTracing = false;
-                g_pc++;
-                break;
-            }
-            else if ( Token::REM == token )
-            {
                 g_pc++;
                 break;
             }
