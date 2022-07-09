@@ -47,6 +47,24 @@ vector<LineOfCode> g_linesOfCode;
     //#define __makeinline
 #endif
 
+#ifdef __APPLE__
+
+    // __builtin_readcyclecounter() results in an illegal instruction exception at runtime
+    // On an M1 Mac, this yields much faster/better results than on Windows and Linux x64 machines.
+ 
+    uint64_t __rdtsc( void )
+    {
+        uint64_t val;
+        asm volatile("mrs %0, cntvct_el0" : "=r" (val ));
+        return val;
+    }
+
+#else
+
+    #include <intrin.h>
+
+#endif
+
 #ifndef _MSC_VER  // g++, clang++
     #define __assume( x )
     #undef __makeinline
@@ -79,7 +97,8 @@ const char * Operators[] = { "VARIABLE", "GOSUB", "GOTO", "PRINT", "RETURN", "EN
                              "COLON", "SEMICOLON", "EXPRESSION", "TIME$", "ELAP$", "TRON", "TROFF",
                              "ATOMIC", "INC", "DEC", "NOT", "INVALID" };
 
-const int OperatorPrecedence[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,           // filler
+const int OperatorPrecedence[] = { 0, 0, 0, 0, 0, 0,                          // filler
+                                   0, 0, 0, 0, 0,                             // filler
                                    0, 0, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3 };   // actual operators
 
 __makeinline const char * TokenStr( Token i )
@@ -195,8 +214,8 @@ struct LineOfCode
     int lineNumber;
 
     #ifdef ENABLE_EXECUTION_TIME
-        long long timesExecuted;    // # of times this line is executed
-        long long duration;         // execution time so far on this line of code
+        uint64_t timesExecuted;       // # of times this line is executed
+        uint64_t duration;            // execution time so far on this line of code
     #endif
 };
 
@@ -1709,10 +1728,17 @@ void CreateVariables( map<string, Variable> & varmap )
 
 extern int main( int argc, char *argv[] )
 {
-    high_resolution_clock::time_point timeAppStart = high_resolution_clock::now();
+    steady_clock::time_point timeAppStart = steady_clock::now();
+
+    // validate the parallel arrays and enum are actually parallel
 
     assert( ( Token::INVALID + 1 ) == _countof( Tokens ) );
     assert( ( Token::INVALID + 1 ) == _countof( Operators ) );
+    assert( 3 == OperatorPrecedence[ Token::AND ] );
+    assert( 3 == OperatorPrecedence[ Token::OR ] );
+    assert( 3 == OperatorPrecedence[ Token::XOR ] );
+    assert( 0 == OperatorPrecedence[ Token::MULT ] );
+    assert( 0 == OperatorPrecedence[ Token::DIV ] );
 
     bool showListing = false;
     bool executeCode = true;
@@ -1905,7 +1931,7 @@ extern int main( int argc, char *argv[] )
             }
             else if ( Token::REM == token )
             {
-                // can't just throw out REM statements because a goto/gosub may reference it
+                // can't just throw out REM statements yet because a goto/gosub may reference them
 
                 lineTokens.push_back( tokenValue );
             }
@@ -2002,7 +2028,7 @@ extern int main( int argc, char *argv[] )
 
     if ( showParseTime )
     {
-        high_resolution_clock::time_point timeParseComplete = high_resolution_clock::now();      
+        steady_clock::time_point timeParseComplete = steady_clock::now();      
         long long durationParse = duration_cast<std::chrono::nanoseconds>( timeParseComplete - timeAppStart ).count();
         double parseInMS = (double) durationParse / 1000000.0;
         printf( "Time to parse %s: %lf ms\n", inputfile, parseInMS );
@@ -2023,16 +2049,23 @@ extern int main( int argc, char *argv[] )
         g_linesOfCode[ 0 ].timesExecuted--; // avoid off by 1 on first iteration of loop
     #endif
 
-    high_resolution_clock::time_point timeBegin = high_resolution_clock::now();      
-    high_resolution_clock::time_point timePrevious = timeBegin;
+    uint64_t timePrevious = __rdtsc();
+    steady_clock::time_point timeBegin = steady_clock::now();
 
     do
     {
+        // The overhead of tracking execution time makes programs run ~ 2x slower.
+        // As a result, about half of the times shown in the report are just overhead of tracking the data.
+        // Look for relative differences when determining where to optimize.
+
         #ifdef ENABLE_EXECUTION_TIME
             if ( showExecutionTime )
             {
-                high_resolution_clock::time_point timeNow = high_resolution_clock::now();
-                g_linesOfCode[ pcPrevious ].duration += duration_cast<std::chrono::nanoseconds>( timeNow - timePrevious ).count();
+                // __rdtsc makes the app run 2x slower.
+                // steady_clock makes the app run 5x slower. I'm probably doing something wrong?
+
+                uint64_t timeNow = __rdtsc();
+                g_linesOfCode[ pcPrevious ].duration += ( timeNow - timePrevious );
                 g_linesOfCode[ pcPrevious ].timesExecuted++;
                 timePrevious = timeNow;
                 pcPrevious = g_pc;
@@ -2315,7 +2348,7 @@ extern int main( int argc, char *argv[] )
                     }
                     else if ( Token::ELAP == vals[ t + 1 ].token )
                     {
-                        high_resolution_clock::time_point timeNow = high_resolution_clock::now();
+                        steady_clock::time_point timeNow = steady_clock::now();
                         long long duration = duration_cast<std::chrono::milliseconds>( timeNow - timeBegin ).count();
                         static char acElap[ 100 ];
                         acElap[ 0 ] = 0;
@@ -2341,6 +2374,14 @@ extern int main( int argc, char *argv[] )
             }
             else if ( Token::END == token )
             {
+                #ifdef ENABLE_EXECUTION_TIME
+                    if ( showExecutionTime )
+                    {
+                        uint64_t timeNow = __rdtsc();
+                        g_linesOfCode[ g_pc ].duration += ( timeNow - timePrevious );
+                        g_linesOfCode[ g_pc ].timesExecuted++;
+                    }
+                #endif
                 goto label_exit_execution;
             }
             else if ( Token::DIM == token )
@@ -2413,17 +2454,26 @@ extern int main( int argc, char *argv[] )
         {
             static char acTimes[ 100 ];
             static char acDuration[ 100 ];
-            printf( "execution times in hundred nanoseconds:\n" );
-            printf( "   line #          times           duration\n" );
+            printf( "execution times in rdtsc hardware ticks:\n" );
+            printf( "   line #          times           duration         average\n" );
             for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
             {
                 LineOfCode & loc = g_linesOfCode[ l ];
+
+                // if the END statment added to the end was never executed, ignore it
+
+                if ( ( l == ( g_linesOfCode.size() - 1 ) ) && ( 0 == loc.timesExecuted ) )
+                    continue;
     
                 acTimes[ 0 ] = 0;
                 acDuration[ 0 ] = 0;
                 PrintNumberWithCommas( acTimes, loc.timesExecuted );
-                PrintNumberWithCommas( acDuration, loc.duration / 100 );
-                printf( "  %7d  %13s    %15s", loc.lineNumber, acTimes, acDuration );
+
+                long long duration = loc.duration;
+                PrintNumberWithCommas( acDuration, duration );
+
+                double average = loc.timesExecuted ? ( (double) duration / (double) loc.timesExecuted ) : 0.0;
+                printf( "  %7d  %13s    %15s    %12.3lf", loc.lineNumber, acTimes, acDuration, average );
                 printf( "\n" );
             }
         }
