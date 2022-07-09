@@ -95,15 +95,15 @@
 4326 be% = sb%(st%)
 4328 b%(p%) = 0
 4330 if st% and 1 goto 4340
+4331 if re% = 4 then goto 4530
 4332 if re% < v% then v% = re%
 4334 if v% < be% then be% = v%
 4336 if be% <= al% then goto 4520
-4337 if v% = 4 then goto 4520
 4338 goto 4500
-4340 if re% > v% then v% = re%
+4340 if re% = 6 then goto 4530
+4341 if re% > v% then v% = re%
 4342 if v% > al% then al% = v%
 4344 if al% >= be% then goto 4520
-4346 if v% = 6 then goto 4520
 4500 p% = p% + 1
 4505 if p% < 9 then goto 4180
 4520 re% = v%
