@@ -28,7 +28,7 @@ bool g_Tracing = false;
 int g_pc = 0;
 struct LineOfCode;
 vector<LineOfCode> g_linesOfCode;
-#define lineno ( g_linesOfCode[ g_pc ].lineNumber )
+#define g_lineno ( g_linesOfCode[ g_pc ].lineNumber )
 
 //#define ENABLE_EXECUTION_TIME
 #define EXPRESSION_OPTIMIZATIONS
@@ -40,7 +40,7 @@ vector<LineOfCode> g_linesOfCode;
     #define __makeinline __declspec(noinline)
     //#define __makeinline
 #else
-    const bool RangeCheckArrays = false;  // oh how I wish C# supported this
+    const bool RangeCheckArrays = false;  // oh how I wish C# supported turning off bounds checking
     const bool EnableTracing = false;     // makes eveything 10% slower
 
     #define __makeinline __forceinline
@@ -48,8 +48,7 @@ vector<LineOfCode> g_linesOfCode;
 #endif
 
 #ifdef __APPLE__
-
-    // __builtin_readcyclecounter() results in an illegal instruction exception at runtime
+    // __builtin_readcyclecounter() results in an illegal instruction exception at runtime.
     // On an M1 Mac, this yields much faster/better results than on Windows and Linux x64 machines.
  
     uint64_t __rdtsc( void )
@@ -58,11 +57,8 @@ vector<LineOfCode> g_linesOfCode;
         asm volatile("mrs %0, cntvct_el0" : "=r" (val ));
         return val;
     }
-
 #else
-
     #include <intrin.h>
-
 #endif
 
 #ifndef _MSC_VER  // g++, clang++
@@ -129,10 +125,17 @@ __makeinline bool isTokenStatement( Token t )
     return ( t >= Token::VARIABLE && t <= Token::END );
 } //isTokenStatement
 
-bool isFirstPassOperator( Token t )
+__makeinline bool isFirstPassOperator( Token t )
 {
     return ( t >= Token::EQ && t <= Token::GT );
 } //isFirstPassOperator
+
+__makeinline bool FailsRangeCheck( int offset, size_t high )
+{
+    // check if an array access is outside the array. BASIC arrays are 0-based.
+
+    return ( ( offset < 0 ) || ( offset >= high ) );
+} //FailsRangeCheck
 
 char * my_strlwr( char * str )
 {
@@ -151,6 +154,7 @@ struct Variable
     Variable( const char * v )
     {
         memset( this, 0, sizeof *this );
+        assert( strlen( name ) <= 3 );
         strcpy( name, v );
         my_strlwr( name );
     }
@@ -173,6 +177,7 @@ struct TokenValue
         dimensions = 0;
         dims[ 0 ] = 0;
         dims[ 1 ] = 0;
+        extra = 0;
     }
 
     TokenValue( Token t )
@@ -185,8 +190,9 @@ struct TokenValue
 
     Token token;
     int value;
-    int dimensions;    // 0 for scalar or 1-2 if an array. Only non-0 for DIM statements
-    int dims[ 2 ];     // only support up to 2 dimensional arrays. Only used for DIM statements
+    int dimensions;        // 0 for scalar or 1-2 if an array. Only non-0 for DIM statements
+    int dims[ 2 ];         // only support up to 2 dimensional arrays. Only used for DIM statements
+    int extra;
     Variable * pVariable;
     string strValue;
 };
@@ -1119,37 +1125,19 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
 {
     if ( EnableTracing && g_Tracing )
         printf( "evaluateexpression starting at line %d, token %d, which is %s, length %d\n",
-                lineno, iToken, TokenStr( vals[ iToken ].token ), vals[ iToken ].value );
+                g_lineno, iToken, TokenStr( vals[ iToken ].token ), vals[ iToken ].value );
 
     assert( Token::EXPRESSION == vals[ iToken ].token );
 
     int value;
     int tokenCount = vals[ iToken ].value;
 
-    // implement a few specialized/optimized cases, but most are general
+    // implement a few specialized/optimized cases in order of usage
 
 #ifdef EXPRESSION_OPTIMIZATIONS
     if ( 2 == tokenCount )
+    {
         value = GetSimpleValue( vals[ iToken + 1 ] );
-    else if ( 3 == tokenCount )
-    {
-        if ( Token::NOT == vals[ iToken + 1 ].token )
-            value = ! ( vals[ iToken + 2 ].pVariable->value );
-        else
-        {
-            assert( Token::MINUS == vals[ iToken + 1 ].token );
-            return - GetSimpleValue( vals[ iToken + 2 ] );
-        }
-    }
-    else if ( 4 == tokenCount )
-    {
-        assert( isTokenSimpleValue( vals[ iToken + 1 ].token ) );
-        assert( isTokenOperator( vals[ iToken + 2 ].token ) );
-        assert( isTokenSimpleValue( vals[ iToken + 3 ].token ) );
-    
-        value = run_operator( GetSimpleValue( vals[ iToken + 1 ] ),
-                              vals[ iToken + 2 ].token,
-                              GetSimpleValue( vals[ iToken + 3 ] ) );
     }
     else if ( 6 == tokenCount &&
               Token::VARIABLE == vals[ iToken + 1 ].token &&
@@ -1163,13 +1151,25 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
         // 5 CLOSEPAREN, value 0, strValue ''
 
         Variable *pvar = vals[ iToken + 1 ].pVariable;
-        assert( 1 == pvar->dimensions );  // can't be more or the tokenCount would be greater
+
+        if ( 1 != pvar->dimensions ) // can't be > 1 or tokenCount would be greater
+            RuntimeFail( "scalar variable used as an array", g_lineno );
 
         int offset = GetSimpleValue( vals[ iToken + 4 ] );
-        if ( RangeCheckArrays && offset >= pvar->array.size() )
-            RuntimeFail( "index beyond the bounds of an array", lineno );
+        if ( RangeCheckArrays && FailsRangeCheck( offset, pvar->dims[ 0 ] ) )
+            RuntimeFail( "index beyond the bounds of an array", g_lineno );
 
         value = pvar->array[ offset ];
+    }
+    else if ( 4 == tokenCount )
+    {
+        assert( isTokenSimpleValue( vals[ iToken + 1 ].token ) );
+        assert( isTokenOperator( vals[ iToken + 2 ].token ) );
+        assert( isTokenSimpleValue( vals[ iToken + 3 ].token ) );
+    
+        value = run_operator( GetSimpleValue( vals[ iToken + 1 ] ),
+                              vals[ iToken + 2 ].token,
+                              GetSimpleValue( vals[ iToken + 3 ] ) );
     }
     else if ( 16 == tokenCount &&
               Token::VARIABLE == vals[ iToken + 1 ].token &&
@@ -1203,13 +1203,13 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
 
         if ( RangeCheckArrays )
         {
-            if ( ( vals[ iToken + 6 ].value > vals[ iToken + 3 ].pVariable->array.size() ) ||
-                 ( vals[ iToken + 14 ].value > vals[ iToken + 11 ].pVariable->array.size() ) )
-            RuntimeFail( "index beyond the bounds of an array", lineno );
+            if ( FailsRangeCheck( vals[ iToken + 6 ].value, vals[ iToken + 3 ].pVariable->array.size() ) ||
+                 FailsRangeCheck( vals[ iToken + 14 ].value, vals[ iToken + 11 ].pVariable->array.size() ) )
+                RuntimeFail( "index beyond the bounds of an array", g_lineno );
 
             if ( ( 1 != vals[ iToken + 3 ].pVariable->dimensions ) ||
                  ( 1 != vals[ iToken + 11 ].pVariable->dimensions ) )
-            RuntimeFail( "variable used as if it has one array dimension when it does not", lineno );
+                RuntimeFail( "variable used as if it has one array dimension when it does not", g_lineno );
         }
 
         value = run_operator( run_operator( vals[ iToken + 1 ].pVariable->value,
@@ -1219,6 +1219,16 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
                               run_operator( vals[ iToken + 9 ].pVariable->value,
                                             vals[ iToken + 10 ].token,
                                             vals[ iToken + 11 ].pVariable->array[ vals[ iToken + 14 ].value ] ) );
+    }
+    else if ( 3 == tokenCount )
+    {
+        if ( Token::NOT == vals[ iToken + 1 ].token )
+            value = ! ( vals[ iToken + 2 ].pVariable->value );
+        else
+        {
+            assert( Token::MINUS == vals[ iToken + 1 ].token );
+            return - GetSimpleValue( vals[ iToken + 2 ] );
+        }
     }
     else
 #endif
@@ -1255,11 +1265,11 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
 
                     t += vals[ t ].value;
 
-                    if ( RangeCheckArrays && offset >= pvar->array.size() )
-                        RuntimeFail( "access of array beyond end", lineno );
+                    if ( RangeCheckArrays && FailsRangeCheck( offset, pvar->array.size() ) )
+                        RuntimeFail( "access of array beyond end", g_lineno );
 
                     if ( RangeCheckArrays && t < limit && Token::COMMA == vals[ t ].token )
-                        RuntimeFail( "accessed 1-dimensional array with 2 dimensions", lineno );
+                        RuntimeFail( "accessed 1-dimensional array with 2 dimensions", g_lineno );
 
                     explist[ expcount++ ] = pvar->array[ offset ];
                 }
@@ -1269,8 +1279,8 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
                     int offset1 = EvaluateExpression( t, vals );
                     t += vals[ t ].value;
 
-                    if ( RangeCheckArrays && offset1 > pvar->dims[ 0 ] )
-                        RuntimeFail( "access of first dimension in 2-dimensional array beyond end", lineno );
+                    if ( RangeCheckArrays && FailsRangeCheck( offset1, pvar->dims[ 0 ] ) )
+                        RuntimeFail( "access of first dimension in 2-dimensional array beyond end", g_lineno );
 
                     assert( Token::COMMA == vals[ t ].token );
                     t++; // comma
@@ -1278,8 +1288,8 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
                     int offset2 = EvaluateExpression( t, vals );
                     t += vals[ t ].value;
 
-                    if ( RangeCheckArrays && offset2 > pvar->dims[ 1 ] )
-                        RuntimeFail( "access of second dimension in 2-dimensional array beyond end", lineno );
+                    if ( RangeCheckArrays && FailsRangeCheck( offset2, pvar->dims[ 1 ] ) )
+                        RuntimeFail( "access of second dimension in 2-dimensional array beyond end", g_lineno );
 
                     int arrayoffset = offset1 * pvar->dims[ 1 ] + offset2;
                     assert( arrayoffset < pvar->array.size() );
@@ -1331,7 +1341,7 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
             else
             {
                 printf( "unexpected token: %s\n", TokenStr( val.token ) );
-                RuntimeFail( "unexpected token in arbitrary expression evaluation", lineno );
+                RuntimeFail( "unexpected token in arbitrary expression evaluation", g_lineno );
             }
 
             // basic lines can only be so long, so expressions can only be so complex
@@ -1357,7 +1367,7 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
                 if ( item.open )
                 {
                     if ( 0 == closeStack.size() )
-                        RuntimeFail( "mismatched parenthesis; too many opens", lineno );
+                        RuntimeFail( "mismatched parenthesis; too many opens", g_lineno );
     
                     ParenItem & closed = closeStack.top();
                     int closeLocation = closed.offset;
@@ -1395,7 +1405,7 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
             } while ( 0 != parenStack.size() );
     
             if ( 0 != closeStack.size() )
-                RuntimeFail( "mismatched parenthesis; too many closes", lineno );
+                RuntimeFail( "mismatched parenthesis; too many closes", g_lineno );
         }
 
         assert( "expression count should be odd" && ( expcount & 1 ) );
@@ -1740,6 +1750,8 @@ extern int main( int argc, char *argv[] )
     assert( 0 == OperatorPrecedence[ Token::MULT ] );
     assert( 0 == OperatorPrecedence[ Token::DIV ] );
 
+    assert( 64 == sizeof( TokenValue ) );
+
     bool showListing = false;
     bool executeCode = true;
     bool showExecutionTime = false;
@@ -1888,6 +1900,7 @@ extern int main( int argc, char *argv[] )
             else if ( Token::IF == token )
             {
                 lineTokens.push_back( tokenValue );
+                int ifOffset = lineTokens.size() - 1;
                 pline = pastWhite( pline + tokenLen );
                 pline = ParseExpression( lineTokens, pline, line, fileLine );
                 if ( Token::EXPRESSION == lineTokens[ lineTokens.size() - 1 ].token )
@@ -1977,6 +1990,9 @@ extern int main( int argc, char *argv[] )
                         Fail( "expected a numeric constant first dimension", fileLine, 1 + pline - line, line );
 
                     tokenValue.dims[ 0 ] = atoi( pline );
+                    if ( tokenValue.dims[ 0 ] <= 0 )
+                        Fail( "array dimension isn't positive", fileLine, 1 + pline - line, line );
+
                     pline = pastWhite( pline + tokenLen );
                     token = readToken( pline, tokenLen );
                     tokenValue.dimensions = 1;
@@ -1990,6 +2006,9 @@ extern int main( int argc, char *argv[] )
                             Fail( "expected a numeric constant second dimension", fileLine, 1 + pline - line, line );
 
                         tokenValue.dims[ 1 ] = atoi( pline );
+                        if ( tokenValue.dims[ 1 ] <= 0 )
+                            Fail( "array dimension isn't positive", fileLine, 1 + pline - line, line );
+
                         pline = pastWhite( pline + tokenLen );
                         token = readToken( pline, tokenLen );
                         tokenValue.dimensions = 2;
@@ -2054,6 +2073,8 @@ extern int main( int argc, char *argv[] )
 
     do
     {
+        label_next_pc:
+
         // The overhead of tracking execution time makes programs run ~ 2x slower.
         // As a result, about half of the times shown in the report are just overhead of tracking the data.
         // Look for relative differences when determining where to optimize.
@@ -2063,6 +2084,7 @@ extern int main( int argc, char *argv[] )
             {
                 // __rdtsc makes the app run 2x slower.
                 // steady_clock makes the app run 5x slower. I'm probably doing something wrong?
+                // The M1 mac implementation has nearly 0 overhead.
 
                 uint64_t timeNow = __rdtsc();
                 g_linesOfCode[ pcPrevious ].duration += ( timeNow - timePrevious );
@@ -2077,12 +2099,12 @@ extern int main( int argc, char *argv[] )
         int t = 0;
 
         if ( EnableTracing && basicTracing )
-            printf( "executing line %d\n", lineno );
+            printf( "executing line %d\n", g_lineno );
 
         do
         {
             if ( EnableTracing && g_Tracing )
-                printf( "executing pc %d line number %d, token %d: %s\n", g_pc, lineno, t, TokenStr( token ) );
+                printf( "executing pc %d line number %d, token %d: %s\n", g_pc, g_lineno, t, TokenStr( token ) );
 
             // MSC doesn't support goto jump tables like g++. MSC will optimize switch statements if the default has
             // an __assume(false), but the generated code for the lookup table is complex and slower than if/else if...
@@ -2105,12 +2127,12 @@ extern int main( int argc, char *argv[] )
                 }
                 else
                 {
-                    // value is the else offset or 0 if there is no else clause
+                    // offset of ELSE token from THEN or 0 if there is no ELSE
 
                     if ( 0 == vals[ t ].value )
                     {
                         g_pc++;
-                        break;
+                        goto label_next_pc;
                     }
                     else
                     {
@@ -2129,47 +2151,39 @@ extern int main( int argc, char *argv[] )
 
                 if ( Token::OPENPAREN == vals[ t ].token )
                 {
-                    if ( 0 == pvar )
-                        RuntimeFail( "array usage without DIM", lineno );
+                    assert( ( 0 != pvar ) && "array variable not defined yet" );
 
                     if ( 0 == pvar->dimensions )
-                    {
-                        printf( "pvar value %d, name %s, dimensions %d, array size %zd\n", pvar->value, pvar->name, pvar->dimensions, pvar->array.size() );
-                        RuntimeFail( "variable used as array isn't an array", lineno );
-                    }
+                        RuntimeFail( "variable used as array isn't an array", g_lineno );
 
                     t++;
-                    int indexA = EvaluateExpression( t, vals );
+                    int arrayIndex = EvaluateExpression( t, vals );
                     t += vals[ t ].value;
 
-                    if ( RangeCheckArrays && indexA >= pvar->dims[ 0 ] )
-                        RuntimeFail( "array offset out of bounds", lineno );
-
-                    int arrayIndex;
+                    if ( RangeCheckArrays && FailsRangeCheck( arrayIndex, pvar->dims[ 0 ] ) )
+                        RuntimeFail( "array offset out of bounds", g_lineno );
 
                     if ( Token::COMMA == vals[ t ].token )
                     {
                         t++;
 
                         if ( 2 != pvar->dimensions )
-                            RuntimeFail( "single-dimensional array used with 2 dimensions", lineno );
+                            RuntimeFail( "single-dimensional array used with 2 dimensions", g_lineno );
 
                         int indexB = EvaluateExpression( t, vals );
                         t += vals[ t ].value;
 
-                        if ( RangeCheckArrays && indexB >= pvar->dims[ 1 ] )
-                            RuntimeFail( "second dimension array offset out of bounds", lineno );
+                        if ( RangeCheckArrays && FailsRangeCheck( indexB, pvar->dims[ 1 ] ) )
+                            RuntimeFail( "second dimension array offset out of bounds", g_lineno );
 
-                        arrayIndex = indexA * pvar->dims[ 1 ] + indexB;
+                        arrayIndex *= pvar->dims[ 1 ];
+                        arrayIndex +=  indexB;
                     }
-                    else
-                        arrayIndex = indexA;
 
                     assert( Token::CLOSEPAREN == vals[ t ].token );
                     assert( Token::EQ == vals[ t + 1 ].token );
 
                     t += 2; // past ) and =
-
                     int val = EvaluateExpression( t, vals );
                     t += vals[ t ].value;
 
@@ -2184,7 +2198,7 @@ extern int main( int argc, char *argv[] )
                     t += vals[ t ].value;
 
                     if ( RangeCheckArrays && ( 0 != pvar->dimensions ) )
-                        RuntimeFail( "array used as if it's a scalar", lineno );
+                        RuntimeFail( "array used as if it's a scalar", g_lineno );
 
                     pvar->value = val;
                 }
@@ -2194,13 +2208,13 @@ extern int main( int argc, char *argv[] )
                 if ( t == vals.size() )
                 {
                     g_pc++;
-                    break;
+                    goto label_next_pc;
                 }
             }
             else if ( Token::GOTO == token )
             {
                 g_pc = vals[ t ].value;
-                break;
+                goto label_next_pc;
             }
             else if ( Token::ATOMIC == token )
             {
@@ -2218,7 +2232,7 @@ extern int main( int argc, char *argv[] )
                 }
 
                 g_pc++;
-                break;
+                goto label_next_pc;
             }
             else if ( Token::GOSUB == token )
             {
@@ -2226,14 +2240,14 @@ extern int main( int argc, char *argv[] )
                 forGosubStack.push( fgi );
 
                 g_pc = vals[ t ].value;
-                break;
+                goto label_next_pc;
             }
             else if ( Token::RETURN == token )
             {
                 do 
                 {
                     if ( 0 == forGosubStack.size() )
-                        RuntimeFail( "return without gosub", lineno );
+                        RuntimeFail( "return without gosub", g_lineno );
 
                     // remove any active FOR items to get to the next GOSUB item and return
 
@@ -2246,7 +2260,7 @@ extern int main( int argc, char *argv[] )
                     }
                 } while( true );
 
-                break;
+                goto label_next_pc;
             }
             else if ( Token::FOR == token )
             {
@@ -2289,7 +2303,7 @@ extern int main( int argc, char *argv[] )
                         g_pc++;
 
                         if ( g_pc >= g_linesOfCode.size() )
-                            RuntimeFail( "no matching NEXT found for FOR", lineno );
+                            RuntimeFail( "no matching NEXT found for FOR", g_lineno );
 
                         if ( g_linesOfCode[ g_pc ].tokenValues.size() > 0 &&
                              Token::NEXT == g_linesOfCode[ g_pc ].tokenValues[ 0 ].token &&
@@ -2299,19 +2313,19 @@ extern int main( int argc, char *argv[] )
                 }
 
                 g_pc++;
-                break; // done processing tokens for FOR
+                goto label_next_pc;
             }
             else if ( Token::NEXT == token )
             {
                 if ( 0 == forGosubStack.size() )
-                    RuntimeFail( "NEXT without FOR", lineno );
+                    RuntimeFail( "NEXT without FOR", g_lineno );
 
                 ForGosubItem & item = forGosubStack.top();
                 if ( !item.isFor )
-                    RuntimeFail( "NEXT without FOR", lineno );
+                    RuntimeFail( "NEXT without FOR", g_lineno );
 
                 g_pc = item.pcReturn;
-                break;
+                goto label_next_pc;
             }
             else if ( Token::PRINT == token )
             {
@@ -2365,12 +2379,12 @@ extern int main( int argc, char *argv[] )
                 }
 
                 printf( "\n" );
-                break;
+                goto label_next_pc;
             }
             else if ( Token::ELSE == token )
             {
                 g_pc++;
-                break;
+                goto label_next_pc;
             }
             else if ( Token::END == token )
             {
@@ -2423,24 +2437,24 @@ extern int main( int argc, char *argv[] )
                 }
 
                 g_pc++;
-                break;
+                goto label_next_pc;
             }
             else if ( Token::TRON == token )
             {
                 basicTracing = true;
                 g_pc++;
-                break;
+                goto label_next_pc;
             }
             else if ( Token::TROFF == token )
             {
                 basicTracing = false;
                 g_pc++;
-                break;
+                goto label_next_pc;
             }
             else
             {
                 printf( "unexpected token %s\n", TokenStr( token ) );
-                RuntimeFail( "internal error: unexpected token in top-level interpreter loop", lineno );
+                RuntimeFail( "internal error: unexpected token in top-level interpreter loop", g_lineno );
             }
 
             token = vals[ t ].token;
@@ -2460,7 +2474,7 @@ extern int main( int argc, char *argv[] )
             {
                 LineOfCode & loc = g_linesOfCode[ l ];
 
-                // if the END statment added to the end was never executed, ignore it
+                // if the END statment added to the end was never executed then ignore it
 
                 if ( ( l == ( g_linesOfCode.size() - 1 ) ) && ( 0 == loc.timesExecuted ) )
                     continue;
