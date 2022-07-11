@@ -97,6 +97,10 @@ const int OperatorPrecedence[] = { 0, 0, 0, 0, 0, 0,                          //
                                    0, 0, 0, 0, 0,                             // filler
                                    0, 0, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3 };   // actual operators
 
+const char * OperatorInstruction[] = { 0, 0, 0, 0, 0, 0,                          // filler
+                                       0, 0, 0, 0, 0,                             // filler
+                                       "imul", "idiv", "add", "sub", "sete", "setne", "setle", "setge", "setl", "setg", "and", "or", "xor", };
+
 __makeinline const char * TokenStr( Token i )
 {
     if ( i < 0 || i > Token::INVALID )
@@ -201,7 +205,7 @@ struct TokenValue
 
 struct LineOfCode
 {
-    LineOfCode( int line ) : lineNumber( line ), firstToken( Token::INVALID )
+    LineOfCode( int line, char * code ) : lineNumber( line ), firstToken( Token::INVALID ), sourceCode( code )
 
     #ifdef ENABLE_EXECUTION_TIME
         , timesExecuted( 0 ), duration( 0 )
@@ -216,6 +220,7 @@ struct LineOfCode
 
     Token firstToken;
     vector<TokenValue> tokenValues;
+    string sourceCode;
 
     int lineNumber;
 
@@ -286,6 +291,7 @@ static void Usage()
     printf( "Usage: ba filename.bas [-e] [-l] [-p] [-t] [-x]\n" );
     printf( "  Basic interpreter\n" );
     printf( "  Arguments:     filename.bas     Subset of TRS-80 compatible BASIC\n" );
+    printf( "                 -a               Generate x64 ml64-compatible assembler code to filename.asm\n" );
     printf( "                 -e               Show execution count and time for each line\n" );
     printf( "                 -l               Show 'pcode' listing\n" );
     printf( "                 -p               Show parse time for input file\n" );
@@ -623,6 +629,9 @@ const char * ParseExpression( vector<TokenValue> & lineTokens, const char * plin
             token = readToken( pline, tokenLen );
             if ( Token::OPENPAREN == token )
             {
+                int iVarToken = lineTokens.size() - 1;
+                lineTokens[ iVarToken ].dimensions = 1;
+
                 tokenCount++;
                 tokenValue.Clear();
                 tokenValue.token = token;
@@ -637,6 +646,7 @@ const char * ParseExpression( vector<TokenValue> & lineTokens, const char * plin
                 token = readToken( pline, tokenLen );
                 if ( Token::COMMA == token )
                 {
+                    lineTokens[ iVarToken ].dimensions = 2;
                     tokenCount++;
                     tokenValue.Clear();
                     tokenValue.token = token;
@@ -765,12 +775,15 @@ const char * ParseStatements( Token token, vector<TokenValue> & lineTokens, cons
             tokenValue.strValue.insert( 0, pline, tokenLen );
             makelower( tokenValue.strValue );
             lineTokens.push_back( tokenValue );
+            int iVarToken = lineTokens.size() - 1;
 
             pline = pastWhite( pline + tokenLen );
             token = readToken( pline, tokenLen );
 
             if ( Token::OPENPAREN == token )
             {
+                lineTokens[ iVarToken ].dimensions++;
+
                 tokenValue.Clear();
                 tokenValue.token = token;
                 lineTokens.push_back( tokenValue );
@@ -787,6 +800,8 @@ const char * ParseStatements( Token token, vector<TokenValue> & lineTokens, cons
                 }
                 else if ( Token::COMMA == token )
                 {
+                    lineTokens[ iVarToken ].dimensions++;
+
                     tokenValue.Clear();
                     tokenValue.token = token;
                     lineTokens.push_back( tokenValue );
@@ -1535,7 +1550,7 @@ void AddENDStatement()
     if ( addEnd )
     {
         int linenumber = 1 + g_linesOfCode[ g_linesOfCode.size() - 1 ].lineNumber;
-        LineOfCode loc( linenumber );
+        LineOfCode loc( linenumber, "END" );
         g_linesOfCode.push_back( loc );
         TokenValue tokenValue( Token::END );
         g_linesOfCode[ g_linesOfCode.size() - 1 ].tokenValues.push_back( tokenValue );
@@ -1736,6 +1751,669 @@ void CreateVariables( map<string, Variable> & varmap )
     }
 } //CreateVariables
 
+const char * GenVariableName( string s )
+{
+    static char acName[ 20 ];
+
+    strcpy( acName, "var_" );
+    strcpy( acName + 4, s.c_str() );
+    acName[ strlen( acName ) - 1 ] = 0;
+    return acName;
+} //GenVariableName
+
+void GenerateOp( FILE * fp, vector<TokenValue> & vals, int left, int right, Token op, int leftArray = 0, int rightArray = 0 )
+{
+   if ( Token::CONSTANT == vals[ left ].token )
+       fprintf( fp, "    mov      eax, %d\n", vals[ left ].value );
+   else if ( 0 == vals[ left ].dimensions )
+       fprintf( fp, "    mov      eax, DWORD PTR [%s]\n", GenVariableName( vals[ left ].strValue ) );
+   else
+       fprintf( fp, "    mov      eax, DWORD PTR [%s + %d]\n", GenVariableName( vals[ left ].strValue ),
+                4 * vals[ leftArray ].value );
+
+    if ( isFirstPassOperator( op ) )
+    {
+        // relational
+
+        if ( Token::CONSTANT == vals[ right ].token )
+            fprintf( fp, "    cmp      eax, %d\n", vals[ right ].value );
+        else if ( 0 == vals[ right ].dimensions )
+            fprintf( fp, "    cmp      eax, DWORD PTR [%s]\n", GenVariableName( vals[ right ].strValue ) );
+        else
+            fprintf( fp, "    cmp      eax, DWORD PTR [%s + %d]\n", GenVariableName( vals[ right ].strValue ),
+                     4 * vals[ rightArray ].value );
+
+        fprintf( fp, "    %s      al\n", OperatorInstruction[ op ] );
+    }
+    else
+    {
+        // mathematical
+
+        if ( Token::CONSTANT == vals[ right ].token )
+            fprintf( fp, "    %s      eax, %d\n", OperatorInstruction[ op ], vals[ right ].value );
+        else if ( 0 == vals[ right ].dimensions )
+            fprintf( fp, "    %s      eax, DWORD PTR [%s]\n", OperatorInstruction[ op ], GenVariableName( vals[ right ].strValue ) );
+        else
+            fprintf( fp, "    %s      eax, DWORD PTR [%s + %d]\n", OperatorInstruction[ op ], GenVariableName( vals[ right ].strValue ),
+                     4 * vals[ rightArray ].value );
+    }
+} //GenerateOp
+
+void GenerateExpression( FILE *fp, int iToken, vector<TokenValue> & vals )
+{
+    // generate code to put the resulting express in rax
+    // only modifies rax and rdx (without saving them)
+
+    assert( Token::EXPRESSION == vals[ iToken ].token );
+    int tokenCount = vals[ iToken ].value;
+
+    if ( 2 == tokenCount )
+    {
+        if ( Token::CONSTANT == vals[ iToken + 1 ].token )
+            fprintf( fp, "    mov      eax, %d\n", vals[ iToken + 1 ].value );
+        else if ( Token::VARIABLE == vals[ iToken + 1 ].token )
+            fprintf( fp, "    mov      eax, [%s]\n", GenVariableName( vals[ iToken + 1 ].strValue ) );
+    }
+    else if ( 6 == tokenCount &&
+              Token::VARIABLE == vals[ iToken + 1 ].token &&
+              Token::OPENPAREN == vals[ iToken + 2 ].token )
+    {
+        // 0 EXPRESSION, value 6, strValue ''
+        // 1 VARIABLE, value 0, strValue 'sa%'
+        // 2 OPENPAREN, value 0, strValue ''
+        // 3 EXPRESSION, value 2, strValue ''
+        // 4 VARIABLE, value 0, strValue 'st%'   (this can optionally be a constant)
+        // 5 CLOSEPAREN, value 0, strValue ''
+
+        if ( 1 != vals[ iToken + 1 ].dimensions ) // can't be > 1 or tokenCount would be greater
+            RuntimeFail( "scalar variable used as an array", g_lineno );
+
+        if ( Token::CONSTANT == vals[ iToken + 4 ].token )
+        {
+            fprintf( fp, "    mov      eax, DWORD PTR[ %s + %d ]\n", GenVariableName( vals[ iToken + 1 ].strValue ),
+                     4 * vals[ iToken + 4 ].value );
+        }
+        else
+        {
+            GenerateExpression( fp, iToken + 3, vals );
+    
+            fprintf( fp, "    lea      rdx, [%s]\n", GenVariableName( vals[ iToken + 1 ].strValue ) );
+            fprintf( fp, "    shl      rax, 2\n" );
+            fprintf( fp, "    add      rax, rdx\n" );
+            fprintf( fp, "    mov      eax, [rax]\n" );
+        }
+    }
+    else if ( 4 == tokenCount )
+    {
+        assert( isTokenSimpleValue( vals[ iToken + 1 ].token ) );
+        assert( isTokenOperator( vals[ iToken + 2 ].token ) );
+        assert( isTokenSimpleValue( vals[ iToken + 3 ].token ) );
+
+        GenerateOp( fp, vals, iToken + 1, iToken + 3, vals[ iToken + 2 ].token );
+    }
+    else if ( 3 == tokenCount )
+    {
+        if ( Token::NOT == vals[ iToken + 1 ].token )
+        {
+            fprintf( fp, "    cmp      DWORD PTR [%s], 0\n", GenVariableName( vals[ iToken + 2 ].strValue ) );
+            fprintf( fp, "    sete     al\n" );
+        }
+        else
+        {
+            fprintf( fp, "    xor      rax, rax\n" );
+            fprintf( fp, "    mov      edx, [%s]\n", GenVariableName( vals[ iToken + 2 ].strValue ) );
+            fprintf( fp, "    sub      rax, edx\n" );
+        }
+    }
+    else if ( 16 == tokenCount &&
+              Token::VARIABLE == vals[ iToken + 1 ].token &&
+              Token::OPENPAREN == vals[ iToken + 4 ].token &&
+              Token::CONSTANT == vals[ iToken + 6 ].token &&
+              Token::VARIABLE == vals[ iToken + 9 ].token &&
+              Token::OPENPAREN == vals[ iToken + 12 ].token &&
+              Token::CONSTANT == vals[ iToken + 14 ].token &&
+              isFirstPassOperator( vals[ iToken + 2 ].token ) &&
+              isFirstPassOperator( vals[ iToken + 10 ].token ) )
+    {
+        //  0 EXPRESSION, value 16, strValue ''
+        //  1 VARIABLE, value 0, strValue 'wi%'
+        //  2 EQ, value 0, strValue ''
+        //  3 VARIABLE, value 0, strValue 'b%'
+        //  4 OPENPAREN, value 0, strValue ''
+        //  5 EXPRESSION, value 2, strValue ''
+        //  6 CONSTANT, value 5, strValue ''
+        //  7 CLOSEPAREN, value 0, strValue ''
+        //  8 AND, value 0, strValue ''
+        //  9 VARIABLE, value 0, strValue 'wi%'
+        // 10 EQ, value 0, strValue ''
+        // 11 VARIABLE, value 0, strValue 'b%'
+        // 12 OPENPAREN, value 0, strValue ''
+        // 13 EXPRESSION, value 2, strValue ''
+        // 14 CONSTANT, value 8, strValue ''
+        // 15 CLOSEPAREN, value 0, strValue ''
+
+        //value = run_operator( run_operator( vals[ iToken + 1 ].pVariable->value,
+        //                                    vals[ iToken + 2 ].token,
+        //                                    vals[ iToken + 3 ].pVariable->array[ vals[ iToken + 6 ].value ] ),
+        //                      vals[ iToken + 8 ].token,
+        //                      run_operator( vals[ iToken + 9 ].pVariable->value,
+        //                                    vals[ iToken + 10 ].token,
+        //                                    vals[ iToken + 11 ].pVariable->array[ vals[ iToken + 14 ].value ] ) );
+
+        GenerateOp( fp, vals, iToken + 9, iToken + 11, vals[ iToken + 10 ].token, 0, iToken + 14 );
+        fprintf( fp, "    mov      rdx, rax\n" );
+
+        GenerateOp( fp, vals, iToken + 1, iToken + 3, vals[ iToken + 2 ].token, 0, iToken + 6 );
+        Token finalOp = vals[ iToken + 8 ].token;
+
+        if ( isFirstPassOperator( vals[ iToken + 8 ].token ) )
+        {
+            fprintf( fp, "    cmp     rax, rdx\n" );
+            fprintf( fp, "    %s     al\n", OperatorInstruction[ finalOp ] );
+        }
+        else
+        {
+            fprintf( fp, "    %s      rax, rdx\n", OperatorInstruction[ finalOp ] );
+        }
+    }
+    else
+    {
+        printf( "token count %d not handled\n", tokenCount );
+    }
+} //GenerateExpression
+
+void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
+{
+    CFile fileOut( fopen( outputfile, "w" ) );
+    FILE * fp = fileOut.get();
+    if ( NULL == fileOut.get() )
+    {
+        printf( "can't open output file %s\n", outputfile );
+        Usage();
+    }
+
+    fprintf( fp, "extern printf: PROC\n" );
+    fprintf( fp, "extern QueryPerformanceCounter: PROC\n" );
+    fprintf( fp, "extern QueryPerformanceFrequency: PROC\n" );
+
+#if false
+    fprintf( fp, "op_MULT   equ    11\n" );
+    fprintf( fp, "op_DIV    equ    12\n" );
+    fprintf( fp, "op_PLUS   equ    13\n" );
+    fprintf( fp, "op_MINUS  equ    14\n" );
+    fprintf( fp, "op_EQ     equ    15\n" );
+    fprintf( fp, "op_NE     equ    16\n" );
+    fprintf( fp, "op_LE     equ    17\n" );
+    fprintf( fp, "op_GE     equ    18\n" );
+    fprintf( fp, "op_LT     equ    19\n" );
+    fprintf( fp, "op_GT     equ    20\n" );
+    fprintf( fp, "op_AND    equ    21\n" );
+    fprintf( fp, "op_OR     equ    22\n" );
+    fprintf( fp, "op_XOR    equ    23\n" );
+#endif
+
+    fprintf( fp, "data_segment SEGMENT ALIGN( 4096 ) 'DATA'\n" );
+
+    for ( auto it = varmap.begin(); it != varmap.end(); it++ )
+        fprintf( fp, "    %8s DD   0\n", GenVariableName( it->first ) );
+
+    for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
+    {
+        LineOfCode & loc = g_linesOfCode[ l ];
+        vector<TokenValue> & vals = loc.tokenValues;
+
+        if ( Token::DIM == vals[ 0 ].token )
+        {
+            int cdwords = vals[ 0 ].dims[ 0 ];
+            if ( 2 == vals[ 0 ].dimensions )
+            {
+                cdwords *= vals[ 0 ].dims[ 1 ];
+                RuntimeFail( "assembly generation not supported for 2-dimensional arrays", loc.lineNumber );
+            }
+
+            fprintf( fp, "  align 16\n" );
+            fprintf( fp, "    %8s DD %d DUP (0)\n", GenVariableName( vals[ 0 ].strValue ), cdwords );
+        }
+        else if ( Token::PRINT == vals[ 0 ].token )
+        {
+            int t = 1;
+            while ( t < vals.size() )
+            {
+                if ( Token::SEMICOLON == vals[ t ].token )
+                {
+                    t++;
+                    continue;
+                }
+                else if ( Token::EXPRESSION != vals[ t ].token ) // ELSE is typical
+                {
+                    break;
+                }
+
+                assert( Token::EXPRESSION == vals[ t ].token );
+
+                if ( Token::STRING == vals[ t + 1 ].token )
+                {
+                    fprintf( fp, "  align 16\n" );
+                    fprintf( fp, "    str_%zd_%d   db  '%s', 0\n", l, t + 1, vals[ t + 1 ].strValue.c_str() );
+                }
+
+                t += vals[ t ].value;
+            }
+        }
+        else if ( Token::IF == vals[ 0 ].token )
+        {
+            for ( int t = 0; t < vals.size(); t++ )
+            {
+                if ( Token::STRING == vals[ t ].token )
+                {
+                    fprintf( fp, "  align 16\n" );
+                    fprintf( fp, "    str_%zd_%d   db  '%s', 0\n", l, t , vals[ t ].strValue.c_str() );
+                }
+            }
+        }
+    }
+
+    fprintf( fp, "  align 16\n" );
+    fprintf( fp, "    fgstacktype    db    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0\n" );
+    fprintf( fp, "    fgcount        dq    0\n" );
+    fprintf( fp, "    startTicks     dq    0\n" );
+    fprintf( fp, "    perfFrequency  dq    0\n" );
+    fprintf( fp, "    currentTicks   dq    0\n" );
+
+    fprintf( fp, "    errorString    db    'internal error', 10, 13, 0\n" );
+    fprintf( fp, "    startString    db    'running basic', 10, 13, 0\n" );
+    fprintf( fp, "    stopString     db    'done running basic', 10, 13, 0\n" );
+    fprintf( fp, "    newlineString  db    10, 13, 0\n" );
+    fprintf( fp, "    elapString     db    '%%lld microseconds (-6)', 0\n" );
+    fprintf( fp, "    intString      db    '%%d', 0\n" );
+    fprintf( fp, "    strString      db    '%%s', 0\n" );
+
+    fprintf( fp, "data_segment ENDS\n" );
+
+    fprintf( fp, "code_segment SEGMENT ALIGN( 4096 ) 'CODE'\n" );
+    fprintf( fp, "main PROC\n" );
+    fprintf( fp, "    push     rbp\n" );
+    fprintf( fp, "    mov      rbp, rsp\n" );
+    fprintf( fp, "    sub      rsp, 32 + 8 * 4\n" );
+
+    fprintf( fp, "    lea      rcx, [startString]\n" );
+    fprintf( fp, "    call     printf\n" );
+    fprintf( fp, "    lea      rcx, [startTicks]\n" );
+    fprintf( fp, "    call     QueryPerformanceCounter\n" );
+    fprintf( fp, "    lea      rcx, [perfFrequency]\n" );
+    fprintf( fp, "    call     QueryPerformanceFrequency\n" );
+
+    int forLoopsSoFar = 0;
+    static Stack<ForGosubItem> forGosubStack;
+    int activeIf = -1;
+
+    for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
+    {
+        LineOfCode & loc = g_linesOfCode[ l ];
+        vector<TokenValue> & vals = loc.tokenValues;
+        Token token = loc.firstToken;
+        int t = 0;
+
+        //printf( "on line %zd LINE %d\n", l, loc.lineNumber );
+        fprintf( fp, "  line_number_%zd:   ; ===>>> %s\n", l, loc.sourceCode.c_str() );
+
+        do  // all tokens in the line
+        {
+            //printf( "on line %zd, token %d %s\n", l, t, TokenStr( vals[ t ].token ) );
+            if ( Token::VARIABLE == token )
+            {
+                int variableToken = t;
+                t++;
+    
+                if ( Token::EQ == vals[ t ].token )
+                {
+                    t++;
+    
+                    assert( Token::EXPRESSION == vals[ t ].token );
+
+                    if ( Token::CONSTANT == vals[ t + 1 ].token )
+                    {
+                        fprintf( fp, "    mov      DWORD PTR [%s], %d\n", GenVariableName( vals[ variableToken ].strValue ),
+                                 vals[ t + 1 ].value );
+                    }
+                    else
+                    {
+                        GenerateExpression( fp, t, vals );
+                        fprintf( fp, "    mov      DWORD PTR [%s], eax\n", GenVariableName( vals[ variableToken ].strValue ) );
+                    }
+
+                    t += vals[ t ].value;
+                }
+                else if ( Token::OPENPAREN == vals[ t ].token )
+                {
+                    t++;
+                    assert( Token::EXPRESSION == vals[ t ].token );
+                    GenerateExpression( fp, t, vals );
+                    t += vals[ t ].value;
+    
+                    t += 2; // ) =
+    
+                    fprintf( fp, "    shl      rax, 2\n" );
+                    fprintf( fp, "    lea      rbx, [%s]\n", GenVariableName( vals[ variableToken ].strValue ) );
+                    fprintf( fp, "    add      rbx, rax\n" );
+    
+                    assert( Token::EXPRESSION == vals[ t ].token );
+
+                    if ( Token::CONSTANT == vals[ t + 1 ].token )
+                    {
+                        fprintf( fp, "    mov      DWORD PTR [rbx], %d\n", vals[ t + 1 ].value );
+                    }
+                    else
+                    {
+                        GenerateExpression( fp, t, vals );
+                        fprintf( fp, "    mov      DWORD PTR [rbx], eax\n" );
+                    }
+
+                    t += vals[ t ].value;
+                }
+
+                if ( t == vals.size() )
+                    break;
+            }
+            else if ( Token::END == token )
+            {
+                fprintf( fp, "    jmp      end_execution\n" );
+                break;
+            }
+            else if ( Token::FOR == token )
+            {
+                fprintf( fp, "    mov      [%s], %d\n", GenVariableName( vals[ t ].strValue.c_str() ), vals[ t + 2 ].value );
+                fprintf( fp, "    lea      rbx, [fgstacktype]\n" );
+                fprintf( fp, "    mov      rcx, [fgcount]\n" );
+                fprintf( fp, "    mov      BYTE PTR [rbx + rcx], 1\n" );
+                fprintf( fp, "    inc      [fgcount]\n" );
+    
+                ForGosubItem item( true, l );
+                forGosubStack.push( item );
+    
+                fprintf( fp, "  for_loop_%zd:\n", l );
+                fprintf( fp, "    cmp      [%s], %d\n", GenVariableName( vals[ t ].strValue.c_str() ), vals[ t + 4 ].value );
+                fprintf( fp, "    jg       after_for_loop_%zd\n", l );
+                break;
+            }
+            else if ( Token::NEXT == token )
+            {
+                fprintf( fp, "    cmp      [fgcount], 0\n" );
+                fprintf( fp, "    je       error_exit\n" );
+    
+                if ( 0 == forGosubStack.size() )
+                    RuntimeFail( "next without for", l );
+    
+                ForGosubItem & item = forGosubStack.top();
+    
+                fprintf( fp, "    inc      [%s]\n", GenVariableName( g_linesOfCode[ item.pcReturn ].tokenValues[ t ].strValue ) );
+                fprintf( fp, "    jmp      for_loop_%d\n", item.pcReturn );
+                fprintf( fp, "  after_for_loop_%d:\n", item.pcReturn );
+                fprintf( fp, "    dec      [fgcount]\n" );
+    
+                forGosubStack.pop();
+                break;
+            }
+            else if ( Token::GOSUB == token )
+            {
+                fprintf( fp, "    lea      rbx, [fgstacktype]\n" );
+                fprintf( fp, "    mov      rcx, [fgcount]\n" );
+                fprintf( fp, "    mov      BYTE PTR [rbx + rcx], 0\n" );
+                fprintf( fp, "    inc      [fgcount]\n" );
+    
+                fprintf( fp, "    call      line_number_%d\n", vals[ t ].value );
+                fprintf( fp, "  after_gosub%zd:\n", l );
+                break;
+            }
+            else if ( Token::GOTO == token )
+            {
+                fprintf( fp, "    jmp      line_number_%d\n", vals[ t ].value );
+                break;
+            }
+            else if ( Token::RETURN == token )
+            {
+                fprintf( fp, "    cmp      [fgcount], 0\n" );
+                fprintf( fp, "    je       error_exit\n" );
+    
+                // remove any active FOR loops when a return is executed
+
+                fprintf( fp, "    lea      rbx, [fgstacktype]\n" );
+                fprintf( fp, "  return_statement_%zd:\n", l );
+                fprintf( fp, "    mov      rcx, [fgcount]\n" );
+                fprintf( fp, "    dec      [fgcount]\n" );
+                fprintf( fp, "    cmp      BYTE PTR [rbx + rcx], 1\n" );
+                fprintf( fp, "    je       return_statement_%zd\n", l );  // remove the "for" from the stack
+    
+                fprintf( fp, "    ret\n", vals[ t ].value );
+                break;
+            }
+            else if ( Token::PRINT == token )
+            {
+                t++;
+    
+                while ( t < vals.size() )
+                {
+                    if ( Token::SEMICOLON == vals[ t ].token )
+                    {
+                        t++;
+                        continue;
+                    }
+                    else if ( Token::ELSE == vals[ t ].token )
+                        break;
+                    else if ( Token::EXPRESSION != vals[ t ].token )
+                        break;
+    
+                    assert( Token::EXPRESSION == vals[ t ].token );
+    
+                    if ( Token::STRING == vals[ t + 1 ].token )
+                    {
+                        fprintf( fp, "    lea      rcx, [strString]\n" );
+                        fprintf( fp, "    lea      rdx, [str_%zd_%d]\n", l, t + 1 );
+                        fprintf( fp, "    call     call_printf\n" );
+                    }
+                    else if ( Token::ELAP == vals[ t + 1 ].token )
+                    {
+                        fprintf( fp, "    lea      rcx, [currentTicks]\n" );
+                        fprintf( fp, "    call     call_QueryPerformanceCounter\n" );
+                        fprintf( fp, "    mov      rax, [currentTicks]\n" );
+                        fprintf( fp, "    sub      rax, [startTicks]\n" );
+                        fprintf( fp, "    mov      rcx, [perfFrequency]\n" );
+                        fprintf( fp, "    xor      rdx, rdx\n" );
+                        fprintf( fp, "    mov      rbx, 1000000\n" );
+                        fprintf( fp, "    mul      rbx\n" );
+                        fprintf( fp, "    div      rcx\n" );
+
+                        fprintf( fp, "    lea      rcx, [elapString]\n" );
+                        fprintf( fp, "    mov      rdx, rax\n" );
+                        fprintf( fp, "    call     call_printf\n" );
+                    }
+                    else if ( Token::CONSTANT == vals[ t + 1 ].token ||
+                              Token::VARIABLE == vals[ t + 1 ].token )
+                    {
+                        assert( Token::EXPRESSION == vals[ t ].token );
+                        GenerateExpression( fp, t, vals );
+                        fprintf( fp, "    lea      rcx, [intString]\n" );
+                        fprintf( fp, "    mov      rdx, rax\n" );
+                        fprintf( fp, "    call     call_printf\n" );
+                    }
+    
+                    t += vals[ t ].value;
+                }
+    
+                fprintf( fp, "    lea      rcx, [newlineString]\n" );
+                fprintf( fp, "    call     call_printf\n" );
+                if ( t == vals.size() )
+                    break;
+            }
+            else if ( Token::ATOMIC == token )
+            {
+                if ( Token::INC == vals[ t + 1 ].token )
+                    fprintf( fp, "    inc      DWORD PTR [%s]\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                else
+                    fprintf( fp, "    dec      DWORD PTR [%s]\n", GenVariableName( vals[ t + 1 ].strValue ) );
+
+                break;
+            }
+            else if ( Token::IF == token )
+            {
+                int ifToken = t;
+                activeIf = l;
+    
+                t++;
+                assert( Token::EXPRESSION == vals[ t ].token );
+                GenerateExpression( fp, t, vals );
+                t += vals[ t ].value;
+                assert( Token::THEN == vals[ t ].token );
+                t++;
+    
+                fprintf( fp, "    cmp      rax, 0\n" );
+    
+                if ( vals[ t - 1 ].value ) // is there an else clause?
+                    fprintf( fp, "    je       label_else_%zd\n", l );
+                else
+                {
+                    if ( false && Token::GOTO == vals[ t ].token )
+                    {
+                        // this is somehow slower!
+
+                        fprintf( fp, "    jne      line_number_%d\n", vals[ t ].value );
+                        t++;
+                        break;
+                    }
+                    else
+                    {
+                        fprintf( fp, "    je       line_number_%zd\n", l + 1 );
+                    }
+                }
+            }
+            else if ( Token::ELSE == token )
+            {
+                assert( -1 != activeIf );
+                fprintf( fp, "    jmp      line_number_%zd\n", l + 1 );
+                fprintf( fp, "  label_else_%d:\n", activeIf );
+                activeIf = -1;
+                t++;
+            }
+            else
+            {
+                break;
+            }
+
+            token = vals[ t ].token;
+        } while( true );
+
+        if ( -1 != activeIf )
+            activeIf = -1;
+    }
+
+    fprintf( fp, "  error_exit:\n" );
+    fprintf( fp, "    lea      rcx, [errorString]\n" );
+    fprintf( fp, "    call     printf\n" );
+    fprintf( fp, "    jmp      leave_execution\n" );
+
+    fprintf( fp, "  end_execution:\n" );
+    fprintf( fp, "    lea      rcx, [stopString]\n" );
+    fprintf( fp, "    call     printf\n" );
+
+    fprintf( fp, "  leave_execution:\n" );
+    fprintf( fp, "    xor      rax, rax\n" );
+    fprintf( fp, "    leave\n" );
+    fprintf( fp, "    ret\n" );
+    fprintf( fp, "main ENDP\n" );
+
+    // this is required to setup stack frame spill locations for printf when in a gosub/return statement
+
+    fprintf( fp, "align 16\n" );
+    fprintf( fp, "call_printf PROC\n" );
+    fprintf( fp, "    push     rbp\n" );
+    fprintf( fp, "    mov      rbp, rsp\n" );
+    fprintf( fp, "    sub      rsp, 32\n" );
+    fprintf( fp, "    call     printf\n" );
+    fprintf( fp, "    leave\n" );
+    fprintf( fp, "    ret\n" );
+    fprintf( fp, "call_printf ENDP\n" );
+
+    fprintf( fp, "align 16\n" );
+    fprintf( fp, "call_QueryPerformanceCounter PROC\n" );
+    fprintf( fp, "    push     rbp\n" );
+    fprintf( fp, "    mov      rbp, rsp\n" );
+    fprintf( fp, "    sub      rsp, 32\n" );
+    fprintf( fp, "    call     QueryPerformanceCounter\n" );
+    fprintf( fp, "    leave\n" );
+    fprintf( fp, "    ret\n" );
+    fprintf( fp, "call_QueryPerformanceCounter ENDP\n" );
+
+#if false
+    // operator function
+
+    fprintf( fp, "align 16\n" );
+    fprintf( fp, "run_operator PROC\n" );
+
+    // eq and ne gt lt ge le
+
+    fprintf( fp, "    xor      rax, rax\n" );
+
+    fprintf( fp, "    cmp      rdx, op_EQ\n" );
+    fprintf( fp, "    jne      op_test_AND\n" );
+    fprintf( fp, "    cmp      rcx, r8\n" );
+    fprintf( fp, "    sete     al\n" );
+    fprintf( fp, "    ret\n" );
+
+    fprintf( fp, "  op_test_AND:\n" );
+    fprintf( fp, "    cmp      rdx, op_AND\n" );
+    fprintf( fp, "    jne      op_test_NE\n" );
+    fprintf( fp, "    and      rcx, r8\n" );
+    fprintf( fp, "    mov      rax, rcx\n" );
+    fprintf( fp, "    ret\n" );
+
+    fprintf( fp, "  op_test_NE:\n" );
+    fprintf( fp, "    cmp      rdx, op_NE\n" );
+    fprintf( fp, "    jne      op_test_GT\n" );
+    fprintf( fp, "    cmp      rcx, r8\n" );
+    fprintf( fp, "    setne    al\n" );
+    fprintf( fp, "    ret\n" );
+
+    fprintf( fp, "  op_test_GT:\n" );
+    fprintf( fp, "    cmp      rdx, op_GT\n" );
+    fprintf( fp, "    jne      op_test_LT\n" );
+    fprintf( fp, "    cmp      rcx, r8\n" );
+    fprintf( fp, "    setg     al\n" );
+    fprintf( fp, "    ret\n" );
+
+    fprintf( fp, "  op_test_LT:\n" );
+    fprintf( fp, "    cmp      rdx, op_LT\n" );
+    fprintf( fp, "    jne      op_test_GE\n" );
+    fprintf( fp, "    cmp      rcx, r8\n" );
+    fprintf( fp, "    setl     al\n" );
+    fprintf( fp, "    ret\n" );
+
+    fprintf( fp, "  op_test_GE:\n" );
+    fprintf( fp, "    cmp      rdx, op_GE\n" );
+    fprintf( fp, "    jne      op_test_LE\n" );
+    fprintf( fp, "    cmp      rcx, r8\n" );
+    fprintf( fp, "    setge    al\n" );
+    fprintf( fp, "    ret\n" );
+
+    fprintf( fp, "  op_test_LE:\n" );
+    fprintf( fp, "    cmp      rdx, op_LE\n" );
+    fprintf( fp, "    jne      op_test_finished\n" );
+    fprintf( fp, "    cmp      rcx, r8\n" );
+    fprintf( fp, "    setle    al\n" );
+    fprintf( fp, "    ret\n" );
+
+    fprintf( fp, "  op_test_finished:\n" );
+    fprintf( fp, "    ret\n" );
+    fprintf( fp, "run_operator ENDP\n" );
+#endif
+
+    // end of the code segment and program
+
+    fprintf( fp, "code_segment ENDS\n" );
+    fprintf( fp, "END\n" );
+
+    printf( "created assembler file %s\n", outputfile );
+} //GenerateASM
+
 extern int main( int argc, char *argv[] )
 {
     steady_clock::time_point timeAppStart = steady_clock::now();
@@ -1756,7 +2434,9 @@ extern int main( int argc, char *argv[] )
     bool executeCode = true;
     bool showExecutionTime = false;
     bool showParseTime = false;
+    bool generateASM = false;
     static char inputfile[ 300 ] = {0};
+    static char asmfile[ 300 ] = {0};
 
     for ( int i = 1; i < argc; i++ )
     {
@@ -1767,7 +2447,9 @@ extern int main( int argc, char *argv[] )
 
         if ( '-' == c0 || '/' == c0 )
         {
-            if ( 'e' == c1 )
+            if ( 'a' == c1 )
+                generateASM = true;
+            else if ( 'e' == c1 )
                 showExecutionTime = true;
             else if ( 'l' == c1 )
                 showListing = true;
@@ -1798,7 +2480,7 @@ extern int main( int argc, char *argv[] )
     CFile fileInput( fopen( inputfile, "rb" ) );
     if ( NULL == fileInput.get() )
     {
-        printf( "can't open file %s\n", inputfile );
+        printf( "can't open input file %s\n", inputfile );
         Usage();
     }
 
@@ -1858,7 +2540,7 @@ extern int main( int argc, char *argv[] )
             if ( Token::INVALID == token )
                 Fail( "invalid token", fileLine, 0, line );
 
-            LineOfCode loc( lineNum );
+            LineOfCode loc( lineNum, line );
             g_linesOfCode.push_back( loc );
 
             TokenValue tokenValue( token );
@@ -2051,6 +2733,17 @@ extern int main( int argc, char *argv[] )
         long long durationParse = duration_cast<std::chrono::nanoseconds>( timeParseComplete - timeAppStart ).count();
         double parseInMS = (double) durationParse / 1000000.0;
         printf( "Time to parse %s: %lf ms\n", inputfile, parseInMS );
+    }
+
+    if ( generateASM )
+    {
+        strcpy( asmfile, inputfile );
+        char * dot = strrchr( asmfile, '.' );
+        if ( !dot )
+            dot = asmfile + strlen( asmfile );
+        strcpy( dot, ".asm" );
+
+        GenerateASM( asmfile, varmap );
     }
 
     if ( !executeCode )
