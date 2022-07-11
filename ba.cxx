@@ -1839,8 +1839,7 @@ void GenerateExpression( FILE *fp, int iToken, vector<TokenValue> & vals )
     
             fprintf( fp, "    lea      rdx, [%s]\n", GenVariableName( vals[ iToken + 1 ].strValue ) );
             fprintf( fp, "    shl      rax, 2\n" );
-            fprintf( fp, "    add      rax, rdx\n" );
-            fprintf( fp, "    mov      eax, [rax]\n" );
+            fprintf( fp, "    mov      eax, [rax + rdx]\n" );
         }
     }
     else if ( 4 == tokenCount )
@@ -1974,33 +1973,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
             fprintf( fp, "  align 16\n" );
             fprintf( fp, "    %8s DD %d DUP (0)\n", GenVariableName( vals[ 0 ].strValue ), cdwords );
         }
-        else if ( Token::PRINT == vals[ 0 ].token )
-        {
-            int t = 1;
-            while ( t < vals.size() )
-            {
-                if ( Token::SEMICOLON == vals[ t ].token )
-                {
-                    t++;
-                    continue;
-                }
-                else if ( Token::EXPRESSION != vals[ t ].token ) // ELSE is typical
-                {
-                    break;
-                }
-
-                assert( Token::EXPRESSION == vals[ t ].token );
-
-                if ( Token::STRING == vals[ t + 1 ].token )
-                {
-                    fprintf( fp, "  align 16\n" );
-                    fprintf( fp, "    str_%zd_%d   db  '%s', 0\n", l, t + 1, vals[ t + 1 ].strValue.c_str() );
-                }
-
-                t += vals[ t ].value;
-            }
-        }
-        else if ( Token::IF == vals[ 0 ].token )
+        else if ( Token::PRINT == vals[ 0 ].token || Token::IF == vals[ 0 ].token )
         {
             for ( int t = 0; t < vals.size(); t++ )
             {
@@ -2014,7 +1987,8 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
     }
 
     fprintf( fp, "  align 16\n" );
-    fprintf( fp, "    fgstacktype    db    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0\n" );
+    fprintf( fp, "    fgstacktype    db 128 DUP(0)\n" ); // for / gosub stack 128 deep
+    fprintf( fp, "  align 16\n" );
     fprintf( fp, "    fgcount        dq    0\n" );
     fprintf( fp, "    startTicks     dq    0\n" );
     fprintf( fp, "    perfFrequency  dq    0\n" );
@@ -2043,7 +2017,6 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
     fprintf( fp, "    lea      rcx, [perfFrequency]\n" );
     fprintf( fp, "    call     QueryPerformanceFrequency\n" );
 
-    int forLoopsSoFar = 0;
     static Stack<ForGosubItem> forGosubStack;
     int activeIf = -1;
 
@@ -2148,6 +2121,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
     
                 fprintf( fp, "    inc      [%s]\n", GenVariableName( g_linesOfCode[ item.pcReturn ].tokenValues[ t ].strValue ) );
                 fprintf( fp, "    jmp      for_loop_%d\n", item.pcReturn );
+                fprintf( fp, "    align    16\n" );
                 fprintf( fp, "  after_for_loop_%d:\n", item.pcReturn );
                 fprintf( fp, "    dec      [fgcount]\n" );
     
@@ -2162,7 +2136,6 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
                 fprintf( fp, "    inc      [fgcount]\n" );
     
                 fprintf( fp, "    call      line_number_%d\n", vals[ t ].value );
-                fprintf( fp, "  after_gosub%zd:\n", l );
                 break;
             }
             else if ( Token::GOTO == token )
@@ -2182,7 +2155,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
                 fprintf( fp, "    mov      rcx, [fgcount]\n" );
                 fprintf( fp, "    dec      [fgcount]\n" );
                 fprintf( fp, "    cmp      BYTE PTR [rbx + rcx], 1\n" );
-                fprintf( fp, "    je       return_statement_%zd\n", l );  // remove the "for" from the stack
+                fprintf( fp, "    je       SHORT return_statement_%zd\n", l );  // remove the "for" from the stack
     
                 fprintf( fp, "    ret\n", vals[ t ].value );
                 break;
@@ -2198,9 +2171,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
                         t++;
                         continue;
                     }
-                    else if ( Token::ELSE == vals[ t ].token )
-                        break;
-                    else if ( Token::EXPRESSION != vals[ t ].token )
+                    else if ( Token::EXPRESSION != vals[ t ].token ) // likely ELSE
                         break;
     
                     assert( Token::EXPRESSION == vals[ t ].token );
@@ -2290,6 +2261,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
             {
                 assert( -1 != activeIf );
                 fprintf( fp, "    jmp      line_number_%zd\n", l + 1 );
+                fprintf( fp, "    align    16\n" );
                 fprintf( fp, "  label_else_%d:\n", activeIf );
                 activeIf = -1;
                 t++;
