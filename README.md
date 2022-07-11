@@ -48,14 +48,23 @@ The BA version is faster than Python even when Python is using function pointers
 
 I'm not really proud of BA -- it was a very quickly written hack. But it shows that Python could benefit from some performance work.
 
+I added minimal support in BA to compile BASIC apps to .asm files which can then be assembled into a .exe file. It's not deeply tested
+yet and doesn't support arrays with more than 1 dimension. But it works for ttt_1dim.bas. Use the -a flag in BA
+to generate the .asm file, and ma.bat to create the .exe. For example:
+
+    ba ttt_1dim.bas /x /a
+    ma ttt_1dim
+    ttt_1dim.exe
+    
+The compiler generates code that's 10x faster than the interpreter and between 2-3x slower than real compilers.
+
 To build BA:
 
     On Windows in CMD with Visual Studio's vcvars64.bat use m.bat (for retail) or mdbg (for debug).
     On Linux with gnu: g++ -DNDEBUG ba.cxx -o ba -O3
     On Linux with clang: "c:\program files\llvm\bin\clang++.exe" ba.cxx -D_CRT_SECURE_NO_WARNINGS -DNDEBUG -o ba.exe -O3 -Ofast
     On a Mac: mmac.sh or this: clang++ ba.cxx -DNDEBUG -o ba -O3 -std=c++11
-
-![image](https://user-images.githubusercontent.com/1497921/178153414-397290c5-c575-4c5a-a3ca-8b09ed82b2af.png)
-
+					
+![image](https://user-images.githubusercontent.com/1497921/178324136-dd93dbfb-b286-49a6-97da-1c158f54b98d.png)
 
 
