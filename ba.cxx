@@ -129,10 +129,10 @@ __makeinline bool isTokenStatement( Token t )
     return ( t >= Token::VARIABLE && t <= Token::END );
 } //isTokenStatement
 
-__makeinline bool isFirstPassOperator( Token t )
+__makeinline bool isRelationalOperator( Token t )
 {
     return ( t >= Token::EQ && t <= Token::GT );
-} //isFirstPassOperator
+} //isRelationalOperator
 
 __makeinline bool FailsRangeCheck( int offset, size_t high )
 {
@@ -391,6 +391,12 @@ Token readTokenInner( const char * p, int & len )
         return Token::MINUS;
     }
 
+    if ( '^' == *p )
+    {
+        len = 1;
+        return Token::XOR;
+    }
+
     if ( isDigit( *p ) )
     {
         len = (int) ( pastNum( p ) - p );
@@ -491,9 +497,6 @@ Token readTokenInner( const char * p, int & len )
 
         if ( !_strnicmp( p, "END", 3 ) )
            return Token::END;
-
-        if ( !_strnicmp( p, "XOR", 3 ) )
-            return Token::XOR;
 
         if ( isAlpha( *p ) && isAlpha( * ( p + 1 ) ) && ( '%' == * ( p + 2 ) ) )
            return Token::VARIABLE;
@@ -1118,7 +1121,7 @@ __makeinline int Eval( int * explist, int expcount )
         explist[ 0 ] = explist[ 0 ] & explist[ 4 ];
     }
     else
-#endif
+#endif //EXPRESSION_OPTIMIZATIONS
     {
         // BASIC doesn't distinguish between logical and bitwise operators. they are the same.
 
@@ -1167,6 +1170,9 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
 
         Variable *pvar = vals[ iToken + 1 ].pVariable;
 
+        if ( 0 == pvar )
+            RuntimeFail( "array used without prior DIM statement", g_lineno );
+
         if ( 1 != pvar->dimensions ) // can't be > 1 or tokenCount would be greater
             RuntimeFail( "scalar variable used as an array", g_lineno );
 
@@ -1193,8 +1199,8 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
               Token::VARIABLE == vals[ iToken + 9 ].token &&
               Token::OPENPAREN == vals[ iToken + 12 ].token &&
               Token::CONSTANT == vals[ iToken + 14 ].token &&
-              isFirstPassOperator( vals[ iToken + 2 ].token ) &&
-              isFirstPassOperator( vals[ iToken + 10 ].token ) )
+              isRelationalOperator( vals[ iToken + 2 ].token ) &&
+              isRelationalOperator( vals[ iToken + 10 ].token ) )
     {
         //  0 EXPRESSION, value 16, strValue ''
         //  1 VARIABLE, value 0, strValue 'wi%'
@@ -1246,7 +1252,7 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
         }
     }
     else
-#endif
+#endif //EXPRESSION_OPTIMIZATIONS
     {
         // arbitrary expression cases
 
@@ -1716,6 +1722,34 @@ void OptimizeWithRewrites( bool showListing )
             rewritten = true;
         }
 
+        // IF VARIABLE = 0  =============>  IF NOT VARIABLE
+        // 2410 has 7 tokens
+        //   token   0 IF, value 0, strValue ''
+        //   token   1 EXPRESSION, value 4, strValue ''
+        //   token   2 VARIABLE, value 0, strValue 'wi%'
+        //   token   3 EQ, value 0, strValue ''
+        //   token   4 CONSTANT, value 0, strValue ''
+        //   token   5 THEN, value 0, strValue ''
+        //   token   6 GOTO, value 2500, strValue ''
+
+        else if ( 7 == vals.size() &&
+                  Token::IF == vals[ 0 ].token &&
+                  Token::EXPRESSION == vals[ 1 ].token &&
+                  4 == vals[ 1 ].value &&
+                  Token::VARIABLE == vals[ 2 ].token &&
+                  Token::EQ == vals[ 3 ].token &&
+                  Token::CONSTANT == vals[ 4 ].token &&
+                  0 == vals[ 4 ].value )
+        {
+            vals[ 3 ] = vals[ 2 ];
+            vals[ 2 ].token = Token::NOT;
+            vals[ 2 ].strValue = "";
+            vals[ 1 ].value = 3;
+            vals.erase( vals.begin() + 4 );
+
+            rewritten = true;
+        }
+
         if ( showListing && rewritten )
         {
             printf( "line rewritten as:\n" );
@@ -1763,15 +1797,27 @@ const char * GenVariableName( string s )
 
 void GenerateOp( FILE * fp, vector<TokenValue> & vals, int left, int right, Token op, int leftArray = 0, int rightArray = 0 )
 {
-   if ( Token::CONSTANT == vals[ left ].token )
-       fprintf( fp, "    mov      eax, %d\n", vals[ left ].value );
-   else if ( 0 == vals[ left ].dimensions )
-       fprintf( fp, "    mov      eax, DWORD PTR [%s]\n", GenVariableName( vals[ left ].strValue ) );
-   else
-       fprintf( fp, "    mov      eax, DWORD PTR [%s + %d]\n", GenVariableName( vals[ left ].strValue ),
-                4 * vals[ leftArray ].value );
+    // optimize this typical case to save a mov
 
-    if ( isFirstPassOperator( op ) )
+    if ( Token::VARIABLE == vals[ left ].token &&
+         0 == vals[ left ].dimensions &&
+         isRelationalOperator( op ) &&
+         Token::CONSTANT == vals[ right ].token )
+    {
+        fprintf( fp, "    cmp      DWORD PTR [%s], %d\n", GenVariableName( vals[ left ].strValue ), vals[ right ].value );
+        fprintf( fp, "    %s      al\n", OperatorInstruction[ op ] );
+        return;
+    }
+
+    if ( Token::CONSTANT == vals[ left ].token )
+        fprintf( fp, "    mov      eax, %d\n", vals[ left ].value );
+    else if ( 0 == vals[ left ].dimensions )
+        fprintf( fp, "    mov      eax, DWORD PTR [%s]\n", GenVariableName( vals[ left ].strValue ) );
+    else
+        fprintf( fp, "    mov      eax, DWORD PTR [%s + %d]\n", GenVariableName( vals[ left ].strValue ),
+                 4 * vals[ leftArray ].value );
+
+    if ( isRelationalOperator( op ) )
     {
         // relational
 
@@ -1787,26 +1833,139 @@ void GenerateOp( FILE * fp, vector<TokenValue> & vals, int left, int right, Toke
     }
     else
     {
-        // mathematical
+        // arithmetic
 
-        if ( Token::CONSTANT == vals[ right ].token )
-            fprintf( fp, "    %s      eax, %d\n", OperatorInstruction[ op ], vals[ right ].value );
-        else if ( 0 == vals[ right ].dimensions )
-            fprintf( fp, "    %s      eax, DWORD PTR [%s]\n", OperatorInstruction[ op ], GenVariableName( vals[ right ].strValue ) );
+        if ( Token::DIV == op )
+        {
+            fprintf( fp, "    xor      rdx, rdx\n" );
+
+            if ( Token::CONSTANT == vals[ right ].token )
+                fprintf( fp, "    mov      rsi, %d\n", vals[ right ].value );
+            else if ( 0 == vals[ right ].dimensions )
+                fprintf( fp, "    mov      rsi, DWORD PTR [%s]\n", GenVariableName( vals[ right ].strValue ) );
+            else
+                fprintf( fp, "    mov      rsi, DWRD PTR [%s + %d]\n", GenVariableName( vals[ right ].strValue ),
+                         4 * vals[ rightArray ].value );
+
+            fprintf( fp, "    idiv     rsi\n" );
+        }
         else
-            fprintf( fp, "    %s      eax, DWORD PTR [%s + %d]\n", OperatorInstruction[ op ], GenVariableName( vals[ right ].strValue ),
-                     4 * vals[ rightArray ].value );
+        {
+            if ( Token::CONSTANT == vals[ right ].token )
+                fprintf( fp, "    %s      eax, %d\n", OperatorInstruction[ op ], vals[ right ].value );
+            else if ( 0 == vals[ right ].dimensions )
+                fprintf( fp, "    %s      eax, DWORD PTR [%s]\n", OperatorInstruction[ op ], GenVariableName( vals[ right ].strValue ) );
+            else
+                fprintf( fp, "    %s      eax, DWORD PTR [%s + %d]\n", OperatorInstruction[ op ], GenVariableName( vals[ right ].strValue ),
+                         4 * vals[ rightArray ].value );
+        }
     }
 } //GenerateOp
 
-void GenerateExpression( FILE *fp, int iToken, vector<TokenValue> & vals )
+int GenerateReduce( FILE * fp, int precedence, int * explist, int expcount )
 {
-    // generate code to put the resulting express in rax
+    if ( EnableTracing && g_Tracing )
+    {
+        printf( "    Reduce before precedence %d count %d ==", precedence, expcount );
+        for ( int j = 0; j < expcount; j++ )
+            if ( j & 1 )
+                printf( " %s(%d)", TokenStr( (Token) explist[ j ] ), explist[ j ] );
+            else
+                printf( " %#x", explist[ j ] );
+        printf( "\n" );
+    }
+
+    int i = 1;
+    while ( i < expcount )
+    {
+        Token op = (Token) explist[ i ];
+        assert( isTokenOperator( op ) );
+
+        if ( precedence == OperatorPrecedence[ op ] )
+        {
+            fprintf( fp, "    mov      eax, DWORD PTR [ r10 + %d ]\n", 4 * ( i - 1 ) );
+
+            if ( isRelationalOperator( (Token) explist[ i ] ) )
+            {
+                fprintf( fp, "    cmp      eax, DWORD PTR [ r10 + %d ]\n", 4 * ( i + 1 ) );
+                fprintf( fp, "    %s      al\n", OperatorInstruction[ op ] );
+            }
+            else
+            {
+                if ( Token::DIV == op )
+                {
+                    fprintf( fp, "    xor      rdx, rdx\n" );
+                    fprintf( fp, "    mov      rsi, DWORD PTR [ r10 + %d ]\n",  4 * ( i + 1 ) );
+                    fprintf( fp, "    idiv     rsi\n" );
+                }
+                else
+                {
+                    fprintf( fp, "    %s      eax, DWORD PTR [ r10 + %d ]\n", OperatorInstruction[ op ], 4 * ( i + 1 ) );
+                }
+            }
+
+            fprintf( fp, "    mov      DWORD PTR [ r10 + %d ], eax\n", 4 * ( i - 1 ) );
+
+            if ( expcount > 3 )
+            {
+                fprintf( fp, "; reduce memcpy...\n" );
+                fprintf( fp, "    mov      DWORD PTR [ r10 + %d ], eax\n",  4 * ( i - 1 ) );
+                fprintf( fp, "    lea      rcx, [ r10 + %d ]\n", 4 * i );
+                fprintf( fp, "    lea      rdx, [ r10 + %d ]\n", 4 * ( 2 + i ) );
+                fprintf( fp, "    mov      r8, %zd\n", sizeof( int ) * ( expcount - 3 ) );
+                fprintf( fp, "    call     call_memmove\n" );
+                memmove( &explist[ i ], &explist[ i + 2 ], sizeof( int ) * ( expcount - 3 ) );
+            }
+            expcount -= 2;
+        }
+        else
+            i += 2;
+    }
+
+    if ( EnableTracing && g_Tracing )
+    {
+        printf( "    Reduce after precedence %d count %d == ", precedence, expcount );
+        for ( int j = 0; j < expcount; j++ )
+            if ( j & 1 )
+                printf( " %s(%d)", TokenStr( (Token) explist[ j ] ), explist[ j ] );
+            else
+                printf( " %#x", explist[ j ] );
+        printf( "\n" );
+    }
+
+    return expcount;
+} //GenerateReduce
+
+void GenerateEval( FILE * fp, int * explist, int expcount )
+{
+    // BASIC doesn't distinguish between logical and bitwise operators. they are the same.
+
+    if ( 1 == expcount )
+        fprintf( fp, "    mov      eax, DWORD PTR [ r10 ]\n" );
+    else
+    {
+        expcount = GenerateReduce( fp, 0, explist, expcount );   // * /
+        expcount = GenerateReduce( fp, 1, explist, expcount );   // + -
+        expcount = GenerateReduce( fp, 2, explist, expcount );   // > >= <= < = <>
+        expcount = GenerateReduce( fp, 3, explist, expcount );   // and or xor
+    }
+
+    assert( 1 == expcount );
+} //GenerateEval
+
+void GenerateExpression( FILE * fp, int iToken, vector<TokenValue> & vals, int expOffset = 0 )
+{
+    // generate code to put the resulting expression in rax
     // only modifies rax and rdx (without saving them)
 
     assert( Token::EXPRESSION == vals[ iToken ].token );
     int tokenCount = vals[ iToken ].value;
 
+    if ( EnableTracing && g_Tracing )
+        printf( "  GenerateExpression token %d, which is %s, length %d\n",
+                iToken, TokenStr( vals[ iToken ].token ), vals[ iToken ].value );
+
+#ifdef EXPRESSION_OPTIMIZATIONS
     if ( 2 == tokenCount )
     {
         if ( Token::CONSTANT == vals[ iToken + 1 ].token )
@@ -1859,9 +2018,10 @@ void GenerateExpression( FILE *fp, int iToken, vector<TokenValue> & vals )
         }
         else
         {
-            fprintf( fp, "    xor      rax, rax\n" );
-            fprintf( fp, "    mov      edx, [%s]\n", GenVariableName( vals[ iToken + 2 ].strValue ) );
-            fprintf( fp, "    sub      rax, edx\n" );
+            assert( Token::MINUS == vals[ iToken + 1 ].token );
+
+            fprintf( fp, "    mov      eax, [%s]\n", GenVariableName( vals[ iToken + 2 ].strValue ) );
+            fprintf( fp, "    neg      rax\n" );
         }
     }
     else if ( 16 == tokenCount &&
@@ -1871,8 +2031,8 @@ void GenerateExpression( FILE *fp, int iToken, vector<TokenValue> & vals )
               Token::VARIABLE == vals[ iToken + 9 ].token &&
               Token::OPENPAREN == vals[ iToken + 12 ].token &&
               Token::CONSTANT == vals[ iToken + 14 ].token &&
-              isFirstPassOperator( vals[ iToken + 2 ].token ) &&
-              isFirstPassOperator( vals[ iToken + 10 ].token ) )
+              isRelationalOperator( vals[ iToken + 2 ].token ) &&
+              isRelationalOperator( vals[ iToken + 10 ].token ) )
     {
         //  0 EXPRESSION, value 16, strValue ''
         //  1 VARIABLE, value 0, strValue 'wi%'
@@ -1903,9 +2063,9 @@ void GenerateExpression( FILE *fp, int iToken, vector<TokenValue> & vals )
         fprintf( fp, "    mov      rdx, rax\n" );
 
         GenerateOp( fp, vals, iToken + 1, iToken + 3, vals[ iToken + 2 ].token, 0, iToken + 6 );
-        Token finalOp = vals[ iToken + 8 ].token;
 
-        if ( isFirstPassOperator( vals[ iToken + 8 ].token ) )
+        Token finalOp = vals[ iToken + 8 ].token;
+        if ( isRelationalOperator( finalOp ) )
         {
             fprintf( fp, "    cmp     rax, rdx\n" );
             fprintf( fp, "    %s     al\n", OperatorInstruction[ finalOp ] );
@@ -1916,8 +2076,224 @@ void GenerateExpression( FILE *fp, int iToken, vector<TokenValue> & vals )
         }
     }
     else
+#endif //EXPRESSION_OPTIMIZATIONS
     {
-        printf( "token count %d not handled\n", tokenCount );
+        // This generates some pretty terrible code; at least 3x slower than it should be.
+        // Also, constant expressions aren't collapsed.
+        // Operators are stored in generated code for no reason.
+        // Filler values are stored in the compiler for no reason.
+
+        // r10 == pointer to explist for this stack frame
+        // r12 == pointer to where the next value / operator goes
+
+        fprintf( fp, "    lea      r10, [ explist + %d ]\n", 4 * expOffset );
+        fprintf( fp, "    mov      r12, r10\n" );
+
+        const int maxExpression = 60; // given the maximum line length, this is excessive
+        int explist[ maxExpression ]; // placeholder values even and operators odd
+        Stack<ParenItem> parenStack;
+
+        int tokenCount = vals[ iToken ].value;
+        int limit = iToken + tokenCount;
+        int expAdded = 0;
+        bool negActive = false;
+
+        for ( int t = iToken + 1; t < limit; t++ )
+        {
+            TokenValue const & val = vals[ t ];
+
+            if ( Token::VARIABLE == val.token )
+            {
+                if ( 0 == val.dimensions )
+                {
+                    explist[ expAdded ] = 0xbbbbbbbb;
+                    fprintf( fp, "    mov      eax, DWORD PTR [%s]\n", GenVariableName( val.strValue ) );
+                    if ( negActive )
+                    {
+                        fprintf( fp, "    neg      eax\n" );
+                        negActive = false;
+                    }
+                    fprintf( fp, "    mov      DWORD PTR [r12], eax\n" );
+                    fprintf( fp, "    add      r12, 4\n" );
+                    expAdded++;
+                }
+                else
+                {
+                    explist[ expAdded ] = 0xaaaaaaaa;
+                    t += 2;
+
+                    if ( 2 == vals[ t ].value && Token::CONSTANT == vals[ t + 1 ].token ) // less generated code
+                    {
+                        fprintf( fp, "    mov      rax, %d\n", vals[ t + 1 ].value );
+                    }
+                    else
+                    {
+                        fprintf( fp, "    push     r10\n" );
+                        fprintf( fp, "    push     r12\n" );
+                        GenerateExpression( fp, t, vals, expAdded );
+                        fprintf( fp, "    pop      r12\n" );
+                        fprintf( fp, "    pop      r10\n" );
+                    }
+
+                    t += vals[ t ].value;
+    
+                    fprintf( fp, "    shl      rax, 2\n" );
+                    fprintf( fp, "    lea      rbx, DWORD PTR [%s]\n", GenVariableName( val.strValue ) );
+                    fprintf( fp, "    add      rax, rbx\n" );
+                    fprintf( fp, "    mov      eax, DWORD PTR [rax]\n" );
+                    if ( negActive )
+                    {
+                        fprintf( fp, "    neg      eax\n" );
+                        negActive = false;
+                    }
+                    fprintf( fp, "    mov      DWORD PTR [r12], eax\n" );
+                    fprintf( fp, "    add      r12, 4\n" );
+                    expAdded++;
+                }
+            }
+            else if ( isTokenOperator( val.token ) )
+            {
+                if ( ( Token::MINUS == val.token ) && ( t == ( iToken + 1 ) ) )
+                    negActive = true;
+                else
+                {
+                    explist[ expAdded ] = val.token;
+                    fprintf( fp, "    mov      DWORD PTR [r12], %d\n", val.token );
+                    fprintf( fp, "    add      r12, 4\n" );
+                    expAdded++;
+                }
+            }
+            else if ( Token::EXPRESSION == val.token )
+            {
+                explist[ expAdded ] = 0xeeeeeeee;
+
+                fprintf( fp, "    push     r10\n" );
+                fprintf( fp, "    push     r12\n" );
+                GenerateExpression( fp, t, vals, expAdded );
+                fprintf( fp, "    pop      r12\n" );
+                fprintf( fp, "    pop      r10\n" );
+
+                // restore the array location to before the recursion in case it changed
+
+                fprintf( fp, "    lea      r10, [ explist + %d ]\n", 4 * expOffset );
+                fprintf( fp, "    mov      r12, r10\n" );
+                fprintf( fp, "    add      r12, %d * 4\n", expAdded );
+
+                fprintf( fp, "    mov      DWORD PTR [r12], eax\n" );
+                fprintf( fp, "    add      r12, 4\n" );
+                expAdded++;
+                t += ( val.value - 1 );
+            }
+            else if ( Token::CONSTANT == val.token )
+            {
+                explist[ expAdded ] = 0xcccccccc;
+                fprintf( fp, "    mov      DWORD PTR [r12], %d\n", val.value );
+                fprintf( fp, "    add      r12, 4\n" );
+                expAdded++;
+            }
+            else if ( Token::NOT == val.token )
+            {
+                explist[ expAdded ] = 0x66666666;
+                fprintf( fp, "    cmp      DWORD PTR [%s], 0\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                fprintf( fp, "    sete     al\n" );
+                fprintf( fp, "    mov      DWORD PTR [r12], eax\n" );
+                fprintf( fp, "    add      r12, 4\n" );
+                expAdded++;
+                t++;
+            }
+            else if ( Token::OPENPAREN == val.token )
+            {
+                // point open paren at the first item after the paren
+
+                ParenItem item( true, expAdded );
+                parenStack.push( item );
+            }
+            else if ( Token::CLOSEPAREN == val.token )
+            {
+                // point close parent at the last item before the paren
+
+                ParenItem item( false, expAdded - 1 );
+                parenStack.push( item );
+            }
+            else
+            {
+                printf( "unhandled token %s\n", TokenStr( val.token ) );
+                RuntimeFail( "unexpected token in arbitrary expression generation", g_lineno );
+            }
+        }
+
+        // collapse portions with parenthesis to a single constant right to left
+
+        assert( "expression count should be odd" && ( expAdded & 1 ) );
+
+        if ( EnableTracing && g_Tracing )
+            printf( "parenStack.size(): %zd, expcount %d\n", parenStack.size(), expAdded );
+
+        if ( 0 != parenStack.size() )
+        {
+            Stack<ParenItem> closeStack;
+
+            do
+            {
+                ParenItem & item = parenStack.top();
+    
+                if ( item.open )
+                {
+                    if ( 0 == closeStack.size() )
+                        RuntimeFail( "mismatched parenthesis; too many opens", g_lineno );
+    
+                    ParenItem & closed = closeStack.top();
+                    int closeLocation = closed.offset;
+                    int length = closed.offset - item.offset + 1;
+
+                    if ( EnableTracing && g_Tracing )
+                        printf( "  closed.offset %d, open.offset = %d, length = %d, expAdded %d\n", closed.offset, item.offset, length, expAdded );
+    
+                    closeStack.pop();
+
+                    fprintf( fp, "    add       r10, %d\n", 4 * item.offset );
+                    GenerateEval( fp, explist + item.offset, length );
+                    fprintf( fp, "    sub       r10, %d\n", 4 * item.offset );
+    
+                    int numToCopy = ( expAdded - closeLocation - 1 );
+
+                    if ( EnableTracing && g_Tracing )
+                        printf( "  numtocopy %d\n", numToCopy );
+    
+                    if ( numToCopy )
+                    {
+                        fprintf( fp, "; paren memcpy...\n" );
+                        fprintf( fp, "    lea      rcx, [ r10 + %d ]\n", 4 * ( item.offset + 1 ) );
+                        fprintf( fp, "    lea      rdx, [ r10 + %d ]\n", 4 * ( item.offset + length ) );
+                        fprintf( fp, "    mov      r8, %zd\n", sizeof( int ) * ( numToCopy ) );
+                        fprintf( fp, "    call     call_memmove\n" );
+
+                        memmove( explist + item.offset + 1,
+                                 explist + item.offset + length,
+                                 sizeof( int ) * ( numToCopy ) );
+                    }
+    
+                    int removed = length - 1;
+                    for ( int i = 0; i < closeStack.size(); i++ )
+                        closeStack[ i ].offset -= removed;
+    
+                    expAdded -= removed;
+                }
+                else
+                {
+                    closeStack.push( item );
+                }
+    
+                parenStack.pop();
+            } while ( 0 != parenStack.size() );
+    
+            if ( 0 != closeStack.size() )
+                RuntimeFail( "mismatched parenthesis; too many closes", g_lineno );
+        }
+
+        assert( "expression count should be odd" && ( expAdded & 1 ) );
+
+        GenerateEval( fp, explist, expAdded );
     }
 } //GenerateExpression
 
@@ -1932,6 +2308,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
     }
 
     fprintf( fp, "extern printf: PROC\n" );
+    fprintf( fp, "extern memmove: PROC\n" );
     fprintf( fp, "extern QueryPerformanceCounter: PROC\n" );
     fprintf( fp, "extern QueryPerformanceFrequency: PROC\n" );
 
@@ -1989,15 +2366,17 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
     fprintf( fp, "  align 16\n" );
     fprintf( fp, "    fgstacktype    db 128 DUP(0)\n" ); // for / gosub stack 128 deep
     fprintf( fp, "  align 16\n" );
+    fprintf( fp, "    explist        dd 128 DUP(0)\n" );
+    fprintf( fp, "  align 16\n" );
     fprintf( fp, "    fgcount        dq    0\n" );
     fprintf( fp, "    startTicks     dq    0\n" );
     fprintf( fp, "    perfFrequency  dq    0\n" );
     fprintf( fp, "    currentTicks   dq    0\n" );
 
-    fprintf( fp, "    errorString    db    'internal error', 10, 13, 0\n" );
-    fprintf( fp, "    startString    db    'running basic', 10, 13, 0\n" );
-    fprintf( fp, "    stopString     db    'done running basic', 10, 13, 0\n" );
-    fprintf( fp, "    newlineString  db    10, 13, 0\n" );
+    fprintf( fp, "    errorString    db    'internal error', 10, 0\n" );
+    fprintf( fp, "    startString    db    'running basic', 10, 0\n" );
+    fprintf( fp, "    stopString     db    'done running basic', 10, 0\n" );
+    fprintf( fp, "    newlineString  db    10, 0\n" );
     fprintf( fp, "    elapString     db    '%%lld microseconds (-6)', 0\n" );
     fprintf( fp, "    intString      db    '%%d', 0\n" );
     fprintf( fp, "    strString      db    '%%s', 0\n" );
@@ -2022,12 +2401,15 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
 
     for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
     {
+        g_lineno = l;
         LineOfCode & loc = g_linesOfCode[ l ];
         vector<TokenValue> & vals = loc.tokenValues;
         Token token = loc.firstToken;
         int t = 0;
 
-        //printf( "on line %zd LINE %d\n", l, loc.lineNumber );
+        if ( EnableTracing && g_Tracing )
+            printf( "generating code for line %zd ====> %s\n", l, loc.sourceCode.c_str() );
+
         fprintf( fp, "  line_number_%zd:   ; ===>>> %s\n", l, loc.sourceCode.c_str() );
 
         do  // all tokens in the line
@@ -2044,7 +2426,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
     
                     assert( Token::EXPRESSION == vals[ t ].token );
 
-                    if ( Token::CONSTANT == vals[ t + 1 ].token )
+                    if ( Token::CONSTANT == vals[ t + 1 ].token && ( 2 == vals[ t ].value ) )
                     {
                         fprintf( fp, "    mov      DWORD PTR [%s], %d\n", GenVariableName( vals[ variableToken ].strValue ),
                                  vals[ t + 1 ].value );
@@ -2243,9 +2625,10 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
                     fprintf( fp, "    je       label_else_%zd\n", l );
                 else
                 {
+                    // this is somehow slower so remove it for now
+
                     if ( false && Token::GOTO == vals[ t ].token )
                     {
-                        // this is somehow slower!
 
                         fprintf( fp, "    jne      line_number_%d\n", vals[ t ].value );
                         t++;
@@ -2314,6 +2697,22 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
     fprintf( fp, "    leave\n" );
     fprintf( fp, "    ret\n" );
     fprintf( fp, "call_QueryPerformanceCounter ENDP\n" );
+
+    fprintf( fp, "align 16\n" );
+    fprintf( fp, "call_memmove PROC\n" );
+    fprintf( fp, "    push     r12\n" );       // save volatile registers
+    fprintf( fp, "    push     r10\n" ); 
+    fprintf( fp, "    push     rax\n" );
+    fprintf( fp, "    push     rbp\n" );
+    fprintf( fp, "    mov      rbp, rsp\n" );
+    fprintf( fp, "    sub      rsp, 32\n" );
+    fprintf( fp, "    call     memmove\n" );
+    fprintf( fp, "    leave\n" );
+    fprintf( fp, "    pop      rax\n" );
+    fprintf( fp, "    pop      r10\n" );
+    fprintf( fp, "    pop      r12\n" );
+    fprintf( fp, "    ret\n" );
+    fprintf( fp, "call_memmove ENDP\n" );
 
 #if false
     // operator function
@@ -2810,13 +3209,13 @@ extern int main( int argc, char *argv[] )
             else if ( Token::VARIABLE == token )
             {
                 Variable *pvar = vals[ t ].pVariable;
-                assert( pvar && "variable hasn't been declared or cached" );
 
                 t++;
 
                 if ( Token::OPENPAREN == vals[ t ].token )
                 {
-                    assert( ( 0 != pvar ) && "array variable not defined yet" );
+                    if ( 0 == pvar )
+                        RuntimeFail( "array used with a prior DIM statement", g_lineno );
 
                     if ( 0 == pvar->dimensions )
                         RuntimeFail( "variable used as array isn't an array", g_lineno );
@@ -2856,6 +3255,7 @@ extern int main( int argc, char *argv[] )
                 }
                 else
                 {
+                    assert( pvar && "variable hasn't been declared or cached" );
                     assert( Token::EQ == vals[ t ].token );
 
                     t++;
