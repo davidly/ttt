@@ -1070,7 +1070,7 @@ template<class T> __makeinline int Reduce( T op_func, int precedence, int * expl
         if ( precedence == OperatorPrecedence[ (Token) explist[ i ] ] )
         {
             explist[ i - 1 ] = op_func( explist[ i - 1 ], (Token) explist[ i ], explist[ i + 1 ] );
-            if ( expcount > 3 )
+            if ( expcount > 3 && ( i < ( expcount - 2 ) ) )
                 memmove( &explist[ i ], &explist[ i + 2 ], sizeof( int ) * ( expcount - 3 ) );
             expcount -= 2;
         }
@@ -1862,6 +1862,16 @@ void GenerateOp( FILE * fp, vector<TokenValue> & vals, int left, int right, Toke
     }
 } //GenerateOp
 
+int ExplistOffset( int o )
+{
+    // o is always an odd number that includes numbers and operators, for example: # op # op # op #
+    // the assembly code doesn't have the operators -- just the values.
+    // This function converts  the former into the latter (offset without operators)
+    // It also multiplies by 4 to get the DWORD offset.
+
+    return 4 * ( o - ( o / 2 ) );
+} //ExplistOffset
+
 int GenerateReduce( FILE * fp, int precedence, int * explist, int expcount )
 {
     if ( EnableTracing && g_Tracing )
@@ -1883,11 +1893,11 @@ int GenerateReduce( FILE * fp, int precedence, int * explist, int expcount )
 
         if ( precedence == OperatorPrecedence[ op ] )
         {
-            fprintf( fp, "    mov      eax, DWORD PTR [ r10 + %d ]\n", 4 * ( i - 1 ) );
+            fprintf( fp, "    mov      eax, DWORD PTR [ r10 + %d ]\n", ExplistOffset( i - 1 ) );
 
             if ( isRelationalOperator( (Token) explist[ i ] ) )
             {
-                fprintf( fp, "    cmp      eax, DWORD PTR [ r10 + %d ]\n", 4 * ( i + 1 ) );
+                fprintf( fp, "    cmp      eax, DWORD PTR [ r10 + %d ]\n", ExplistOffset( i + 1 ) );
                 fprintf( fp, "    %s      al\n", OperatorInstruction[ op ] );
                 fprintf( fp, "    and      rax, 0ffh\n" );
             }
@@ -1896,24 +1906,23 @@ int GenerateReduce( FILE * fp, int precedence, int * explist, int expcount )
                 if ( Token::DIV == op )
                 {
                     fprintf( fp, "    xor      rdx, rdx\n" );
-                    fprintf( fp, "    mov      esi, DWORD PTR [ r10 + %d ]\n",  4 * ( i + 1 ) );
+                    fprintf( fp, "    mov      esi, DWORD PTR [ r10 + %d ]\n", ExplistOffset( i + 1 ) );
                     fprintf( fp, "    idiv     rsi\n" );
                 }
                 else
                 {
-                    fprintf( fp, "    %s      eax, DWORD PTR [ r10 + %d ]\n", OperatorInstruction[ op ], 4 * ( i + 1 ) );
+                    fprintf( fp, "    %s      eax, DWORD PTR [ r10 + %d ]\n", OperatorInstruction[ op ], ExplistOffset( i + 1 ) );
                 }
             }
 
-            fprintf( fp, "    mov      DWORD PTR [ r10 + %d ], eax\n", 4 * ( i - 1 ) );
+            fprintf( fp, "    mov      DWORD PTR [ r10 + %d ], eax\n", ExplistOffset( i - 1 ) );
 
-            if ( expcount > 3 )
+            if ( expcount > 3 && i < ( expcount - 2 ) )
             {
-                fprintf( fp, "; reduce memcpy...\n" );
-                fprintf( fp, "    mov      DWORD PTR [ r10 + %d ], eax\n",  4 * ( i - 1 ) );
-                fprintf( fp, "    lea      rcx, [ r10 + %d ]\n", 4 * i );
-                fprintf( fp, "    lea      rdx, [ r10 + %d ]\n", 4 * ( 2 + i ) );
-                fprintf( fp, "    mov      r8, %zd\n", sizeof( int ) * ( expcount - 3 ) );
+                fprintf( fp, "; reduce memcpy... i %d, expcount %d\n", i, expcount );
+                fprintf( fp, "    lea      rcx, [ r10 + %d ]\n", ExplistOffset( i ) );
+                fprintf( fp, "    lea      rdx, [ r10 + %d ]\n", ExplistOffset( 2 + i ) );
+                fprintf( fp, "    mov      r8, %d\n", 4 * ( ( expcount - 3 ) / 2) );
                 fprintf( fp, "    call     call_memmove\n" );
                 memmove( &explist[ i ], &explist[ i + 2 ], sizeof( int ) * ( expcount - 3 ) );
             }
@@ -1941,7 +1950,7 @@ void GenerateEval( FILE * fp, int * explist, int expcount )
 {
     // BASIC doesn't distinguish between logical and bitwise operators. they are the same.
 
-    if ( 1 == expcount )
+    if ( 1 == expcount )  // optimize for the simple case
         fprintf( fp, "    mov      eax, DWORD PTR [ r10 ]\n" );
     else
     {
@@ -2088,7 +2097,7 @@ void GenerateExpression( FILE * fp, int iToken, vector<TokenValue> & vals, int e
 
         // r10 == pointer to explist for this stack frame
 
-        fprintf( fp, "    lea      r10, [ explist + %d ]\n", 4 * expOffset );
+        fprintf( fp, "    lea      r10, [ explist + %d ]\n", ExplistOffset( expOffset ) );
 
         const int maxExpression = 60; // given the maximum line length, this is excessive
         int explist[ maxExpression ]; // placeholder values even and operators odd
@@ -2114,7 +2123,7 @@ void GenerateExpression( FILE * fp, int iToken, vector<TokenValue> & vals, int e
                         fprintf( fp, "    neg      eax\n" );
                         negActive = false;
                     }
-                    fprintf( fp, "    mov      DWORD PTR [ r10 + %d ], eax\n", 4 * expAdded );
+                    fprintf( fp, "    mov      DWORD PTR [ r10 + %d ], eax\n", ExplistOffset( expAdded ) );
                     expAdded++;
                 }
                 else
@@ -2124,7 +2133,7 @@ void GenerateExpression( FILE * fp, int iToken, vector<TokenValue> & vals, int e
 
                     if ( 2 == vals[ t ].value && Token::CONSTANT == vals[ t + 1 ].token ) // less generated code
                     {
-                        fprintf( fp, "    lea      rax, DWORD PTR [%s + %d]\n", GenVariableName( val.strValue ),
+                        fprintf( fp, "    mov      eax, DWORD PTR [%s + %d]\n", GenVariableName( val.strValue ),
                                                                                 4 * vals[ t + 1 ].value );
                     }
                     else
@@ -2135,17 +2144,18 @@ void GenerateExpression( FILE * fp, int iToken, vector<TokenValue> & vals, int e
                         fprintf( fp, "    shl      rax, 2\n" );
                         fprintf( fp, "    lea      rbx, DWORD PTR [%s]\n", GenVariableName( val.strValue ) );
                         fprintf( fp, "    add      rax, rbx\n" );
+                        fprintf( fp, "    mov      eax, DWORD PTR [rax]\n" );
                     }
 
                     t += vals[ t ].value;
     
-                    fprintf( fp, "    mov      eax, DWORD PTR [rax]\n" );
                     if ( negActive )
                     {
                         fprintf( fp, "    neg      eax\n" );
                         negActive = false;
                     }
-                    fprintf( fp, "    mov      DWORD PTR [ r10 + %d ], eax\n", 4 * expAdded );
+
+                    fprintf( fp, "    mov      DWORD PTR [ r10 + %d ], eax\n", ExplistOffset( expAdded ) );
                     expAdded++;
                 }
             }
@@ -2156,7 +2166,6 @@ void GenerateExpression( FILE * fp, int iToken, vector<TokenValue> & vals, int e
                 else
                 {
                     explist[ expAdded ] = val.token;
-                    fprintf( fp, "    mov      DWORD PTR [ r10 + %d ], %d\n", 4 * expAdded, val.token );
                     expAdded++;
                 }
             }
@@ -2170,14 +2179,14 @@ void GenerateExpression( FILE * fp, int iToken, vector<TokenValue> & vals, int e
 
                 // restore the array location to before the recursion in case it changed
 
-                fprintf( fp, "    mov      DWORD PTR [ r10 + %d ], eax\n", 4 * expAdded );
+                fprintf( fp, "    mov      DWORD PTR [ r10 + %d ], eax\n", ExplistOffset( expAdded ) );
                 expAdded++;
                 t += ( val.value - 1 );
             }
             else if ( Token::CONSTANT == val.token )
             {
                 explist[ expAdded ] = 0xcccccccc;
-                fprintf( fp, "    mov      DWORD PTR [ r10 + %d ], %d\n", 4 * expAdded, val.value );
+                fprintf( fp, "    mov      DWORD PTR [ r10 + %d ], %d\n", ExplistOffset( expAdded ), val.value );
                 expAdded++;
             }
             else if ( Token::NOT == val.token )
@@ -2186,7 +2195,7 @@ void GenerateExpression( FILE * fp, int iToken, vector<TokenValue> & vals, int e
                 fprintf( fp, "    xor      rax, rax\n" );
                 fprintf( fp, "    cmp      DWORD PTR [%s], 0\n", GenVariableName( vals[ t + 1 ].strValue ) );
                 fprintf( fp, "    sete     al\n" );
-                fprintf( fp, "    mov      DWORD PTR [ r10 + %d ], eax\n", 4 * expAdded );
+                fprintf( fp, "    mov      DWORD PTR [ r10 + %d ], eax\n", ExplistOffset( expAdded ) );
                 expAdded++;
                 t++;
             }
@@ -2240,9 +2249,9 @@ void GenerateExpression( FILE * fp, int iToken, vector<TokenValue> & vals, int e
     
                     closeStack.pop();
 
-                    fprintf( fp, "    add       r10, %d\n", 4 * item.offset );
+                    fprintf( fp, "    add       r10, %d\n", ExplistOffset( item.offset ) );
                     GenerateEval( fp, explist + item.offset, length );
-                    fprintf( fp, "    sub       r10, %d\n", 4 * item.offset );
+                    fprintf( fp, "    sub       r10, %d\n", ExplistOffset( item.offset ) );
     
                     int numToCopy = ( expAdded - closeLocation - 1 );
 
@@ -2252,9 +2261,9 @@ void GenerateExpression( FILE * fp, int iToken, vector<TokenValue> & vals, int e
                     if ( numToCopy )
                     {
                         fprintf( fp, "; paren memcpy...\n" );
-                        fprintf( fp, "    lea      rcx, [ r10 + %d ]\n", 4 * ( item.offset + 1 ) );
-                        fprintf( fp, "    lea      rdx, [ r10 + %d ]\n", 4 * ( item.offset + length ) );
-                        fprintf( fp, "    mov      r8, %zd\n", sizeof( int ) * ( numToCopy ) );
+                        fprintf( fp, "    lea      rcx, [ r10 + %d ]\n", ExplistOffset( item.offset + 1 ) );
+                        fprintf( fp, "    lea      rdx, [ r10 + %d ]\n", ExplistOffset( item.offset + length ) );
+                        fprintf( fp, "    mov      r8, %d\n", 4 * ( numToCopy / 2 ) );
                         fprintf( fp, "    call     call_memmove\n" );
 
                         memmove( explist + item.offset + 1,
@@ -2329,10 +2338,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
             for ( int t = 0; t < vals.size(); t++ )
             {
                 if ( Token::STRING == vals[ t ].token )
-                {
-                    fprintf( fp, "  align 16\n" );
                     fprintf( fp, "    str_%zd_%d   db  '%s', 0\n", l, t , vals[ t ].strValue.c_str() );
-                }
             }
         }
     }
