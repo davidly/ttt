@@ -56,7 +56,8 @@ to generate the .asm file, and ma.bat to create the .exe. For example:
     ma ttt_1dim
     ttt_1dim.exe
     
-The compiler generates code that's 10x faster than the interpreter and between 2-3x slower than real compilers.
+The compiler generates code that's 20x faster than the interpreter and somewhat slower than most real compilers. It is faster then
+JIT for .net 6 though.
 
 To build BA:
 
@@ -64,7 +65,8 @@ To build BA:
     On Linux with gnu: g++ -DNDEBUG ba.cxx -o ba -O3
     On Linux with clang: "c:\program files\llvm\bin\clang++.exe" ba.cxx -D_CRT_SECURE_NO_WARNINGS -DNDEBUG -o ba.exe -O3 -Ofast
     On a Mac: mmac.sh or this: clang++ ba.cxx -DNDEBUG -o ba -O3 -std=c++11
-					
-![image](https://user-images.githubusercontent.com/1497921/178324136-dd93dbfb-b286-49a6-97da-1c158f54b98d.png)
+		
+![image](https://user-images.githubusercontent.com/1497921/179063576-a1ce59a7-36de-4491-ad4d-3112de079f99.png)
+
 
 
