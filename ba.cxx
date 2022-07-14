@@ -101,6 +101,12 @@ const char * OperatorInstruction[] = { 0, 0, 0, 0, 0, 0,                        
                                        0, 0, 0, 0, 0,                             // filler
                                        "imul", "idiv", "add", "sub", "sete", "setne", "setle", "setge", "setl", "setg", "and", "or", "xor", };
 
+// jump instruction if the condition is false
+
+const char * RelationalNotInstruction[] = { 0, 0, 0, 0, 0, 0,                          // filler
+                                            0, 0, 0, 0, 0,                             // filler
+                                            0, 0, 0, 0, "jne", "je", "jg", "jl", "jge", "jle", 0, 0, 0, };
+
 __makeinline const char * TokenStr( Token i )
 {
     if ( i < 0 || i > Token::INVALID )
@@ -1461,7 +1467,7 @@ void PrintNumberWithCommas( char *pchars, long long n )
 
 void ShowLocListing( LineOfCode & loc )
 {
-    printf( "line %d has %zd tokens\n", loc.lineNumber, loc.tokenValues.size() );
+    printf( "line %d has %zd tokens  ====>> %s\n", loc.lineNumber, loc.tokenValues.size(), loc.sourceCode.c_str() );
     
     for ( size_t t = 0; t < loc.tokenValues.size(); t++ )
     {
@@ -2307,6 +2313,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
 
     fprintf( fp, "extern printf: PROC\n" );
     fprintf( fp, "extern memmove: PROC\n" );
+    fprintf( fp, "extern exit: PROC\n" );
     fprintf( fp, "extern QueryPerformanceCounter: PROC\n" );
     fprintf( fp, "extern QueryPerformanceFrequency: PROC\n" );
 
@@ -2342,6 +2349,8 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
             }
         }
     }
+
+    fprintf( fp, "  align 16\n" );
 
     for ( auto it = varmap.begin(); it != varmap.end(); it++ )
     {
@@ -2500,7 +2509,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
             {
                 fprintf( fp, "    lea      rbx, [fgstacktype]\n" );
                 fprintf( fp, "    mov      rcx, [fgcount]\n" );
-                fprintf( fp, "    mov      BYTE PTR [rbx + rcx], 0\n" );
+                fprintf( fp, "    mov      BYTE PTR [rbx + rcx], 2\n" );
                 fprintf( fp, "    inc      [fgcount]\n" );
     
                 fprintf( fp, "    call      line_number_%d\n", vals[ t ].value );
@@ -2513,19 +2522,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
             }
             else if ( Token::RETURN == token )
             {
-                fprintf( fp, "    cmp      [fgcount], 0\n" );
-                fprintf( fp, "    je       error_exit\n" );
-    
-                // remove any active FOR loops when a return is executed
-
-                fprintf( fp, "    lea      rbx, [fgstacktype]\n" );
-                fprintf( fp, "  return_statement_%zd:\n", l );
-                fprintf( fp, "    mov      rcx, [fgcount]\n" );
-                fprintf( fp, "    dec      [fgcount]\n" );
-                fprintf( fp, "    cmp      BYTE PTR [rbx + rcx], 1\n" );
-                fprintf( fp, "    je       SHORT return_statement_%zd\n", l );  // remove the "for" from the stack
-    
-                fprintf( fp, "    ret\n", vals[ t ].value );
+                fprintf( fp, "    jmp      label_gosub_return\n" );
                 break;
             }
             else if ( Token::PRINT == token )
@@ -2600,30 +2597,76 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
     
                 t++;
                 assert( Token::EXPRESSION == vals[ t ].token );
-                GenerateExpression( fp, t, vals );
-                t += vals[ t ].value;
-                assert( Token::THEN == vals[ t ].token );
-                t++;
-    
-                fprintf( fp, "    cmp      rax, 0\n" );
-    
-                if ( vals[ t - 1 ].value ) // is there an else clause?
-                    fprintf( fp, "    je       label_else_%zd\n", l );
+
+                // Optimize for really simple IF cases like "IF var/constant relational var/constant"
+
+                if ( 4 == vals[ t ].value &&
+                     isRelationalOperator( vals[ t + 2 ].token ) )
+                {
+                    // line 4505 has 7 tokens  ====>> 4505 if p% < 9 then goto 4180
+                    // token   0 IF, value 0, strValue ''
+                    // token   1 EXPRESSION, value 4, strValue ''
+                    // token   2 VARIABLE, value 0, strValue 'p%'
+                    // token   3 LT, value 0, strValue ''
+                    // token   4 CONSTANT, value 9, strValue ''
+                    // token   5 THEN, value 0, strValue ''
+                    // token   6 GOTO, value 4180, strValue ''
+
+                    Token ifOp = vals[ t + 2 ].token;
+
+                    if ( Token::CONSTANT == vals[ 2 ].token )
+                        fprintf( fp, "    mov      eax, %d\n", vals[ 2 ].value );
+                    else
+                        fprintf( fp, "    mov      eax, DWORD PTR [%s]\n", GenVariableName( vals[ 2 ].strValue ) );
+
+                    if ( Token::CONSTANT == vals[ 4 ].token )
+                        fprintf( fp, "    cmp      eax, %d\n", vals[ 4 ].value );
+                    else
+                        fprintf( fp, "    cmp      eax, DWORD PTR [%s]\n", GenVariableName( vals[ 4 ].strValue ) );
+
+                    t += vals[ t ].value;
+                    assert( Token::THEN == vals[ t ].token );
+                    t++;
+
+                    if ( vals[ t - 1 ].value ) // is there an else clause?
+                        fprintf( fp, "    %s       SHORT label_else_%zd\n", RelationalNotInstruction[ ifOp ], l );
+                    else
+                        fprintf( fp, "    %s       SHORT line_number_%zd\n", RelationalNotInstruction[ ifOp ], l + 1 );
+                }
+                else if ( 3 == vals[ t ].value && Token::NOT == vals[ t + 1 ].token && Token::VARIABLE == vals[ t + 2 ].token )
+                {
+                    // line 4530 has 6 tokens  ====>> 4530 if st% = 0 then return
+                    // token   0 IF, value 0, strValue ''
+                    // token   1 EXPRESSION, value 3, strValue ''
+                    // token   2 NOT, value 0, strValue ''
+                    // token   3 VARIABLE, value 0, strValue 'st%'
+                    // token   4 THEN, value 0, strValue ''
+                    // token   5 RETURN, value 0, strValue ''
+
+                    fprintf( fp, "    cmp      DWORD PTR [%s], 0\n", GenVariableName( vals[ t + 2 ].strValue ) );
+
+                    t += vals[ t ].value;
+                    assert( Token::THEN == vals[ t ].token );
+                    t++;
+
+                    if ( vals[ t - 1 ].value ) // is there an else clause?
+                        fprintf( fp, "    jne      SHORT label_else_%zd\n", l );
+                    else
+                        fprintf( fp, "    jne      SHORT line_number_%zd\n", l + 1 );
+                }
                 else
                 {
-                    // this is somehow slower so remove it for now
-
-                    if ( false && Token::GOTO == vals[ t ].token )
-                    {
-
-                        fprintf( fp, "    jne      line_number_%d\n", vals[ t ].value );
-                        t++;
-                        break;
-                    }
+                    GenerateExpression( fp, t, vals );
+                    t += vals[ t ].value;
+                    assert( Token::THEN == vals[ t ].token );
+                    t++;
+        
+                    fprintf( fp, "    cmp      rax, 0\n" );
+        
+                    if ( vals[ t - 1 ].value ) // is there an else clause?
+                        fprintf( fp, "    je       label_else_%zd\n", l );
                     else
-                    {
                         fprintf( fp, "    je       line_number_%zd\n", l + 1 );
-                    }
                 }
             }
             else if ( Token::ELSE == token )
@@ -2647,19 +2690,31 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
             activeIf = -1;
     }
 
+    // remove any active FOR loops when a return is executed
+    fprintf( fp, "label_gosub_return:\n" );
+    fprintf( fp, "    lea      rbx, [fgstacktype]\n" );
+    fprintf( fp, "label_gosub_return_loop:\n" );
+    fprintf( fp, "    dec      [fgcount]\n" );
+    fprintf( fp, "    mov      rcx, [fgcount]\n" );
+    fprintf( fp, "    cmp      rcx, 0\n" );
+    fprintf( fp, "    jle      error_exit\n" );
+    fprintf( fp, "    cmp      BYTE PTR [rbx + rcx], 1\n" ); //1 == FOR, 2 == GOSUB
+    fprintf( fp, "    je       SHORT label_gosub_return_loop\n" );  // remove the "for" from the stack
+    fprintf( fp, "    ret\n" );
+
     fprintf( fp, "  error_exit:\n" );
     fprintf( fp, "    lea      rcx, [errorString]\n" );
-    fprintf( fp, "    call     printf\n" );
+    fprintf( fp, "    call     call_printf\n" );
     fprintf( fp, "    jmp      leave_execution\n" );
 
     fprintf( fp, "  end_execution:\n" );
     fprintf( fp, "    lea      rcx, [stopString]\n" );
-    fprintf( fp, "    call     printf\n" );
+    fprintf( fp, "    call     call_printf\n" );
 
     fprintf( fp, "  leave_execution:\n" );
-    fprintf( fp, "    xor      rax, rax\n" );
-    fprintf( fp, "    leave\n" );
-    fprintf( fp, "    ret\n" );
+    fprintf( fp, "    xor      rcx, rcx\n" );
+    fprintf( fp, "    call     call_exit\n" );
+    fprintf( fp, "    ret\n" ); // should never get here...
     fprintf( fp, "main ENDP\n" );
 
     // this is required to setup stack frame spill locations for printf when in a gosub/return statement
@@ -2673,6 +2728,16 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
     fprintf( fp, "    leave\n" );
     fprintf( fp, "    ret\n" );
     fprintf( fp, "call_printf ENDP\n" );
+
+    fprintf( fp, "align 16\n" );
+    fprintf( fp, "call_exit PROC\n" );
+    fprintf( fp, "    push     rbp\n" );
+    fprintf( fp, "    mov      rbp, rsp\n" );
+    fprintf( fp, "    sub      rsp, 32\n" );
+    fprintf( fp, "    call     exit\n" );
+    fprintf( fp, "    leave\n" );
+    fprintf( fp, "    ret\n" );
+    fprintf( fp, "call_exit ENDP\n" );
 
     fprintf( fp, "align 16\n" );
     fprintf( fp, "call_QueryPerformanceCounter PROC\n" );
@@ -3011,7 +3076,9 @@ extern int main( int argc, char *argv[] )
     }
 
     PatchGOTOGOSUBNumbers();
+
     OptimizeWithRewrites( showListing );
+
     SetFirstTokens();
 
     // Create all non-array variables and update references so lookups are always fast later
