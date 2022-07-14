@@ -32,6 +32,7 @@ vector<LineOfCode> g_linesOfCode;
 
 //#define ENABLE_EXECUTION_TIME
 #define EXPRESSION_OPTIMIZATIONS
+#define REGISTER_OPTIMIZATIONS
 
 #ifdef DEBUG
     const bool RangeCheckArrays = true;
@@ -101,11 +102,22 @@ const char * OperatorInstruction[] = { 0, 0, 0, 0, 0, 0,                        
                                        0, 0, 0, 0, 0,                             // filler
                                        "imul", "idiv", "add", "sub", "sete", "setne", "setle", "setge", "setl", "setg", "and", "or", "xor", };
 
+// jump instruction if the condition is true
+
+const char * RelationalInstruction[] = { 0, 0, 0, 0, 0, 0,                          // filler
+                                         0, 0, 0, 0, 0,                             // filler
+                                         0, 0, 0, 0, "je", "jne", "jle", "jge", "jl", "jg", 0, 0, 0, };
+
 // jump instruction if the condition is false
 
 const char * RelationalNotInstruction[] = { 0, 0, 0, 0, 0, 0,                          // filler
                                             0, 0, 0, 0, 0,                             // filler
                                             0, 0, 0, 0, "jne", "je", "jg", "jl", "jge", "jle", 0, 0, 0, };
+
+// the most frequently used variables are mapped to these registers
+// r10 is used for complex expression calculations
+
+const char * MappedRegisters[] = { "esi", "r9d", "r11d", "r12d", "r13d", "r14d", "r15d" };
 
 __makeinline const char * TokenStr( Token i )
 {
@@ -174,6 +186,8 @@ struct Variable
     int dimensions;      // 0 for scalar
     int dims[ 2 ];       // only support up to 2 dimensional arrays
     vector<int> array;
+    int references;      // when generating assembler: how many references in the basic app?
+    string reg;          // when generating assembler: register mapped to this variable, if any
 };
 
 struct TokenValue
@@ -1784,7 +1798,10 @@ void CreateVariables( map<string, Variable> & varmap )
                  ( Token::DEC == tv.token ) ||
                  ( Token::VARIABLE == tv.token ) || // && 0 == tv.dimensions ) || // create arrays as singletons until a DIM statement
                  ( Token::FOR == tv.token ) )
-                GetVariablePerhapsCreate( tv, varmap );
+            {
+                Variable * pvar = GetVariablePerhapsCreate( tv, varmap );
+                pvar->references++;
+            }
         }
     }
 } //CreateVariables
@@ -1799,8 +1816,42 @@ const char * GenVariableName( string s )
     return acName;
 } //GenVariableName
 
-void GenerateOp( FILE * fp, vector<TokenValue> & vals, int left, int right, Token op, int leftArray = 0, int rightArray = 0 )
+const char * GenVariableReg( map<string, Variable> & varmap, string s )
 {
+    Variable * pvar = FindVariable( varmap, s );
+    assert( pvar && "variable must exist in GenVariableReg" );
+
+    return pvar->reg.c_str();
+} //GenVariableReg
+
+bool IsVariableInReg( map<string, Variable> & varmap, string s )
+{
+    Variable * pvar = FindVariable( varmap, s );
+    assert( pvar && "variable must exist in IsVariableInReg" );
+
+    return ( 0 != pvar->reg.length() );
+} //IsVariableInReg
+
+void GenerateOp( FILE * fp,  map<string, Variable> & varmap, vector<TokenValue> & vals,
+                 int left, int right, Token op, int leftArray = 0, int rightArray = 0 )
+{
+    // optimize for if wi% = b%( 0 )
+
+    if ( Token::VARIABLE == vals[ left ].token &&
+         IsVariableInReg( varmap, vals[ left ].strValue ) &&
+         0 == vals[ left ].dimensions &&
+         isRelationalOperator( op ) &&
+         Token::VARIABLE == vals[ right ].token &&
+         0 != vals[ right ].dimensions )
+    {
+        fprintf( fp, "    cmp      %s, DWORD PTR [%s + %d]\n", GenVariableReg( varmap, vals[ left ].strValue ),
+                 GenVariableName( vals[ right ].strValue ), 4 * vals[ rightArray ].value );
+
+        fprintf( fp, "    %s     al\n", OperatorInstruction[ op ] );
+        fprintf( fp, "    movzx    rax, al\n" );
+        return;
+    }
+
     // optimize this typical case to save a mov
 
     if ( Token::VARIABLE == vals[ left ].token &&
@@ -1808,16 +1859,27 @@ void GenerateOp( FILE * fp, vector<TokenValue> & vals, int left, int right, Toke
          isRelationalOperator( op ) &&
          Token::CONSTANT == vals[ right ].token )
     {
-        fprintf( fp, "    cmp      DWORD PTR [%s], %d\n", GenVariableName( vals[ left ].strValue ), vals[ right ].value );
-        fprintf( fp, "    %s      al\n", OperatorInstruction[ op ] );
-        fprintf( fp, "    and      rax, 0ffh\n" );
+        string & varname = vals[ left ].strValue;
+        if ( IsVariableInReg( varmap, varname ) )
+            fprintf( fp, "    cmp      %s, %d\n", GenVariableReg( varmap, varname ), vals[ right ].value );
+        else
+            fprintf( fp, "    cmp      DWORD PTR [%s], %d\n", GenVariableName( varname ), vals[ right ].value );
+
+        fprintf( fp, "    %s     al\n", OperatorInstruction[ op ] );
+        fprintf( fp, "    movzx    rax, al\n" );
         return;
     }
 
     if ( Token::CONSTANT == vals[ left ].token )
         fprintf( fp, "    mov      eax, %d\n", vals[ left ].value );
     else if ( 0 == vals[ left ].dimensions )
-        fprintf( fp, "    mov      eax, DWORD PTR [%s]\n", GenVariableName( vals[ left ].strValue ) );
+    {
+        string & varname = vals[ left ].strValue;
+        if ( IsVariableInReg( varmap, varname ) )
+            fprintf( fp, "    mov      eax, %s\n", GenVariableReg( varmap, varname ) );
+        else
+            fprintf( fp, "    mov      eax, DWORD PTR [%s]\n", GenVariableName( varname ) );
+    }
     else
         fprintf( fp, "    mov      eax, DWORD PTR [%s + %d]\n", GenVariableName( vals[ left ].strValue ),
                  4 * vals[ leftArray ].value );
@@ -1829,13 +1891,19 @@ void GenerateOp( FILE * fp, vector<TokenValue> & vals, int left, int right, Toke
         if ( Token::CONSTANT == vals[ right ].token )
             fprintf( fp, "    cmp      eax, %d\n", vals[ right ].value );
         else if ( 0 == vals[ right ].dimensions )
-            fprintf( fp, "    cmp      eax, DWORD PTR [%s]\n", GenVariableName( vals[ right ].strValue ) );
+        {
+            string & varname = vals[ right ].strValue;
+            if ( IsVariableInReg( varmap, varname ) )
+                fprintf( fp, "    cmp      eax, %s\n", GenVariableReg( varmap, varname ) );
+            else
+                fprintf( fp, "    cmp      eax, DWORD PTR [%s]\n", GenVariableName( varname ) );
+        }
         else
             fprintf( fp, "    cmp      eax, DWORD PTR [%s + %d]\n", GenVariableName( vals[ right ].strValue ),
                      4 * vals[ rightArray ].value );
 
-        fprintf( fp, "    %s      al\n", OperatorInstruction[ op ] );
-        fprintf( fp, "    and      rax, 0ffh\n" );
+        fprintf( fp, "    %s     al\n", OperatorInstruction[ op ] );
+        fprintf( fp, "    movzx    rax, al\n" );
     }
     else
     {
@@ -1846,23 +1914,35 @@ void GenerateOp( FILE * fp, vector<TokenValue> & vals, int left, int right, Toke
             fprintf( fp, "    xor      rdx, rdx\n" );
 
             if ( Token::CONSTANT == vals[ right ].token )
-                fprintf( fp, "    mov      rsi, %d\n", vals[ right ].value );
+                fprintf( fp, "    mov      rbx, %d\n", vals[ right ].value );
             else if ( 0 == vals[ right ].dimensions )
-                fprintf( fp, "    mov      esi, DWORD PTR [%s]\n", GenVariableName( vals[ right ].strValue ) );
+            {
+                string & varname = vals[ right ].strValue;
+                if ( IsVariableInReg( varmap, varname ) )
+                    fprintf( fp, "    mov      ebx, %s\n", GenVariableReg( varmap, varname ) );
+                else
+                    fprintf( fp, "    mov      ebx, DWORD PTR [%s]\n", GenVariableName( varname ) );
+            }
             else
-                fprintf( fp, "    mov      esi, DWRD PTR [%s + %d]\n", GenVariableName( vals[ right ].strValue ),
+                fprintf( fp, "    mov      ebx, DWRD PTR [%s + %d]\n", GenVariableName( vals[ right ].strValue ),
                          4 * vals[ rightArray ].value );
 
-            fprintf( fp, "    idiv     rsi\n" );
+            fprintf( fp, "    idiv     rbx\n" );
         }
         else
         {
             if ( Token::CONSTANT == vals[ right ].token )
-                fprintf( fp, "    %s      eax, %d\n", OperatorInstruction[ op ], vals[ right ].value );
+                fprintf( fp, "    %s     eax, %d\n", OperatorInstruction[ op ], vals[ right ].value );
             else if ( 0 == vals[ right ].dimensions )
-                fprintf( fp, "    %s      eax, DWORD PTR [%s]\n", OperatorInstruction[ op ], GenVariableName( vals[ right ].strValue ) );
+            {
+                string & varname = vals[ right ].strValue;
+                if ( IsVariableInReg( varmap, varname ) )
+                    fprintf( fp, "    %s     eax, %s\n", OperatorInstruction[ op ], GenVariableReg( varmap, varname ) );
+                else
+                    fprintf( fp, "    %s     eax, DWORD PTR [%s]\n", OperatorInstruction[ op ], GenVariableName( varname ) );
+            }
             else
-                fprintf( fp, "    %s      eax, DWORD PTR [%s + %d]\n", OperatorInstruction[ op ], GenVariableName( vals[ right ].strValue ),
+                fprintf( fp, "    %s     eax, DWORD PTR [%s + %d]\n", OperatorInstruction[ op ], GenVariableName( vals[ right ].strValue ),
                          4 * vals[ rightArray ].value );
         }
     }
@@ -1904,20 +1984,20 @@ int GenerateReduce( FILE * fp, int precedence, int * explist, int expcount )
             if ( isRelationalOperator( (Token) explist[ i ] ) )
             {
                 fprintf( fp, "    cmp      eax, DWORD PTR [ r10 + %d ]\n", ExplistOffset( i + 1 ) );
-                fprintf( fp, "    %s      al\n", OperatorInstruction[ op ] );
-                fprintf( fp, "    and      rax, 0ffh\n" );
+                fprintf( fp, "    %s     al\n", OperatorInstruction[ op ] );
+                fprintf( fp, "    movzx    rax, al\n" );
             }
             else
             {
                 if ( Token::DIV == op )
                 {
                     fprintf( fp, "    xor      rdx, rdx\n" );
-                    fprintf( fp, "    mov      esi, DWORD PTR [ r10 + %d ]\n", ExplistOffset( i + 1 ) );
-                    fprintf( fp, "    idiv     rsi\n" );
+                    fprintf( fp, "    mov      ebx, DWORD PTR [ r10 + %d ]\n", ExplistOffset( i + 1 ) );
+                    fprintf( fp, "    idiv     rbx\n" );
                 }
                 else
                 {
-                    fprintf( fp, "    %s      eax, DWORD PTR [ r10 + %d ]\n", OperatorInstruction[ op ], ExplistOffset( i + 1 ) );
+                    fprintf( fp, "    %s     eax, DWORD PTR [ r10 + %d ]\n", OperatorInstruction[ op ], ExplistOffset( i + 1 ) );
                 }
             }
 
@@ -1925,7 +2005,7 @@ int GenerateReduce( FILE * fp, int precedence, int * explist, int expcount )
 
             if ( expcount > 3 && i < ( expcount - 2 ) )
             {
-                fprintf( fp, "; reduce memcpy... i %d, expcount %d\n", i, expcount );
+                fprintf( fp, "; reduce memmove... i %d, expcount %d\n", i, expcount );
                 fprintf( fp, "    lea      rcx, [ r10 + %d ]\n", ExplistOffset( i ) );
                 fprintf( fp, "    lea      rdx, [ r10 + %d ]\n", ExplistOffset( 2 + i ) );
                 fprintf( fp, "    mov      r8, %d\n", 4 * ( ( expcount - 3 ) / 2) );
@@ -1969,7 +2049,7 @@ void GenerateEval( FILE * fp, int * explist, int expcount )
     assert( 1 == expcount );
 } //GenerateEval
 
-void GenerateExpression( FILE * fp, int iToken, vector<TokenValue> & vals, int expOffset = 0 )
+void GenerateExpression( FILE * fp, map<string, Variable> & varmap, int iToken, vector<TokenValue> & vals, int expOffset = 0 )
 {
     // generate code to put the resulting expression in rax
     // only modifies rax and rdx (without saving them)
@@ -1987,7 +2067,13 @@ void GenerateExpression( FILE * fp, int iToken, vector<TokenValue> & vals, int e
         if ( Token::CONSTANT == vals[ iToken + 1 ].token )
             fprintf( fp, "    mov      eax, %d\n", vals[ iToken + 1 ].value );
         else if ( Token::VARIABLE == vals[ iToken + 1 ].token )
-            fprintf( fp, "    mov      eax, [%s]\n", GenVariableName( vals[ iToken + 1 ].strValue ) );
+        {
+            string & varname = vals[ iToken + 1 ].strValue;
+            if ( IsVariableInReg( varmap, varname ) )
+                fprintf( fp, "    mov      eax, %s\n", GenVariableReg( varmap, varname ) );
+            else
+                fprintf( fp, "    mov      eax, [%s]\n", GenVariableName( varname ) );
+        }
     }
     else if ( 6 == tokenCount &&
               Token::VARIABLE == vals[ iToken + 1 ].token &&
@@ -2005,14 +2091,17 @@ void GenerateExpression( FILE * fp, int iToken, vector<TokenValue> & vals, int e
 
         if ( Token::CONSTANT == vals[ iToken + 4 ].token )
         {
-            fprintf( fp, "    mov      eax, DWORD PTR[ %s + %d ]\n", GenVariableName( vals[ iToken + 1 ].strValue ),
+            string & varname = vals[ iToken + 1 ].strValue;
+            fprintf( fp, "    mov      eax, DWORD PTR[ %s + %d ]\n", GenVariableName( varname ),
                      4 * vals[ iToken + 4 ].value );
         }
         else
         {
-            GenerateExpression( fp, iToken + 3, vals );
+            GenerateExpression( fp, varmap, iToken + 3, vals );
     
-            fprintf( fp, "    lea      rdx, [%s]\n", GenVariableName( vals[ iToken + 1 ].strValue ) );
+            string & varname = vals[ iToken + 1 ].strValue;
+            fprintf( fp, "    lea      rdx, [%s]\n", GenVariableName( varname ) );
+
             fprintf( fp, "    shl      rax, 2\n" );
             fprintf( fp, "    mov      eax, [rax + rdx]\n" );
         }
@@ -2023,21 +2112,31 @@ void GenerateExpression( FILE * fp, int iToken, vector<TokenValue> & vals, int e
         assert( isTokenOperator( vals[ iToken + 2 ].token ) );
         assert( isTokenSimpleValue( vals[ iToken + 3 ].token ) );
 
-        GenerateOp( fp, vals, iToken + 1, iToken + 3, vals[ iToken + 2 ].token );
+        GenerateOp( fp, varmap, vals, iToken + 1, iToken + 3, vals[ iToken + 2 ].token );
     }
     else if ( 3 == tokenCount )
     {
         if ( Token::NOT == vals[ iToken + 1 ].token )
         {
-            fprintf( fp, "    xor      rax, rax\n" );
-            fprintf( fp, "    cmp      DWORD PTR [%s], 0\n", GenVariableName( vals[ iToken + 2 ].strValue ) );
+            string & varname = vals[ iToken + 2 ].strValue;
+            if ( IsVariableInReg( varmap, varname ) )
+                fprintf( fp, "    cmp      %s, 0\n", GenVariableReg( varmap, varname ) );
+            else
+                fprintf( fp, "    cmp      DWORD PTR [%s], 0\n", GenVariableName( varname ) );
+
             fprintf( fp, "    sete     al\n" );
+            fprintf( fp, "    movzx    rax, al\n" );
         }
         else
         {
             assert( Token::MINUS == vals[ iToken + 1 ].token );
 
-            fprintf( fp, "    mov      eax, [%s]\n", GenVariableName( vals[ iToken + 2 ].strValue ) );
+            string & varname = vals[ iToken + 2 ].strValue;
+            if ( IsVariableInReg( varmap, varname ) )
+                fprintf( fp, "    mov      eax, %s\n", GenVariableReg( varmap, varname ) );
+            else
+                fprintf( fp, "    mov      eax, [%s]\n", GenVariableName( varname ) );
+
             fprintf( fp, "    neg      rax\n" );
         }
     }
@@ -2076,21 +2175,21 @@ void GenerateExpression( FILE * fp, int iToken, vector<TokenValue> & vals, int e
         //                                    vals[ iToken + 10 ].token,
         //                                    vals[ iToken + 11 ].pVariable->array[ vals[ iToken + 14 ].value ] ) );
 
-        GenerateOp( fp, vals, iToken + 9, iToken + 11, vals[ iToken + 10 ].token, 0, iToken + 14 );
+        GenerateOp( fp, varmap, vals, iToken + 9, iToken + 11, vals[ iToken + 10 ].token, 0, iToken + 14 );
         fprintf( fp, "    mov      rdx, rax\n" );
 
-        GenerateOp( fp, vals, iToken + 1, iToken + 3, vals[ iToken + 2 ].token, 0, iToken + 6 );
+        GenerateOp( fp, varmap, vals, iToken + 1, iToken + 3, vals[ iToken + 2 ].token, 0, iToken + 6 );
 
         Token finalOp = vals[ iToken + 8 ].token;
         if ( isRelationalOperator( finalOp ) )
         {
             fprintf( fp, "    cmp      rax, rdx\n" );
-            fprintf( fp, "    %s      al\n", OperatorInstruction[ finalOp ] );
-            fprintf( fp, "    and      rax, 0ffh\n" );
+            fprintf( fp, "    %s     al\n", OperatorInstruction[ finalOp ] );
+            fprintf( fp, "    movzx    rax, al\n" );
         }
         else
         {
-            fprintf( fp, "    %s      rax, rdx\n", OperatorInstruction[ finalOp ] );
+            fprintf( fp, "    %s     rax, rdx\n", OperatorInstruction[ finalOp ] );
         }
     }
     else
@@ -2123,7 +2222,11 @@ void GenerateExpression( FILE * fp, int iToken, vector<TokenValue> & vals, int e
                 if ( 0 == val.dimensions )
                 {
                     explist[ expAdded ] = 0xbbbbbbbb;
-                    fprintf( fp, "    mov      eax, DWORD PTR [%s]\n", GenVariableName( val.strValue ) );
+                    if ( IsVariableInReg( varmap, val.strValue ) )
+                        fprintf( fp, "    mov      eax, %s\n", GenVariableReg( varmap, val.strValue ) );
+                    else
+                        fprintf( fp, "    mov      eax, DWORD PTR [%s]\n", GenVariableName( val.strValue ) );
+
                     if ( negActive )
                     {
                         fprintf( fp, "    neg      eax\n" );
@@ -2145,7 +2248,7 @@ void GenerateExpression( FILE * fp, int iToken, vector<TokenValue> & vals, int e
                     else
                     {
                         fprintf( fp, "    push     r10\n" );
-                        GenerateExpression( fp, t, vals, expAdded );
+                        GenerateExpression( fp, varmap, t, vals, expAdded );
                         fprintf( fp, "    pop      r10\n" );
                         fprintf( fp, "    shl      rax, 2\n" );
                         fprintf( fp, "    lea      rbx, DWORD PTR [%s]\n", GenVariableName( val.strValue ) );
@@ -2180,7 +2283,7 @@ void GenerateExpression( FILE * fp, int iToken, vector<TokenValue> & vals, int e
                 explist[ expAdded ] = 0xeeeeeeee;
 
                 fprintf( fp, "    push     r10\n" );
-                GenerateExpression( fp, t, vals, expAdded );
+                GenerateExpression( fp, varmap, t, vals, expAdded );
                 fprintf( fp, "    pop      r10\n" );
 
                 // restore the array location to before the recursion in case it changed
@@ -2198,9 +2301,14 @@ void GenerateExpression( FILE * fp, int iToken, vector<TokenValue> & vals, int e
             else if ( Token::NOT == val.token )
             {
                 explist[ expAdded ] = 0x66666666;
-                fprintf( fp, "    xor      rax, rax\n" );
-                fprintf( fp, "    cmp      DWORD PTR [%s], 0\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                string & varname = vals[ t + 1 ].strValue;
+                if ( IsVariableInReg( varmap, varname ) )
+                    fprintf( fp, "    cmp      %s, 0\n", GenVariableReg( varmap, varname ) );
+                else
+                    fprintf( fp, "    cmp      DWORD PTR [%s], 0\n", GenVariableName( varname ) );
+
                 fprintf( fp, "    sete     al\n" );
+                fprintf( fp, "    movzx    rax, al\n" );
                 fprintf( fp, "    mov      DWORD PTR [ r10 + %d ], eax\n", ExplistOffset( expAdded ) );
                 expAdded++;
                 t++;
@@ -2266,7 +2374,7 @@ void GenerateExpression( FILE * fp, int iToken, vector<TokenValue> & vals, int e
     
                     if ( numToCopy )
                     {
-                        fprintf( fp, "; paren memcpy...\n" );
+                        fprintf( fp, "; paren memmove...\n" );
                         fprintf( fp, "    lea      rcx, [ r10 + %d ]\n", ExplistOffset( item.offset + 1 ) );
                         fprintf( fp, "    lea      rdx, [ r10 + %d ]\n", ExplistOffset( item.offset + length ) );
                         fprintf( fp, "    mov      r8, %d\n", 4 * ( numToCopy / 2 ) );
@@ -2301,6 +2409,23 @@ void GenerateExpression( FILE * fp, int iToken, vector<TokenValue> & vals, int e
     }
 } //GenerateExpression
 
+struct VarCount
+{
+    VarCount() : refcount( 0 ) {};
+    string name;
+    int refcount;
+};
+
+static int CompareVarCount( const void * a, const void * b )
+{
+    // sort by size of cluster (# of items contained) high to low
+
+    VarCount const * pa = (VarCount const *) a;
+    VarCount const * pb = (VarCount const *) b;
+
+    return pb->refcount - pa->refcount;
+} //CompareVarCount
+    
 void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
 {
     CFile fileOut( fopen( outputfile, "w" ) );
@@ -2350,20 +2475,53 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
         }
     }
 
-    fprintf( fp, "  align 16\n" );
+    vector<VarCount> varscount;
 
     for ( auto it = varmap.begin(); it != varmap.end(); it++ )
     {
         if ( 0 == it->second.dimensions )
-            fprintf( fp, "    %8s DD   0\n", GenVariableName( it->first ) );
+        {
+            VarCount vc;
+            vc.name = it->first;
+            vc.refcount = it->second.references;
+            varscount.push_back( vc );
+        }
+    }
+
+    qsort( varscount.data(), varscount.size(), sizeof VarCount, CompareVarCount );
+    int availableRegisters = _countof( MappedRegisters );
+
+    #ifndef REGISTER_OPTIMIZATIONS
+        availableRegisters = 0;
+    #endif
+
+    for ( size_t i = 0; i < varscount.size() && 0 != availableRegisters; i++ )
+    {
+        Variable * pvar = FindVariable( varmap, varscount[ i ].name );
+        assert( pvar );
+        availableRegisters--;
+        pvar->reg = MappedRegisters[ availableRegisters ];
+        if ( EnableTracing && g_Tracing )
+            printf( "variable %s has %d references and is mapped to register %s\n",
+                    varscount[ i ].name.c_str(), varscount[ i ].refcount, pvar->reg.c_str() );
+
+        fprintf( fp, "    ; variable %s (referenced %d times) will use register %s\n", pvar->name,
+                 varscount[ i ].refcount, pvar->reg.c_str() );
     }
 
     fprintf( fp, "  align 16\n" );
-    fprintf( fp, "    fgstacktype    db 128 DUP(0)\n" ); // for / gosub stack 128 deep
+    for ( auto it = varmap.begin(); it != varmap.end(); it++ )
+    {
+        if ( ( 0 == it->second.dimensions ) && ( 0 == it->second.reg.length() ) )
+            fprintf( fp, "    %8s DD   0\n", GenVariableName( it->first ) );
+    }
+
+    varscount.clear();
+
     fprintf( fp, "  align 16\n" );
-    fprintf( fp, "    explist        dd 128 DUP(0)\n" );
+    fprintf( fp, "    explist        dd 128 DUP(0)\n" ); // expression complexity limited to this
     fprintf( fp, "  align 16\n" );
-    fprintf( fp, "    fgcount        dq    0\n" );
+    fprintf( fp, "    gosubcount     dq    0\n" ); // count of active gosub calls
     fprintf( fp, "    startTicks     dq    0\n" );
     fprintf( fp, "    perfFrequency  dq    0\n" );
     fprintf( fp, "    currentTicks   dq    0\n" );
@@ -2390,6 +2548,13 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
     fprintf( fp, "    call     QueryPerformanceCounter\n" );
     fprintf( fp, "    lea      rcx, [perfFrequency]\n" );
     fprintf( fp, "    call     QueryPerformanceFrequency\n" );
+
+    #ifdef REGISTER_OPTIMIZATIONS
+
+        for ( size_t i = 0; i < _countof( MappedRegisters ); i++ )
+            fprintf( fp, "    xor      %s, %s\n", MappedRegisters[ i ], MappedRegisters[ i ] );
+
+    #endif //REGISTER_OPTIMIZATIONS
 
     static Stack<ForGosubItem> forGosubStack;
     int activeIf = -1;
@@ -2423,13 +2588,28 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
 
                     if ( Token::CONSTANT == vals[ t + 1 ].token && ( 2 == vals[ t ].value ) )
                     {
-                        fprintf( fp, "    mov      DWORD PTR [%s], %d\n", GenVariableName( vals[ variableToken ].strValue ),
-                                 vals[ t + 1 ].value );
+                        if ( IsVariableInReg( varmap, vals[ variableToken ].strValue ) )
+                            fprintf( fp, "    mov      %s, %d\n", GenVariableReg( varmap, vals[ variableToken ].strValue ),
+                                     vals[ t + 1 ].value );
+                        else
+                            fprintf( fp, "    mov      DWORD PTR [%s], %d\n", GenVariableName( vals[ variableToken ].strValue ),
+                                     vals[ t + 1 ].value );
+                    }
+                    else if ( Token::VARIABLE == vals[ t + 1 ].token && 2 == vals[ t ].value &&
+                              IsVariableInReg( varmap, vals[ t + 1 ].strValue ) &&
+                              IsVariableInReg( varmap, vals[ variableToken ].strValue ) )
+                    {
+                        fprintf( fp, "    mov      %s, %s\n", GenVariableReg( varmap, vals[ variableToken ].strValue ),
+                                                              GenVariableReg( varmap, vals[ t + 1 ].strValue ) );
                     }
                     else
                     {
-                        GenerateExpression( fp, t, vals );
-                        fprintf( fp, "    mov      DWORD PTR [%s], eax\n", GenVariableName( vals[ variableToken ].strValue ) );
+                        GenerateExpression( fp, varmap, t, vals );
+
+                        if ( IsVariableInReg( varmap, vals[ variableToken ].strValue ) )
+                            fprintf( fp, "    mov      %s, eax\n", GenVariableReg( varmap, vals[ variableToken ].strValue ) );
+                        else
+                            fprintf( fp, "    mov      DWORD PTR [%s], eax\n", GenVariableName( vals[ variableToken ].strValue ) );
                     }
 
                     t += vals[ t ].value;
@@ -2438,7 +2618,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
                 {
                     t++;
                     assert( Token::EXPRESSION == vals[ t ].token );
-                    GenerateExpression( fp, t, vals );
+                    GenerateExpression( fp, varmap, t, vals );
                     t += vals[ t ].value;
     
                     t += 2; // ) =
@@ -2453,9 +2633,16 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
                     {
                         fprintf( fp, "    mov      DWORD PTR [rbx], %d\n", vals[ t + 1 ].value );
                     }
+                    else if ( Token::VARIABLE == vals[ t + 1 ].token && 2 == vals[ t ].value &&
+                              IsVariableInReg( varmap, vals[ t + 1 ].strValue ) )
+                    {
+                        string & varname = vals[ t + 1 ].strValue;
+                        if ( IsVariableInReg( varmap, varname ) )
+                            fprintf( fp, "    mov      DWORD PTR [rbx], %s\n", GenVariableReg( varmap, varname ) );
+                    }
                     else
                     {
-                        GenerateExpression( fp, t, vals );
+                        GenerateExpression( fp, varmap, t, vals );
                         fprintf( fp, "    mov      DWORD PTR [rbx], eax\n" );
                     }
 
@@ -2472,47 +2659,50 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
             }
             else if ( Token::FOR == token )
             {
-                fprintf( fp, "    mov      [%s], %d\n", GenVariableName( vals[ t ].strValue.c_str() ), vals[ t + 2 ].value );
-                fprintf( fp, "    lea      rbx, [fgstacktype]\n" );
-                fprintf( fp, "    mov      rcx, [fgcount]\n" );
-                fprintf( fp, "    mov      BYTE PTR [rbx + rcx], 1\n" );
-                fprintf( fp, "    inc      [fgcount]\n" );
-    
+                if ( IsVariableInReg( varmap, vals[ t ].strValue ) )
+                    fprintf( fp, "    mov      %s, %d\n", GenVariableReg( varmap, vals[ t ].strValue ), vals[ t + 2 ].value );
+                else
+                    fprintf( fp, "    mov      [%s], %d\n", GenVariableName( vals[ t ].strValue ), vals[ t + 2 ].value );
+
                 ForGosubItem item( true, l );
                 forGosubStack.push( item );
     
                 fprintf( fp, "  for_loop_%zd:\n", l );
-                fprintf( fp, "    cmp      [%s], %d\n", GenVariableName( vals[ t ].strValue.c_str() ), vals[ t + 4 ].value );
+                if ( IsVariableInReg( varmap, vals[ t ].strValue ) )
+                    fprintf( fp, "    cmp      %s, %d\n", GenVariableReg( varmap, vals[ t ].strValue ), vals[ t + 4 ].value );
+                else
+                    fprintf( fp, "    cmp      [%s], %d\n", GenVariableName( vals[ t ].strValue ), vals[ t + 4 ].value );
+
                 fprintf( fp, "    jg       after_for_loop_%zd\n", l );
                 break;
             }
             else if ( Token::NEXT == token )
             {
-                fprintf( fp, "    cmp      [fgcount], 0\n" );
-                fprintf( fp, "    je       error_exit\n" );
-    
                 if ( 0 == forGosubStack.size() )
                     RuntimeFail( "next without for", l );
     
                 ForGosubItem & item = forGosubStack.top();
-    
-                fprintf( fp, "    inc      [%s]\n", GenVariableName( g_linesOfCode[ item.pcReturn ].tokenValues[ t ].strValue ) );
+                string & loopVal = g_linesOfCode[ item.pcReturn ].tokenValues[ 0 ].strValue;
+
+                if ( loopVal.compare( vals[ t ].strValue ) )
+                    RuntimeFail( "NEXT statement variable doesn't match current FOR loop variable", l );
+
+                if ( IsVariableInReg( varmap, loopVal ) )
+                    fprintf( fp, "    inc      %s\n", GenVariableReg( varmap, loopVal ) );
+                else
+                    fprintf( fp, "    inc      [%s]\n", GenVariableName( loopVal ) );
+
                 fprintf( fp, "    jmp      for_loop_%d\n", item.pcReturn );
                 fprintf( fp, "    align    16\n" );
                 fprintf( fp, "  after_for_loop_%d:\n", item.pcReturn );
-                fprintf( fp, "    dec      [fgcount]\n" );
     
                 forGosubStack.pop();
                 break;
             }
             else if ( Token::GOSUB == token )
             {
-                fprintf( fp, "    lea      rbx, [fgstacktype]\n" );
-                fprintf( fp, "    mov      rcx, [fgcount]\n" );
-                fprintf( fp, "    mov      BYTE PTR [rbx + rcx], 2\n" );
-                fprintf( fp, "    inc      [fgcount]\n" );
-    
-                fprintf( fp, "    call      line_number_%d\n", vals[ t ].value );
+                fprintf( fp, "    inc      [gosubcount]\n" );
+                fprintf( fp, "    call     line_number_%d\n", vals[ t ].value );
                 break;
             }
             else if ( Token::GOTO == token )
@@ -2567,7 +2757,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
                               Token::VARIABLE == vals[ t + 1 ].token )
                     {
                         assert( Token::EXPRESSION == vals[ t ].token );
-                        GenerateExpression( fp, t, vals );
+                        GenerateExpression( fp, varmap, t, vals );
                         fprintf( fp, "    lea      rcx, [intString]\n" );
                         fprintf( fp, "    mov      rdx, rax\n" );
                         fprintf( fp, "    call     call_printf\n" );
@@ -2583,10 +2773,21 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
             }
             else if ( Token::ATOMIC == token )
             {
-                if ( Token::INC == vals[ t + 1 ].token )
-                    fprintf( fp, "    inc      DWORD PTR [%s]\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                string & varname = vals[ t + 1 ].strValue;
+                if ( IsVariableInReg( varmap, varname ) )
+                {
+                    if ( Token::INC == vals[ t + 1 ].token )
+                        fprintf( fp, "    inc      %s\n", GenVariableReg( varmap, varname ) );
+                    else
+                        fprintf( fp, "    dec      %s\n", GenVariableReg( varmap, varname ) );
+                }
                 else
-                    fprintf( fp, "    dec      DWORD PTR [%s]\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                {
+                    if ( Token::INC == vals[ t + 1 ].token )
+                        fprintf( fp, "    inc      DWORD PTR [%s]\n", GenVariableName( varname ) );
+                    else
+                        fprintf( fp, "    dec      DWORD PTR [%s]\n", GenVariableName( varname ) );
+                }
 
                 break;
             }
@@ -2614,24 +2815,78 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
 
                     Token ifOp = vals[ t + 2 ].token;
 
-                    if ( Token::CONSTANT == vals[ 2 ].token )
-                        fprintf( fp, "    mov      eax, %d\n", vals[ 2 ].value );
-                    else
-                        fprintf( fp, "    mov      eax, DWORD PTR [%s]\n", GenVariableName( vals[ 2 ].strValue ) );
+                    if ( Token::VARIABLE == vals[ 2 ].token && Token::CONSTANT == vals[ 4 ].token )
+                    {
+                        string & varname = vals[ 2 ].strValue;
+                        if ( IsVariableInReg( varmap, varname ) )
+                            fprintf( fp, "    cmp      %s, %d\n", GenVariableReg( varmap, varname ), vals[ 4 ].value );
+                        else
+                            fprintf( fp, "    cmp      DWORD PTR [%s], %d\n", GenVariableName( varname ), vals[ 4 ].value );
+                    }
+                    else if ( ( Token::VARIABLE == vals[ 2 ].token && Token::VARIABLE == vals[ 4 ].token ) &&
+                              ( IsVariableInReg( varmap, vals[ 2 ].strValue ) || IsVariableInReg( varmap, vals[ 4 ].strValue ) ) )
+                    {
+                        string & varname2 = vals[ 2 ].strValue;
+                        string & varname4 = vals[ 4 ].strValue;
+                        if ( IsVariableInReg( varmap, varname2 ) )
+                        {
+                            if ( IsVariableInReg( varmap, varname4 ) )
+                                fprintf( fp, "    cmp      %s, %s\n", GenVariableReg( varmap, varname2 ), GenVariableReg( varmap, varname4 ) );
+                            else
+                                fprintf( fp, "    cmp      %s, DWORD PTR [%s]\n", GenVariableReg( varmap, varname2 ), GenVariableName( varname4 ) );
+                        }
+                        else
+                        {
+                            fprintf( fp, "    cmp      DWORD PTR[%s], %s\n", GenVariableName( varname2 ), GenVariableReg( varmap, varname4 ) );
+                        }
 
-                    if ( Token::CONSTANT == vals[ 4 ].token )
-                        fprintf( fp, "    cmp      eax, %d\n", vals[ 4 ].value );
+                    }
                     else
-                        fprintf( fp, "    cmp      eax, DWORD PTR [%s]\n", GenVariableName( vals[ 4 ].strValue ) );
+                    {
+                        if ( Token::CONSTANT == vals[ 2 ].token )
+                            fprintf( fp, "    mov      eax, %d\n", vals[ 2 ].value );
+                        else
+                        {
+                            string & varname = vals[ 2 ].strValue;
+                            if ( IsVariableInReg( varmap, varname ) )
+                                fprintf( fp, "    mov      eax, %s\n", GenVariableReg( varmap, varname ) );
+                            else
+                                fprintf( fp, "    mov      eax, DWORD PTR [%s]\n", GenVariableName( varname ) );
+                        }
+    
+                        if ( Token::CONSTANT == vals[ 4 ].token )
+                            fprintf( fp, "    cmp      eax, %d\n", vals[ 4 ].value );
+                        else
+                        {
+                            string & varname = vals[ 4 ].strValue;
+                            if ( IsVariableInReg( varmap, varname ) )
+                                fprintf( fp, "    cmp      eax, %s\n", GenVariableReg( varmap, varname ) );
+                            else
+                                fprintf( fp, "    cmp      eax, DWORD PTR [%s]\n", GenVariableName( varname ) );
+                        }
+                    }
 
                     t += vals[ t ].value;
                     assert( Token::THEN == vals[ t ].token );
                     t++;
 
-                    if ( vals[ t - 1 ].value ) // is there an else clause?
-                        fprintf( fp, "    %s       SHORT label_else_%zd\n", RelationalNotInstruction[ ifOp ], l );
+                    if ( Token::GOTO == vals[ t ].token )
+                    {
+                        fprintf( fp, "    %s      line_number_%d\n", RelationalInstruction[ ifOp ], vals[ t ].value );
+                        break;
+                    }
+                    else if ( Token::RETURN == vals[ t ].token )
+                    {
+                        fprintf( fp, "    %s      label_gosub_return\n", RelationalInstruction[ ifOp ] );
+                        break;
+                    }
                     else
-                        fprintf( fp, "    %s       SHORT line_number_%zd\n", RelationalNotInstruction[ ifOp ], l + 1 );
+                    {
+                        if ( vals[ t - 1 ].value ) // is there an else clause?
+                            fprintf( fp, "    %s      SHORT label_else_%zd\n", RelationalNotInstruction[ ifOp ], l );
+                        else
+                            fprintf( fp, "    %s      SHORT line_number_%zd\n", RelationalNotInstruction[ ifOp ], l + 1 );
+                    }
                 }
                 else if ( 3 == vals[ t ].value && Token::NOT == vals[ t + 1 ].token && Token::VARIABLE == vals[ t + 2 ].token )
                 {
@@ -2643,30 +2898,60 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
                     // token   4 THEN, value 0, strValue ''
                     // token   5 RETURN, value 0, strValue ''
 
-                    fprintf( fp, "    cmp      DWORD PTR [%s], 0\n", GenVariableName( vals[ t + 2 ].strValue ) );
+                    string & varname = vals[ t + 2 ].strValue;
+                    if ( IsVariableInReg( varmap, varname ) )
+                        fprintf( fp, "    cmp      %s, 0\n", GenVariableReg( varmap, varname ) );
+                    else
+                        fprintf( fp, "    cmp      DWORD PTR [%s], 0\n", GenVariableName( varname ) );
 
                     t += vals[ t ].value;
                     assert( Token::THEN == vals[ t ].token );
                     t++;
 
-                    if ( vals[ t - 1 ].value ) // is there an else clause?
-                        fprintf( fp, "    jne      SHORT label_else_%zd\n", l );
+                    if ( Token::GOTO == vals[ t ].token )
+                    {
+                        fprintf( fp, "    je       line_number_%d\n", vals[ t ].value );
+                        break;
+                    }
+                    else if ( Token::RETURN == vals[ t ].token )
+                    {
+                        fprintf( fp, "    je       label_gosub_return\n" );
+                        break;
+                    }
                     else
-                        fprintf( fp, "    jne      SHORT line_number_%zd\n", l + 1 );
+                    {
+                        if ( vals[ t - 1 ].value ) // is there an else clause?
+                            fprintf( fp, "    jne      SHORT label_else_%zd\n", l );
+                        else
+                            fprintf( fp, "    jne      SHORT line_number_%zd\n", l + 1 );
+                    }
                 }
                 else
                 {
-                    GenerateExpression( fp, t, vals );
+                    GenerateExpression( fp, varmap, t, vals );
                     t += vals[ t ].value;
                     assert( Token::THEN == vals[ t ].token );
                     t++;
-        
+                                                                                                                                
                     fprintf( fp, "    cmp      rax, 0\n" );
         
-                    if ( vals[ t - 1 ].value ) // is there an else clause?
-                        fprintf( fp, "    je       label_else_%zd\n", l );
+                    if ( Token::GOTO == vals[ t ].token )
+                    {
+                        fprintf( fp, "    jne      line_number_%d\n", vals[ t ].value );
+                        break;
+                    }
+                    else if ( Token::RETURN == vals[ t ].token )
+                    {
+                        fprintf( fp, "    jne      label_gosub_return\n" );
+                        break;
+                    }
                     else
-                        fprintf( fp, "    je       line_number_%zd\n", l + 1 );
+                    {
+                        if ( vals[ t - 1 ].value ) // is there an else clause?
+                            fprintf( fp, "    je       label_else_%zd\n", l );
+                        else
+                            fprintf( fp, "    je       line_number_%zd\n", l + 1 );
+                    }
                 }
             }
             else if ( Token::ELSE == token )
@@ -2690,16 +2975,12 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
             activeIf = -1;
     }
 
-    // remove any active FOR loops when a return is executed
+    // validate there is an active GOSUB before returning
+
     fprintf( fp, "label_gosub_return:\n" );
-    fprintf( fp, "    lea      rbx, [fgstacktype]\n" );
-    fprintf( fp, "label_gosub_return_loop:\n" );
-    fprintf( fp, "    dec      [fgcount]\n" );
-    fprintf( fp, "    mov      rcx, [fgcount]\n" );
-    fprintf( fp, "    cmp      rcx, 0\n" );
-    fprintf( fp, "    jle      error_exit\n" );
-    fprintf( fp, "    cmp      BYTE PTR [rbx + rcx], 1\n" ); //1 == FOR, 2 == GOSUB
-    fprintf( fp, "    je       SHORT label_gosub_return_loop\n" );  // remove the "for" from the stack
+    fprintf( fp, "    dec      [gosubcount]\n" );
+    fprintf( fp, "    cmp      [gosubcount], 0\n" );
+    fprintf( fp, "    jl       error_exit\n" );
     fprintf( fp, "    ret\n" );
 
     fprintf( fp, "  error_exit:\n" );
@@ -2721,11 +3002,19 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
 
     fprintf( fp, "align 16\n" );
     fprintf( fp, "call_printf PROC\n" );
+    fprintf( fp, "    push     r9\n" );
+    fprintf( fp, "    push     r10\n" ); 
+    fprintf( fp, "    push     r11\n" ); 
+    fprintf( fp, "    push     rax\n" );
     fprintf( fp, "    push     rbp\n" );
     fprintf( fp, "    mov      rbp, rsp\n" );
     fprintf( fp, "    sub      rsp, 32\n" );
     fprintf( fp, "    call     printf\n" );
     fprintf( fp, "    leave\n" );
+    fprintf( fp, "    pop      rax\n" );
+    fprintf( fp, "    pop      r11\n" );
+    fprintf( fp, "    pop      r10\n" );
+    fprintf( fp, "    pop      r9\n" );
     fprintf( fp, "    ret\n" );
     fprintf( fp, "call_printf ENDP\n" );
 
@@ -2741,17 +3030,27 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
 
     fprintf( fp, "align 16\n" );
     fprintf( fp, "call_QueryPerformanceCounter PROC\n" );
+    fprintf( fp, "    push     r9\n" );   
+    fprintf( fp, "    push     r10\n" ); 
+    fprintf( fp, "    push     r11\n" ); 
+    fprintf( fp, "    push     rax\n" );
     fprintf( fp, "    push     rbp\n" );
     fprintf( fp, "    mov      rbp, rsp\n" );
     fprintf( fp, "    sub      rsp, 32\n" );
     fprintf( fp, "    call     QueryPerformanceCounter\n" );
     fprintf( fp, "    leave\n" );
+    fprintf( fp, "    pop      rax\n" );
+    fprintf( fp, "    pop      r11\n" );
+    fprintf( fp, "    pop      r10\n" );
+    fprintf( fp, "    pop      r9\n" );
     fprintf( fp, "    ret\n" );
     fprintf( fp, "call_QueryPerformanceCounter ENDP\n" );
 
     fprintf( fp, "align 16\n" );
     fprintf( fp, "call_memmove PROC\n" );
+    fprintf( fp, "    push     r9\n" );   
     fprintf( fp, "    push     r10\n" ); 
+    fprintf( fp, "    push     r11\n" ); 
     fprintf( fp, "    push     rax\n" );
     fprintf( fp, "    push     rbp\n" );
     fprintf( fp, "    mov      rbp, rsp\n" );
@@ -2759,7 +3058,9 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
     fprintf( fp, "    call     memmove\n" );
     fprintf( fp, "    leave\n" );
     fprintf( fp, "    pop      rax\n" );
+    fprintf( fp, "    pop      r11\n" );
     fprintf( fp, "    pop      r10\n" );
+    fprintf( fp, "    pop      r9\n" );
     fprintf( fp, "    ret\n" );
     fprintf( fp, "call_memmove ENDP\n" );
 
@@ -3373,6 +3674,11 @@ extern int main( int argc, char *argv[] )
                 ForGosubItem & item = forGosubStack.top();
                 if ( !item.isFor )
                     RuntimeFail( "NEXT without FOR", g_lineno );
+
+                string & loopVal = g_linesOfCode[ item.pcReturn ].tokenValues[ 0 ].strValue;
+
+                if ( loopVal.compare( vals[ t ].strValue ) )
+                    RuntimeFail( "NEXT statement variable doesn't match current FOR loop variable", g_lineno );
 
                 g_pc = item.pcReturn;
                 goto label_next_pc;
