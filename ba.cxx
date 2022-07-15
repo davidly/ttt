@@ -25,14 +25,14 @@ using namespace std;
 using namespace std::chrono;
 
 bool g_Tracing = false;
+bool g_ExpressionOptimization = true;
 int g_pc = 0;
 struct LineOfCode;
 vector<LineOfCode> g_linesOfCode;
 #define g_lineno ( g_linesOfCode[ g_pc ].lineNumber )
 
 //#define ENABLE_EXECUTION_TIME
-#define EXPRESSION_OPTIMIZATIONS
-#define REGISTER_OPTIMIZATIONS
+#define ENABLE_INTERPRETER_OPTIMIZATIONS
 
 #ifdef DEBUG
     const bool RangeCheckArrays = true;
@@ -113,6 +113,10 @@ const char * RelationalInstruction[] = { 0, 0, 0, 0, 0, 0,                      
 const char * RelationalNotInstruction[] = { 0, 0, 0, 0, 0, 0,                          // filler
                                             0, 0, 0, 0, 0,                             // filler
                                             0, 0, 0, 0, "jne", "je", "jg", "jl", "jge", "jle", 0, 0, 0, };
+
+const char * CMovInstruction[] = { 0, 0, 0, 0, 0, 0,                          // filler
+                                   0, 0, 0, 0, 0,                             // filler
+                                   0, 0, 0, 0, "cmove", "cmovne", "cmovle", "cmovge", "cmovl", "cmovg", 0, 0, 0, };
 
 // the most frequently used variables are mapped to these registers
 // r10 is used for complex expression calculations
@@ -314,7 +318,9 @@ static void Usage()
     printf( "                 -a               Generate x64 ml64-compatible assembler code to filename.asm\n" );
     printf( "                 -e               Show execution count and time for each line\n" );
     printf( "                 -l               Show 'pcode' listing\n" );
+    printf( "                 -o               Don't do expression optimization for assembly code\n" );
     printf( "                 -p               Show parse time for input file\n" );
+    printf( "                 -r               Don't use registers for variables in assembly code\n" );
     printf( "                 -t               Show debug tracing\n" );
     printf( "                 -x               Parse only; don't execute the code\n" );
 
@@ -1125,7 +1131,8 @@ __makeinline int Eval( int * explist, int expcount )
         printf( "\n" );
     }
 
-#ifdef EXPRESSION_OPTIMIZATIONS
+#ifdef ENABLE_INTERPRETER_OPTIMIZATIONS
+
     if ( 1 == expcount )
     {
         // we're done here
@@ -1141,7 +1148,9 @@ __makeinline int Eval( int * explist, int expcount )
         explist[ 0 ] = explist[ 0 ] & explist[ 4 ];
     }
     else
-#endif //EXPRESSION_OPTIMIZATIONS
+
+#endif // ENABLE_INTERPRETER_OPTIMIZATIONS
+
     {
         // BASIC doesn't distinguish between logical and bitwise operators. they are the same.
 
@@ -1172,7 +1181,8 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
 
     // implement a few specialized/optimized cases in order of usage
 
-#ifdef EXPRESSION_OPTIMIZATIONS
+#ifdef ENABLE_INTERPRETER_OPTIMIZATIONS
+
     if ( 2 == tokenCount )
     {
         value = GetSimpleValue( vals[ iToken + 1 ] );
@@ -1266,12 +1276,14 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
         else
         {
             assert( Token::MINUS == vals[ iToken + 1 ].token );
-            return - GetSimpleValue( vals[ iToken + 2 ] );
+            value = - GetSimpleValue( vals[ iToken + 2 ] );
         }
     }
     else
-#endif //EXPRESSION_OPTIMIZATIONS
     {
+
+#endif // ENABLE_INTERPRETER_OPTIMIZATIONS
+
         // arbitrary expression cases
 
         const int maxExpression = 60; // given the maximum line length, this is excessive
@@ -1455,7 +1467,7 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
     }
 
     if ( EnableTracing && g_Tracing )
-        printf( "returning expression value %d, tokens consumed %d\n", value, tokenCount );
+        printf( "returning expression value %d\n", value );
 
     return value;
 } //EvaluateExpression
@@ -2061,7 +2073,9 @@ void GenerateExpression( FILE * fp, map<string, Variable> & varmap, int iToken, 
         printf( "  GenerateExpression token %d, which is %s, length %d\n",
                 iToken, TokenStr( vals[ iToken ].token ), vals[ iToken ].value );
 
-#ifdef EXPRESSION_OPTIMIZATIONS
+    if ( !g_ExpressionOptimization )
+        goto label_no_expression_optimization;
+
     if ( 2 == tokenCount )
     {
         if ( Token::CONSTANT == vals[ iToken + 1 ].token )
@@ -2193,14 +2207,13 @@ void GenerateExpression( FILE * fp, map<string, Variable> & varmap, int iToken, 
         }
     }
     else
-#endif //EXPRESSION_OPTIMIZATIONS
     {
-        // This generates some pretty terrible code; at least 3x slower than it should be.
-        // Also, constant expressions aren't collapsed.
-        // Operators are stored in generated code for no reason.
-        // Filler values are stored in the compiler for no reason.
+label_no_expression_optimization:
 
-        // r10 == pointer to explist for this stack frame
+        // This generates some pretty terrible code; at least 3x slower than it should be.
+        // Constant expressions aren't collapsed at compile time.
+
+        // r10 == pointer to explist for this stack frame. It's effectively a global variable.
 
         fprintf( fp, "    lea      r10, [ explist + %d ]\n", ExplistOffset( expOffset ) );
 
@@ -2426,7 +2439,7 @@ static int CompareVarCount( const void * a, const void * b )
     return pb->refcount - pa->refcount;
 } //CompareVarCount
     
-void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
+void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool useRegistersInASM )
 {
     CFile fileOut( fopen( outputfile, "w" ) );
     FILE * fp = fileOut.get();
@@ -2489,11 +2502,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
     }
 
     qsort( varscount.data(), varscount.size(), sizeof VarCount, CompareVarCount );
-    int availableRegisters = _countof( MappedRegisters );
-
-    #ifndef REGISTER_OPTIMIZATIONS
-        availableRegisters = 0;
-    #endif
+    int availableRegisters = useRegistersInASM ? _countof( MappedRegisters ) : 0;
 
     for ( size_t i = 0; i < varscount.size() && 0 != availableRegisters; i++ )
     {
@@ -2601,6 +2610,28 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
                     {
                         fprintf( fp, "    mov      %s, %s\n", GenVariableReg( varmap, vals[ variableToken ].strValue ),
                                                               GenVariableReg( varmap, vals[ t + 1 ].strValue ) );
+                    }
+                    else if ( 6 == vals[ t ].value &&
+                              Token::VARIABLE == vals[ t + 1 ].token &&
+                              IsVariableInReg( varmap, vals[ variableToken ].strValue ) &&
+                              Token::OPENPAREN == vals[ t + 2 ].token &&
+                              Token::VARIABLE == vals[ t + 4 ].token &&
+                              IsVariableInReg( varmap, vals[ t + 4 ].strValue ) )
+                    {
+                        // line 4290 has 8 tokens  ====>> 4290 p% = sp%(st%)
+                        // token   0 VARIABLE, value 0, strValue 'p%'
+                        // token   1 EQ, value 0, strValue ''
+                        // token   2 EXPRESSION, value 6, strValue ''
+                        // token   3 VARIABLE, value 0, strValue 'sp%'
+                        // token   4 OPENPAREN, value 0, strValue ''
+                        // token   5 EXPRESSION, value 2, strValue ''
+                        // token   6 VARIABLE, value 0, strValue 'st%'
+                        // token   7 CLOSEPAREN, value 0, strValue ''
+
+                        fprintf( fp, "    mov      eax, %s\n", GenVariableReg( varmap, vals[ t + 4 ].strValue ) );
+                        fprintf( fp, "    shl      rax, 2\n" );
+                        fprintf( fp, "    lea      rbx, [%s]\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                        fprintf( fp, "    mov      %s, [ rax + rbx ]\n", GenVariableReg( varmap, vals[ variableToken ].strValue ) );
                     }
                     else
                     {
@@ -2801,8 +2832,44 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
 
                 // Optimize for really simple IF cases like "IF var/constant relational var/constant"
 
-                if ( 4 == vals[ t ].value &&
-                     isRelationalOperator( vals[ t + 2 ].token ) )
+                if ( 10 == vals.size() &&
+                     4 == vals[ t ].value &&
+                     Token::VARIABLE == vals[ t + 1 ].token &&
+                     IsVariableInReg( varmap, vals[ t + 1 ].strValue ) &&
+                     isRelationalOperator( vals[ t + 2 ].token ) &&
+                     Token::VARIABLE == vals[ t + 3 ].token &&
+                     IsVariableInReg( varmap, vals[ t + 3 ].strValue ) &&
+                     Token::THEN == vals[ t + 4 ].token &&
+                     0 == vals[ t + 4 ].value &&
+                     Token::VARIABLE == vals[ t + 5 ].token &&
+                     IsVariableInReg( varmap, vals[ t + 5 ].strValue ) &&
+                     Token::EQ == vals[ t + 6 ].token &&
+                     Token::EXPRESSION == vals[ t + 7 ].token &&
+                     2 == vals[ t + 7 ].value &&
+                     Token::VARIABLE == vals[ t + 8 ].token &&
+                     IsVariableInReg( varmap, vals[ t + 8 ].strValue ) )
+                {
+                    // line 4342 has 10 tokens  ====>> 4342 if v% > al% then al% = v%
+                    // token   0 IF, value 0, strValue ''
+                    // token   1 EXPRESSION, value 4, strValue ''
+                    // token   2 VARIABLE, value 0, strValue 'v%'
+                    // token   3 GT, value 0, strValue ''
+                    // token   4 VARIABLE, value 0, strValue 'al%'
+                    // token   5 THEN, value 0, strValue ''
+                    // token   6 VARIABLE, value 0, strValue 'al%'
+                    // token   7 EQ, value 0, strValue ''
+                    // token   8 EXPRESSION, value 2, strValue ''
+                    // token   9 VARIABLE, value 0, strValue 'v%'
+
+                    fprintf( fp, "    cmp      %s, %s\n", GenVariableReg( varmap, vals[ t + 1 ].strValue ),
+                                                          GenVariableReg( varmap, vals[ t + 3 ].strValue ) );
+
+                    fprintf( fp, "    %s      %s, %s\n", CMovInstruction[ vals[ t + 2 ].token ],
+                             GenVariableReg( varmap, vals[ t + 5 ].strValue ),
+                             GenVariableReg( varmap, vals[ t + 8 ].strValue ) );
+                    break;
+                }
+                else if ( 4 == vals[ t ].value && isRelationalOperator( vals[ t + 2 ].token ) )
                 {
                     // line 4505 has 7 tokens  ====>> 4505 if p% < 9 then goto 4180
                     // token   0 IF, value 0, strValue ''
@@ -2998,20 +3065,19 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
     fprintf( fp, "    ret\n" ); // should never get here...
     fprintf( fp, "main ENDP\n" );
 
-    // this is required to setup stack frame spill locations for printf when in a gosub/return statement
+    // These stubs are required to setup stack frame spill locations for printf when in a gosub/return statement.
+    // They are also required so that volatile registers are persisted (r9, r10, r11).
 
     fprintf( fp, "align 16\n" );
     fprintf( fp, "call_printf PROC\n" );
     fprintf( fp, "    push     r9\n" );
     fprintf( fp, "    push     r10\n" ); 
     fprintf( fp, "    push     r11\n" ); 
-    fprintf( fp, "    push     rax\n" );
     fprintf( fp, "    push     rbp\n" );
     fprintf( fp, "    mov      rbp, rsp\n" );
     fprintf( fp, "    sub      rsp, 32\n" );
     fprintf( fp, "    call     printf\n" );
     fprintf( fp, "    leave\n" );
-    fprintf( fp, "    pop      rax\n" );
     fprintf( fp, "    pop      r11\n" );
     fprintf( fp, "    pop      r10\n" );
     fprintf( fp, "    pop      r9\n" );
@@ -3033,13 +3099,11 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
     fprintf( fp, "    push     r9\n" );   
     fprintf( fp, "    push     r10\n" ); 
     fprintf( fp, "    push     r11\n" ); 
-    fprintf( fp, "    push     rax\n" );
     fprintf( fp, "    push     rbp\n" );
     fprintf( fp, "    mov      rbp, rsp\n" );
     fprintf( fp, "    sub      rsp, 32\n" );
     fprintf( fp, "    call     QueryPerformanceCounter\n" );
     fprintf( fp, "    leave\n" );
-    fprintf( fp, "    pop      rax\n" );
     fprintf( fp, "    pop      r11\n" );
     fprintf( fp, "    pop      r10\n" );
     fprintf( fp, "    pop      r9\n" );
@@ -3051,13 +3115,11 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap )
     fprintf( fp, "    push     r9\n" );   
     fprintf( fp, "    push     r10\n" ); 
     fprintf( fp, "    push     r11\n" ); 
-    fprintf( fp, "    push     rax\n" );
     fprintf( fp, "    push     rbp\n" );
     fprintf( fp, "    mov      rbp, rsp\n" );
     fprintf( fp, "    sub      rsp, 32\n" );
     fprintf( fp, "    call     memmove\n" );
     fprintf( fp, "    leave\n" );
-    fprintf( fp, "    pop      rax\n" );
     fprintf( fp, "    pop      r11\n" );
     fprintf( fp, "    pop      r10\n" );
     fprintf( fp, "    pop      r9\n" );
@@ -3093,6 +3155,7 @@ extern int main( int argc, char *argv[] )
     bool showExecutionTime = false;
     bool showParseTime = false;
     bool generateASM = false;
+    bool useRegistersInASM = true;
     static char inputfile[ 300 ] = {0};
     static char asmfile[ 300 ] = {0};
 
@@ -3111,8 +3174,12 @@ extern int main( int argc, char *argv[] )
                 showExecutionTime = true;
             else if ( 'l' == c1 )
                 showListing = true;
+            else if ( 'o' == c1 )
+                g_ExpressionOptimization = false;
             else if ( 'p' == c1 )
                 showParseTime = true;
+            else if ( 'r' == c1 )
+                useRegistersInASM = false;
             else if ( 't' == c1 )
                 g_Tracing = true;
             else if ( 'x' == c1 )
@@ -3403,7 +3470,7 @@ extern int main( int argc, char *argv[] )
             dot = asmfile + strlen( asmfile );
         strcpy( dot, ".asm" );
 
-        GenerateASM( asmfile, varmap );
+        GenerateASM( asmfile, varmap, useRegistersInASM );
     }
 
     if ( !executeCode )
