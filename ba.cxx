@@ -73,6 +73,8 @@ vector<LineOfCode> g_linesOfCode;
     #endif
 #endif
 
+const int MaxExpressionComplexity = 256;
+
 enum Token : int { VARIABLE, GOSUB, GOTO, PRINT, RETURN, END,                     // statements
                    REM, DIM, CONSTANT, OPENPAREN, CLOSEPAREN,
                    MULT, DIV, PLUS, MINUS, EQ, NE, LE, GE, LT, GT, AND, OR, XOR,  // operators in order of precedence
@@ -1280,22 +1282,23 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
         }
     }
     else
-    {
 
 #endif // ENABLE_INTERPRETER_OPTIMIZATIONS
 
+    {
         // arbitrary expression cases
 
-        const int maxExpression = 60; // given the maximum line length, this is excessive
-        int explist[ maxExpression ]; // values even and operators odd
-        int expcount = 0;
+        int explist[ MaxExpressionComplexity ]; // values even and operators odd
+        int expAdded = 0;
         Stack<ParenItem> parenStack;
-        int tokenCount = vals[ iToken ].value;
         int limit = iToken + tokenCount;
         bool negActive = false;
 
         for ( int t = iToken + 1; t < limit; t++ )
         {
+            if ( expAdded >= MaxExpressionComplexity )
+                RuntimeFail( "expression complexity too great", g_lineno );
+
             TokenValue const & val = vals[ t ];
         
             if ( Token::VARIABLE == val.token )
@@ -1303,7 +1306,7 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
                 Variable *pvar = val.pVariable;
     
                 if ( 0 == pvar->dimensions )
-                    explist[ expcount++ ] = pvar->value;
+                    explist[ expAdded++ ] = pvar->value;
                 else if ( 1 == pvar->dimensions )
                 {
                     t += 2; // variable and openparen
@@ -1322,7 +1325,7 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
                     if ( RangeCheckArrays && t < limit && Token::COMMA == vals[ t ].token )
                         RuntimeFail( "accessed 1-dimensional array with 2 dimensions", g_lineno );
 
-                    explist[ expcount++ ] = pvar->array[ offset ];
+                    explist[ expAdded++ ] = pvar->array[ offset ];
                 }
                 else if ( 2 == pvar->dimensions )
                 {
@@ -1345,12 +1348,12 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
                     int arrayoffset = offset1 * pvar->dims[ 1 ] + offset2;
                     assert( arrayoffset < pvar->array.size() );
 
-                    explist[ expcount++ ] = pvar->array[ arrayoffset ];
+                    explist[ expAdded++ ] = pvar->array[ arrayoffset ];
                 }
 
                 if ( negActive )
                 {
-                    explist[ expcount - 1 ] = -explist[ expcount - 1 ];
+                    explist[ expAdded - 1 ] = -explist[ expAdded - 1 ];
                     negActive = false;
                 }
             }
@@ -1359,34 +1362,34 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
                 if ( ( Token::MINUS == val.token ) && ( t == ( iToken + 1 ) ) )
                     negActive = true;
                 else
-                    explist[ expcount++ ] = val.token;
+                    explist[ expAdded++ ] = val.token;
             }
             else if ( Token::EXPRESSION == val.token )
             {
-                explist[ expcount++ ] = EvaluateExpression( t, vals );
+                explist[ expAdded++ ] = EvaluateExpression( t, vals );
                 t += ( val.value - 1 );
             }
             else if ( Token::CONSTANT == val.token )
             {
-                explist[ expcount++ ] = val.value;
+                explist[ expAdded++ ] = val.value;
             }
             else if ( Token::NOT == val.token )
             {
-                explist[ expcount++ ] = ! ( vals[ t + 1 ].pVariable->value );
+                explist[ expAdded++ ] = ! ( vals[ t + 1 ].pVariable->value );
                 t++;
             }
             else if ( Token::OPENPAREN == val.token )
             {
                 // point open paren at the first item after the paren
 
-                ParenItem item( true, expcount );
+                ParenItem item( true, expAdded );
                 parenStack.push( item );
             }
             else if ( Token::CLOSEPAREN == val.token )
             {
                 // point close parent at the last item before the paren
 
-                ParenItem item( false, expcount - 1 );
+                ParenItem item( false, expAdded - 1 );
                 parenStack.push( item );
             }
             else
@@ -1394,18 +1397,14 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
                 printf( "unexpected token: %s\n", TokenStr( val.token ) );
                 RuntimeFail( "unexpected token in arbitrary expression evaluation", g_lineno );
             }
-
-            // basic lines can only be so long, so expressions can only be so complex
-
-            assert( expcount < _countof( explist ) );
         }
 
         // collapse portions with parenthesis to a single constant right to left
 
-        assert( "expression count should be odd" && ( expcount & 1 ) );
+        assert( "expression count should be odd" && ( expAdded & 1 ) );
 
         if ( EnableTracing && g_Tracing )
-            printf( "parenStack.size(): %zd, expcount %d\n", parenStack.size(), expcount );
+            printf( "parenStack.size(): %zd, expAdded %d\n", parenStack.size(), expAdded );
 
         if ( 0 != parenStack.size() )
         {
@@ -1425,13 +1424,13 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
                     int length = closed.offset - item.offset + 1;
 
                     if ( EnableTracing && g_Tracing )
-                        printf( "  closed.offset %d, open.offset = %d, length = %d, expcount %d\n", closed.offset, item.offset, length, expcount );
+                        printf( "  closed.offset %d, open.offset = %d, length = %d, expAdded %d\n", closed.offset, item.offset, length, expAdded );
     
                     closeStack.pop();
     
                     Eval( explist + item.offset, length );
     
-                    int numToCopy = ( expcount - closeLocation - 1 );
+                    int numToCopy = ( expAdded - closeLocation - 1 );
 
                     if ( EnableTracing && g_Tracing )
                         printf( "  numtocopy %d\n", numToCopy );
@@ -1445,7 +1444,7 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
                     for ( int i = 0; i < closeStack.size(); i++ )
                         closeStack[ i ].offset -= removed;
     
-                    expcount -= removed;
+                    expAdded -= removed;
                 }
                 else
                 {
@@ -1459,11 +1458,11 @@ __makeinline int EvaluateExpression( int iToken, vector<TokenValue> const & vals
                 RuntimeFail( "mismatched parenthesis; too many closes", g_lineno );
         }
 
-        assert( "expression count should be odd" && ( expcount & 1 ) );
+        assert( "expression count should be odd" && ( expAdded & 1 ) );
 
         // Everything left is "constant (operator constant)*"
 
-        value = Eval( explist, expcount );
+        value = Eval( explist, expAdded );
     }
 
     if ( EnableTracing && g_Tracing )
@@ -1859,7 +1858,7 @@ void GenerateOp( FILE * fp,  map<string, Variable> & varmap, vector<TokenValue> 
         fprintf( fp, "    cmp      %s, DWORD PTR [%s + %d]\n", GenVariableReg( varmap, vals[ left ].strValue ),
                  GenVariableName( vals[ right ].strValue ), 4 * vals[ rightArray ].value );
 
-        fprintf( fp, "    %s     al\n", OperatorInstruction[ op ] );
+        fprintf( fp, "    %-6s   al\n", OperatorInstruction[ op ] );
         fprintf( fp, "    movzx    rax, al\n" );
         return;
     }
@@ -1877,7 +1876,7 @@ void GenerateOp( FILE * fp,  map<string, Variable> & varmap, vector<TokenValue> 
         else
             fprintf( fp, "    cmp      DWORD PTR [%s], %d\n", GenVariableName( varname ), vals[ right ].value );
 
-        fprintf( fp, "    %s     al\n", OperatorInstruction[ op ] );
+        fprintf( fp, "    %-6s   al\n", OperatorInstruction[ op ] );
         fprintf( fp, "    movzx    rax, al\n" );
         return;
     }
@@ -1914,7 +1913,7 @@ void GenerateOp( FILE * fp,  map<string, Variable> & varmap, vector<TokenValue> 
             fprintf( fp, "    cmp      eax, DWORD PTR [%s + %d]\n", GenVariableName( vals[ right ].strValue ),
                      4 * vals[ rightArray ].value );
 
-        fprintf( fp, "    %s     al\n", OperatorInstruction[ op ] );
+        fprintf( fp, "    %-6s   al\n", OperatorInstruction[ op ] );
         fprintf( fp, "    movzx    rax, al\n" );
     }
     else
@@ -1944,17 +1943,17 @@ void GenerateOp( FILE * fp,  map<string, Variable> & varmap, vector<TokenValue> 
         else
         {
             if ( Token::CONSTANT == vals[ right ].token )
-                fprintf( fp, "    %s     eax, %d\n", OperatorInstruction[ op ], vals[ right ].value );
+                fprintf( fp, "    %-6s   eax, %d\n", OperatorInstruction[ op ], vals[ right ].value );
             else if ( 0 == vals[ right ].dimensions )
             {
                 string & varname = vals[ right ].strValue;
                 if ( IsVariableInReg( varmap, varname ) )
-                    fprintf( fp, "    %s     eax, %s\n", OperatorInstruction[ op ], GenVariableReg( varmap, varname ) );
+                    fprintf( fp, "    %-6s   eax, %s\n", OperatorInstruction[ op ], GenVariableReg( varmap, varname ) );
                 else
-                    fprintf( fp, "    %s     eax, DWORD PTR [%s]\n", OperatorInstruction[ op ], GenVariableName( varname ) );
+                    fprintf( fp, "    %-6s   eax, DWORD PTR [%s]\n", OperatorInstruction[ op ], GenVariableName( varname ) );
             }
             else
-                fprintf( fp, "    %s     eax, DWORD PTR [%s + %d]\n", OperatorInstruction[ op ], GenVariableName( vals[ right ].strValue ),
+                fprintf( fp, "    %-6s   eax, DWORD PTR [%s + %d]\n", OperatorInstruction[ op ], GenVariableName( vals[ right ].strValue ),
                          4 * vals[ rightArray ].value );
         }
     }
@@ -1996,7 +1995,7 @@ int GenerateReduce( FILE * fp, int precedence, int * explist, int expcount )
             if ( isRelationalOperator( (Token) explist[ i ] ) )
             {
                 fprintf( fp, "    cmp      eax, DWORD PTR [ r10 + %d ]\n", ExplistOffset( i + 1 ) );
-                fprintf( fp, "    %s     al\n", OperatorInstruction[ op ] );
+                fprintf( fp, "    %-6s   al\n", OperatorInstruction[ op ] );
                 fprintf( fp, "    movzx    rax, al\n" );
             }
             else
@@ -2009,7 +2008,7 @@ int GenerateReduce( FILE * fp, int precedence, int * explist, int expcount )
                 }
                 else
                 {
-                    fprintf( fp, "    %s     eax, DWORD PTR [ r10 + %d ]\n", OperatorInstruction[ op ], ExplistOffset( i + 1 ) );
+                    fprintf( fp, "    %-6s   eax, DWORD PTR [ r10 + %d ]\n", OperatorInstruction[ op ], ExplistOffset( i + 1 ) );
                 }
             }
 
@@ -2189,21 +2188,30 @@ void GenerateExpression( FILE * fp, map<string, Variable> & varmap, int iToken, 
         //                                    vals[ iToken + 10 ].token,
         //                                    vals[ iToken + 11 ].pVariable->array[ vals[ iToken + 14 ].value ] ) );
 
-        GenerateOp( fp, varmap, vals, iToken + 9, iToken + 11, vals[ iToken + 10 ].token, 0, iToken + 14 );
-        fprintf( fp, "    mov      rdx, rax\n" );
-
         GenerateOp( fp, varmap, vals, iToken + 1, iToken + 3, vals[ iToken + 2 ].token, 0, iToken + 6 );
+
+        if ( Token::AND == vals[ iToken + 8 ].token )
+        {
+            fprintf( fp, "    test     rax, rax\n" );
+            fprintf( fp, "    jz       label_early_out_%d\n", g_pc );
+        }
+
+        fprintf( fp, "    mov      rdx, rax\n" );
+        GenerateOp( fp, varmap, vals, iToken + 9, iToken + 11, vals[ iToken + 10 ].token, 0, iToken + 14 );
 
         Token finalOp = vals[ iToken + 8 ].token;
         if ( isRelationalOperator( finalOp ) )
         {
             fprintf( fp, "    cmp      rax, rdx\n" );
-            fprintf( fp, "    %s     al\n", OperatorInstruction[ finalOp ] );
+            fprintf( fp, "    %-6s   al\n", OperatorInstruction[ finalOp ] );
             fprintf( fp, "    movzx    rax, al\n" );
         }
         else
         {
-            fprintf( fp, "    %s     rax, rdx\n", OperatorInstruction[ finalOp ] );
+            fprintf( fp, "    %-6s   rax, rdx\n", OperatorInstruction[ finalOp ] );
+
+            if ( Token::AND == vals[ iToken + 8 ].token )
+                fprintf( fp, "  label_early_out_%d:\n", g_pc );
         }
     }
     else
@@ -2217,8 +2225,7 @@ label_no_expression_optimization:
 
         fprintf( fp, "    lea      r10, [ explist + %d ]\n", ExplistOffset( expOffset ) );
 
-        const int maxExpression = 60; // given the maximum line length, this is excessive
-        int explist[ maxExpression ]; // placeholder values even and operators odd
+        int explist[ MaxExpressionComplexity ]; // placeholder values even and operators odd
         Stack<ParenItem> parenStack;
 
         int tokenCount = vals[ iToken ].value;
@@ -2228,6 +2235,9 @@ label_no_expression_optimization:
 
         for ( int t = iToken + 1; t < limit; t++ )
         {
+            if ( expAdded >= MaxExpressionComplexity )
+                RuntimeFail( "expression complexity too great", g_lineno );
+
             TokenValue const & val = vals[ t ];
 
             if ( Token::VARIABLE == val.token )
@@ -2528,7 +2538,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
     varscount.clear();
 
     fprintf( fp, "  align 16\n" );
-    fprintf( fp, "    explist        dd 128 DUP(0)\n" ); // expression complexity limited to this
+    fprintf( fp, "    explist        dd %d DUP(0)\n", MaxExpressionComplexity ); // allocates 1.5 as much space as needed
     fprintf( fp, "  align 16\n" );
     fprintf( fp, "    gosubcount     dq    0\n" ); // count of active gosub calls
     fprintf( fp, "    startTicks     dq    0\n" );
@@ -2570,8 +2580,8 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
 
     for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
     {
-        g_lineno = l;
         LineOfCode & loc = g_linesOfCode[ l ];
+        g_pc = l;
         vector<TokenValue> & vals = loc.tokenValues;
         Token token = loc.firstToken;
         int t = 0;
@@ -2864,7 +2874,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                     fprintf( fp, "    cmp      %s, %s\n", GenVariableReg( varmap, vals[ t + 1 ].strValue ),
                                                           GenVariableReg( varmap, vals[ t + 3 ].strValue ) );
 
-                    fprintf( fp, "    %s      %s, %s\n", CMovInstruction[ vals[ t + 2 ].token ],
+                    fprintf( fp, "    %-6s   %s, %s\n", CMovInstruction[ vals[ t + 2 ].token ],
                              GenVariableReg( varmap, vals[ t + 5 ].strValue ),
                              GenVariableReg( varmap, vals[ t + 8 ].strValue ) );
                     break;
@@ -2939,20 +2949,20 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
 
                     if ( Token::GOTO == vals[ t ].token )
                     {
-                        fprintf( fp, "    %s      line_number_%d\n", RelationalInstruction[ ifOp ], vals[ t ].value );
+                        fprintf( fp, "    %-6s   line_number_%d\n", RelationalInstruction[ ifOp ], vals[ t ].value );
                         break;
                     }
                     else if ( Token::RETURN == vals[ t ].token )
                     {
-                        fprintf( fp, "    %s      label_gosub_return\n", RelationalInstruction[ ifOp ] );
+                        fprintf( fp, "    %-6s   label_gosub_return\n", RelationalInstruction[ ifOp ] );
                         break;
                     }
                     else
                     {
                         if ( vals[ t - 1 ].value ) // is there an else clause?
-                            fprintf( fp, "    %s      SHORT label_else_%zd\n", RelationalNotInstruction[ ifOp ], l );
+                            fprintf( fp, "    %-6s   SHORT label_else_%zd\n", RelationalNotInstruction[ ifOp ], l );
                         else
-                            fprintf( fp, "    %s      SHORT line_number_%zd\n", RelationalNotInstruction[ ifOp ], l + 1 );
+                            fprintf( fp, "    %-6s   SHORT line_number_%zd\n", RelationalNotInstruction[ ifOp ], l + 1 );
                     }
                 }
                 else if ( 3 == vals[ t ].value && Token::NOT == vals[ t + 1 ].token && Token::VARIABLE == vals[ t + 2 ].token )
