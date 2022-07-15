@@ -24,6 +24,7 @@ To build:
     - .net 4: c:\windows\microsoft.net\framework64\v4.0.30319\csc.exe /checked- /nologo /o+ /nowarn:0168 /nowarn:0162 ttt.cs
     - .net 6 on Windows: dotnet publish ttt.csproj --configuration Release -r win10-x64 -f net6.0 --no-self-contained -p:PublishSingleFile=true -p:PublishReadyToRun=true -o .\ -nologo
     - .net 6 on MAC: same as Windows, but use -r osx.12-arm64
+    - Visual Basic (ttt.vb) using .net6: use mvb.bat (vbc.exe /nologo /optimize+ ttt.vb)
     - Turbo Pascal -- load and build in the app
     - Building for Virtualt TRS80 Model 100 emulator (and use the output for the physical TRS80 Model 100)
 		      ○ Ttta.asm
@@ -65,8 +66,9 @@ To build BA:
     On Linux with gnu: g++ -DNDEBUG ba.cxx -o ba -O3
     On Linux with clang: "c:\program files\llvm\bin\clang++.exe" ba.cxx -D_CRT_SECURE_NO_WARNINGS -DNDEBUG -o ba.exe -O3 -Ofast
     On a Mac: mmac.sh or this: clang++ ba.cxx -DNDEBUG -o ba -O3 -std=c++11
-		
-![image](https://user-images.githubusercontent.com/1497921/179064169-262ea754-1469-46ff-9a5c-94f9a943ae1b.png)
+						
+![image](https://user-images.githubusercontent.com/1497921/179155262-e6ab5d6c-505e-4e2b-9dc7-2c95f24e9232.png)
+
 
 
 
