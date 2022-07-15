@@ -7,6 +7,8 @@
 using namespace std;
 using namespace std::chrono;
 
+const int Iterations = 10000;
+
 #ifdef _MSC_VER
 
     #define USE_PPL
@@ -213,6 +215,7 @@ class Board
         p = board[3];
         if ( Piece::blank != p && p == board[4] && p == board[5] )
             return p;
+
         p = board[6];
         if ( Piece::blank != p && p == board[7] && p == board[8] )
             return p;
@@ -220,6 +223,7 @@ class Board
         p = board[1];
         if ( Piece::blank != p && p == board[4] && p == board[7] )
             return p;
+
         p = board[2];
         if ( Piece::blank != p && p == board[5] && p == board[8] )
             return p;
@@ -248,9 +252,8 @@ unsigned int g_Moves = 0;
 
 int MinMax( Board &b, int alpha, int beta, int depth, int move )
 {
-//    keeping track of g_Moves makes the runtime much slower, especially when it's parallelized
-//    InterlockedIncrement( &g_Moves );
-//    g_Moves++;
+    //InterlockedIncrement( &g_Moves );
+    //g_Moves++;
 
     // scores are always with respect to X.
     // maximize on X moves; minimize on O moves
@@ -260,13 +263,15 @@ int MinMax( Board &b, int alpha, int beta, int depth, int move )
     if ( depth >= 4 )
     {
         //Piece p = b.LookForWinner();
-        Piece p = winner_functions[move](b.board);
+        Piece p = winner_functions[ move ]( b.board );
 
-        if ( Piece::X == p )
-            return SCORE_WIN;
+        if ( Piece::blank != p )
+        {
+            if ( Piece::X == p )
+                return SCORE_WIN;
 
-        if ( Piece::O == p )
             return SCORE_LOSE;
+        }
 
         if ( 8 == depth )
             return SCORE_TIE;
@@ -288,51 +293,60 @@ int MinMax( Board &b, int alpha, int beta, int depth, int move )
 
     for ( int p = 0; p < 9; p++ )
     {
-        if ( Piece::blank == b.board[p] )
+        if ( Piece::blank == b.board[ p ] )
         {
             b.board[p] = pieceMove;
-
             int score = MinMax( b, alpha, beta, depth + 1, p );
-
             b.board[p] = Piece::blank;
 
             if ( depth & 1 ) //maximize 
             {
-                value = __max( value, score );
+                if ( WinLosePrune && SCORE_WIN == score )
+                    return SCORE_WIN;
+
+                if ( score > value )
+                    value = score;
 
                 if ( ABPrune )
                 {
-                    alpha = __max( alpha, value );
+                    if ( value > alpha )
+                        alpha = value;
+
                     if ( alpha >= beta )
                         return value;
                 }
-
-                // can't do better than this
-
-                if ( WinLosePrune && SCORE_WIN == value )
-                    return SCORE_WIN;
             }
             else
             {
-                value = __min( value, score );
+                if ( WinLosePrune && SCORE_LOSE == score )
+                    return SCORE_LOSE;
+
+                if ( score < value )
+                    value = score;
 
                 if ( ABPrune )
                 {
-                    beta = __min( value, beta );
+                    if ( value < beta )
+                        beta = value;
+
                     if ( beta <= alpha )
                         return value;
                 }
-
-                // can't do worse than this
-
-                if ( WinLosePrune && SCORE_LOSE == value )
-                    return SCORE_LOSE;
             }
         }
     }
 
     return value;
 } //MinMax
+
+void RunBoard( int move, int iterations = Iterations )
+{
+    Board b;
+    b.board[ move ] = Piece::X;
+
+    for ( int i = 0; i < iterations; i++ )
+        MinMax( b, SCORE_MIN, SCORE_MAX, 0, move );
+} //RunBoard
 
 void PrintNumberWithCommas( long long n )
 {
@@ -355,12 +369,17 @@ void PrintNumberWithCommas( long long n )
 
 extern "C" int __cdecl main( int argc, char *argv[] )
 {
+#if false
+    RunBoard( 0 );
+    RunBoard( 1 );
+    RunBoard( 4 );
+    printf( "moves: %d\n", g_Moves );
+    exit( 0 );
+#endif
+
+    int parallelMoves = 0;
+
     high_resolution_clock::time_point tStart = high_resolution_clock::now();
-
-    // Only 3 starting moves aren't transpositions and/or mirrors of other moves.
-
-    const int Iterations = 10000;
-    const bool EnableDebug = false;
 
 #ifdef USE_PPL
     parallel_for( 0, 3, [&] ( int i )
@@ -370,79 +389,24 @@ extern "C" int __cdecl main( int argc, char *argv[] )
 #endif
     {
         if ( 0 == i )
-        {
-            Board b;
-            b.board[0] = Piece::X;
-
-            for ( int times = 0; times < Iterations; times++ )
-            {
-                int score = MinMax( b, SCORE_MIN, SCORE_MAX, 0, 0 );
-                if ( EnableDebug && SCORE_TIE != score )
-                    printf( "alert1! score is %d\n", score );
-            }
-        }
+            RunBoard( 0 );
         else if ( 1 == i )
-        {
-            Board b;
-            b.board[1] = Piece::X;
-
-            for ( int times = 0; times < Iterations; times++ )
-            {
-                int score = MinMax( b, SCORE_MIN, SCORE_MAX, 0, 1 );
-                if ( EnableDebug && SCORE_TIE != score )
-                    printf( "alert2! score is %d\n", score );
-            }
-        }
+            RunBoard( 1 );
         else if ( 2 == i )
-        {
-            Board b;
-            b.board[4] = Piece::X;
-
-            for ( int times = 0; times < Iterations; times++ )
-            {
-                int score = MinMax( b, SCORE_MIN, SCORE_MAX, 0, 4 );
-                if ( EnableDebug && SCORE_TIE != score )
-                    printf( "alert3! score is %d\n", score );
-            }
-        }
+            RunBoard( 4 );
     }
 
 #ifdef USE_PPL
     );
 #endif
 
+    parallelMoves = g_Moves;
+    g_Moves = 0;
     high_resolution_clock::time_point tAfterMultiThreaded = high_resolution_clock::now();
 
-    Board b1;
-    b1.board[0] = Piece::X;
-    
-    Board b2;
-    b2.board[1] = Piece::X;
-    
-    Board b3;
-    b3.board[4] = Piece::X;
-
-    int parallelMoves = g_Moves;
-    g_Moves = 0;
-    
-    for ( int l = 0; l < Iterations; l++ )
-    {
-        int score = MinMax( b1, SCORE_MIN, SCORE_MAX, 0, 0 );
-
-        if ( EnableDebug && SCORE_TIE != score )
-            printf( "alert1! score is %d\n", score );
-    
-        score = MinMax( b2, SCORE_MIN, SCORE_MAX, 0, 1 );
-
-        if ( EnableDebug && SCORE_TIE != score )
-            printf( "alert2! score is %d\n", score );
-    
-        score = MinMax( b3, SCORE_MIN, SCORE_MAX, 0, 4 );
-
-        if ( EnableDebug && SCORE_TIE != score )
-            printf( "alert3! score is %d\n", score );
-    
-    }
+    RunBoard( 0 );
+    RunBoard( 1 );
+    RunBoard( 2 );
 
     high_resolution_clock::time_point tAfterSingleThreaded = high_resolution_clock::now();
 

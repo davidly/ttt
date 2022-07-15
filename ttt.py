@@ -236,11 +236,11 @@ def run_app():
     parallel_evaluated = evaluated
 
     print( f"serial moves evaluated: " + str( serial_evaluated ) )
-    print( f"    elapsed time:  " + str( serial_time ) )
-    print( f"    one iteration: " + str( ( serial_time ) / iterations ) )
-    print( f"parallel moves evaluated: " + str( parallel_evaluated) )
-    print( f"    elapsed time:  " + str( parallel_time ) )
-    print( f"    one iteration: " + str( ( parallel_time ) / iterations ) )
+    print( f"    elapsed time:  " + str( serial_time ) + " seconds" )
+    print( f"    one iteration: " + str( ( serial_time ) / iterations * 1000 ) + " ms" )
+    print( f"parallel moves evaluated: " + str( parallel_evaluated ) )
+    print( f"    elapsed time:  " + str( parallel_time ) + " seconds" )
+    print( f"    one iteration: " + str( ( parallel_time ) / iterations * 1000 ) + " ms" )
 
 if __name__ == '__main__':
     freeze_support()   # needed to run on Mac (not Windows or WSL)
