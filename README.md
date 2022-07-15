@@ -66,8 +66,8 @@ To build BA:
     On Linux with gnu: g++ -DNDEBUG ba.cxx -o ba -O3
     On Linux with clang: "c:\program files\llvm\bin\clang++.exe" ba.cxx -D_CRT_SECURE_NO_WARNINGS -DNDEBUG -o ba.exe -O3 -Ofast
     On a Mac: mmac.sh or this: clang++ ba.cxx -DNDEBUG -o ba -O3 -std=c++11
-						
-![image](https://user-images.githubusercontent.com/1497921/179155262-e6ab5d6c-505e-4e2b-9dc7-2c95f24e9232.png)
+		
+![image](https://user-images.githubusercontent.com/1497921/179252446-e900ca71-1c08-43e6-9496-370c42661efb.png)
 
 
 
