@@ -75,8 +75,10 @@
 4100 rem mc% = mc% + 1
 4102 if st% < 4 then goto 4150
 4105 gosub 2000
+4106 if 0 = wi% then goto 4140
 4110 if wi% = 1 then re% = 6: goto 4280
-4120 if wi% = 2 then re% = 4: goto 4280
+4115 re% = 4
+4116 goto 4280
 4140 if st% = 8 then re% = 5: goto 4280
 4150 if st% and 1 then v% = 2 else v% = 9
 4160 p% = 0
