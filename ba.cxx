@@ -553,7 +553,7 @@ Token readTokenInner( const char * p, int & len )
         len++;
 
     if ( 1 == len && isAlpha( *p ) )
-        return Token::VARIABLE;
+        return Token::VARIABLE; // in the future, this will be true
 
     if ( 2 == len )
     {
@@ -714,6 +714,10 @@ const char * ParseExpression( vector<TokenValue> & lineTokens, const char * plin
             }
 
             tokenValue.strValue.insert( 0, pline, tokenLen );
+
+            if ( '%' != tokenValue.strValue[ tokenValue.strValue.length() - 1 ] )
+                Fail( "integer variables must end with a % symbol", fileLine, 0, line );
+
             makelower( tokenValue.strValue );
             lineTokens.push_back( tokenValue );
             pline = pastWhite( pline + tokenLen );
@@ -814,6 +818,10 @@ const char * ParseExpression( vector<TokenValue> & lineTokens, const char * plin
             lineTokens.push_back( tokenValue );
             pline += tokenLen;
         }
+        else if ( Token::INVALID == token && 0 != tokenLen )
+        {
+            Fail( "invalid token", fileLine, pline - line, line );
+        }
         else
         {
             break;
@@ -865,6 +873,10 @@ const char * ParseStatements( Token token, vector<TokenValue> & lineTokens, cons
         if ( Token::VARIABLE == token )
         {
             tokenValue.strValue.insert( 0, pline, tokenLen );
+
+            if ( '%' != tokenValue.strValue[ tokenValue.strValue.length() - 1 ] )
+                Fail( "integer variables must end with a % symbol", fileLine, 0, line );
+
             makelower( tokenValue.strValue );
             lineTokens.push_back( tokenValue );
             int iVarToken = lineTokens.size() - 1;
@@ -1988,7 +2000,7 @@ bool IsVariableInReg( map<string, Variable> & varmap, string s )
     return ( 0 != pvar->reg.length() );
 } //IsVariableInReg
 
-void GenerateOp( FILE * fp,  map<string, Variable> & varmap, vector<TokenValue> & vals,
+void GenerateOp( FILE * fp,  map<string, Variable> & varmap, vector<TokenValue> const & vals,
                  int left, int right, Token op, int leftArray = 0, int rightArray = 0 )
 {
     // optimize for if wi% = b%( 0 )
@@ -2015,7 +2027,7 @@ void GenerateOp( FILE * fp,  map<string, Variable> & varmap, vector<TokenValue> 
          isOperatorRelational( op ) &&
          Token::CONSTANT == vals[ right ].token )
     {
-        string & varname = vals[ left ].strValue;
+        string const & varname = vals[ left ].strValue;
         if ( IsVariableInReg( varmap, varname ) )
             fprintf( fp, "    cmp      %s, %d\n", GenVariableReg( varmap, varname ), vals[ right ].value );
         else
@@ -2030,7 +2042,7 @@ void GenerateOp( FILE * fp,  map<string, Variable> & varmap, vector<TokenValue> 
         fprintf( fp, "    mov      eax, %d\n", vals[ left ].value );
     else if ( 0 == vals[ left ].dimensions )
     {
-        string & varname = vals[ left ].strValue;
+        string const & varname = vals[ left ].strValue;
         if ( IsVariableInReg( varmap, varname ) )
             fprintf( fp, "    mov      eax, %s\n", GenVariableReg( varmap, varname ) );
         else
@@ -2048,7 +2060,7 @@ void GenerateOp( FILE * fp,  map<string, Variable> & varmap, vector<TokenValue> 
             fprintf( fp, "    cmp      eax, %d\n", vals[ right ].value );
         else if ( 0 == vals[ right ].dimensions )
         {
-            string & varname = vals[ right ].strValue;
+            string const & varname = vals[ right ].strValue;
             if ( IsVariableInReg( varmap, varname ) )
                 fprintf( fp, "    cmp      eax, %s\n", GenVariableReg( varmap, varname ) );
             else
@@ -2073,7 +2085,7 @@ void GenerateOp( FILE * fp,  map<string, Variable> & varmap, vector<TokenValue> 
                 fprintf( fp, "    mov      rbx, %d\n", vals[ right ].value );
             else if ( 0 == vals[ right ].dimensions )
             {
-                string & varname = vals[ right ].strValue;
+                string const & varname = vals[ right ].strValue;
                 if ( IsVariableInReg( varmap, varname ) )
                     fprintf( fp, "    mov      ebx, %s\n", GenVariableReg( varmap, varname ) );
                 else
@@ -2091,7 +2103,7 @@ void GenerateOp( FILE * fp,  map<string, Variable> & varmap, vector<TokenValue> 
                 fprintf( fp, "    %-6s   eax, %d\n", OperatorInstruction[ op ], vals[ right ].value );
             else if ( 0 == vals[ right ].dimensions )
             {
-                string & varname = vals[ right ].strValue;
+                string const & varname = vals[ right ].strValue;
                 if ( IsVariableInReg( varmap, varname ) )
                     fprintf( fp, "    %-6s   eax, %s\n", OperatorInstruction[ op ], GenVariableReg( varmap, varname ) );
                 else
@@ -2104,11 +2116,11 @@ void GenerateOp( FILE * fp,  map<string, Variable> & varmap, vector<TokenValue> 
     }
 } //GenerateOp
 
-void GenerateExpression( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> & vals );
-void GenerateFactor( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> & vals );
-void GenerateTerm( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> & vals );
+void GenerateExpression( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> const & vals );
+void GenerateFactor( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> const & vals );
+void GenerateTerm( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> const & vals );
 
-void GenerateMultiply( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> & vals )
+void GenerateMultiply( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> const & vals )
 {
     iToken++;
 
@@ -2118,7 +2130,7 @@ void GenerateMultiply( FILE * fp, map<string, Variable> & varmap, int & iToken, 
     fprintf( fp, "    imul     rax, rbx\n" );
 } //GenerateMultiply
 
-void GenerateDivide( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> & vals )
+void GenerateDivide( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> const & vals )
 {
     iToken++;
 
@@ -2130,7 +2142,7 @@ void GenerateDivide( FILE * fp, map<string, Variable> & varmap, int & iToken, ve
     fprintf( fp, "    idiv     rbx\n" );
 } //GenerateDivide
 
-void GenerateTerm( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> & vals )
+void GenerateTerm( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> const & vals )
 {
     if ( EnableTracing && g_Tracing )
         printf( "generate term # %d, %s\n", iToken, TokenStr( vals[ iToken ].token ) );
@@ -2161,7 +2173,7 @@ void GenerateTerm( FILE * fp, map<string, Variable> & varmap, int & iToken, vect
     }
 } //GenerateTerm
 
-void GenerateFactor( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> & vals )
+void GenerateFactor( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> const & vals )
 {
     if ( EnableTracing && g_Tracing )
         printf( " generate factor # %d, %s\n", iToken, TokenStr( vals[ iToken ].token ) );
@@ -2185,7 +2197,7 @@ void GenerateFactor( FILE * fp, map<string, Variable> & varmap, int & iToken, ve
         }
         else if ( Token::VARIABLE == t )
         {
-            string & varname = vals[ iToken ].strValue;
+            string const & varname = vals[ iToken ].strValue;
 
             if ( 0 == vals[ iToken ].dimensions )
             {
@@ -2247,7 +2259,7 @@ void GenerateFactor( FILE * fp, map<string, Variable> & varmap, int & iToken, ve
 
             assert( Token::VARIABLE == vals[ iToken ].token );
 
-            string & varname = vals[ iToken ].strValue;
+            string const & varname = vals[ iToken ].strValue;
             if ( IsVariableInReg( varmap, varname ) )
                 fprintf( fp, "    cmp      %s, 0\n", GenVariableReg( varmap, varname ) );
             else
@@ -2269,7 +2281,7 @@ void GenerateFactor( FILE * fp, map<string, Variable> & varmap, int & iToken, ve
         printf( " leaving GenerateFactor, iToken %d\n", iToken );
 } //GenerateFactor
 
-void GenerateAdd( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> & vals )
+void GenerateAdd( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> const & vals )
 {
     if ( EnableTracing && g_Tracing )
         printf( "in generate add, iToken %d\n", iToken );
@@ -2282,7 +2294,7 @@ void GenerateAdd( FILE * fp, map<string, Variable> & varmap, int & iToken, vecto
     fprintf( fp, "    add      rax, rbx\n" );
 } //GenerateAdd
 
-void GenerateSubtract( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> & vals )
+void GenerateSubtract( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> const & vals )
 {
     if ( EnableTracing && g_Tracing )
         printf( "in generate subtract, iToken %d\n", iToken );
@@ -2296,7 +2308,7 @@ void GenerateSubtract( FILE * fp, map<string, Variable> & varmap, int & iToken, 
     fprintf( fp, "    sub      rax, rbx\n" );
 } //GenerateSubtract
 
-void GenerateExpression( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> & vals )
+void GenerateExpression( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> const & vals )
 {
     if ( EnableTracing && g_Tracing )
     {
@@ -2343,7 +2355,7 @@ void GenerateExpression( FILE * fp, map<string, Variable> & varmap, int & iToken
     }
 } //GenerateExpression
 
-void GenerateRelational( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> & vals )
+void GenerateRelational( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> const & vals )
 {
     if ( EnableTracing && g_Tracing )
         printf( "in generate relational, iToken %d\n", iToken );
@@ -2360,7 +2372,7 @@ void GenerateRelational( FILE * fp, map<string, Variable> & varmap, int & iToken
     fprintf( fp, "    movzx    rax, al\n" );
 } //GenerateRelational
 
-void GenerateRelationalExpression( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> & vals )
+void GenerateRelationalExpression( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> const & vals )
 {
     if ( EnableTracing && g_Tracing )
     {
@@ -2393,7 +2405,7 @@ void GenerateRelationalExpression( FILE * fp, map<string, Variable> & varmap, in
     }
 } //GenerateRelationalExpression
 
-void GenerateLogical( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> & vals )
+void GenerateLogical( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> const & vals )
 {
     if ( EnableTracing && g_Tracing )
         printf( "in generate logical, iToken %d\n", iToken );
@@ -2403,13 +2415,12 @@ void GenerateLogical( FILE * fp, map<string, Variable> & varmap, int & iToken, v
 
     GenerateRelationalExpression( fp, varmap, iToken, vals );
 
-    fprintf( fp, "    mov      rbx, rax\n" );
-    fprintf( fp, "    pop      rax\n" );
+    fprintf( fp, "    pop      rbx\n" );
     fprintf( fp, "    %-6s   rax, rbx\n", OperatorInstruction[ op ] );
     fprintf( fp, "    movzx    rax, al\n" );
 } //GenerateLogical
 
-void GenerateLogicalExpression( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> & vals )
+void GenerateLogicalExpression( FILE * fp, map<string, Variable> & varmap, int & iToken, vector<TokenValue> const & vals )
 {
     if ( EnableTracing && g_Tracing )
     {
@@ -2442,7 +2453,7 @@ void GenerateLogicalExpression( FILE * fp, map<string, Variable> & varmap, int &
     }
 } //GenereateLogicalExpression
 
-void GenerateOptimizedExpression( FILE * fp, map<string, Variable> & varmap, int iToken, vector<TokenValue> & vals, int expOffset = 0 )
+void GenerateOptimizedExpression( FILE * fp, map<string, Variable> & varmap, int iToken, vector<TokenValue> const & vals, int expOffset = 0 )
 {
     // generate code to put the resulting expression in rax
     // only modifies rax, rbx, and rdx (without saving them)
@@ -2463,7 +2474,7 @@ void GenerateOptimizedExpression( FILE * fp, map<string, Variable> & varmap, int
             fprintf( fp, "    mov      eax, %d\n", vals[ iToken + 1 ].value );
         else if ( Token::VARIABLE == vals[ iToken + 1 ].token )
         {
-            string & varname = vals[ iToken + 1 ].strValue;
+            string const & varname = vals[ iToken + 1 ].strValue;
             if ( IsVariableInReg( varmap, varname ) )
                 fprintf( fp, "    mov      eax, %s\n", GenVariableReg( varmap, varname ) );
             else
@@ -2486,7 +2497,7 @@ void GenerateOptimizedExpression( FILE * fp, map<string, Variable> & varmap, int
 
         if ( Token::CONSTANT == vals[ iToken + 4 ].token )
         {
-            string & varname = vals[ iToken + 1 ].strValue;
+            string const & varname = vals[ iToken + 1 ].strValue;
             fprintf( fp, "    mov      eax, DWORD PTR[ %s + %d ]\n", GenVariableName( varname ),
                      4 * vals[ iToken + 4 ].value );
         }
@@ -2494,7 +2505,7 @@ void GenerateOptimizedExpression( FILE * fp, map<string, Variable> & varmap, int
         {
             GenerateOptimizedExpression( fp, varmap, iToken + 3, vals );
     
-            string & varname = vals[ iToken + 1 ].strValue;
+            string const & varname = vals[ iToken + 1 ].strValue;
             fprintf( fp, "    lea      rdx, [%s]\n", GenVariableName( varname ) );
 
             fprintf( fp, "    shl      rax, 2\n" );
@@ -2513,7 +2524,7 @@ void GenerateOptimizedExpression( FILE * fp, map<string, Variable> & varmap, int
     {
         if ( Token::NOT == vals[ iToken + 1 ].token )
         {
-            string & varname = vals[ iToken + 2 ].strValue;
+            string const & varname = vals[ iToken + 2 ].strValue;
             if ( IsVariableInReg( varmap, varname ) )
                 fprintf( fp, "    cmp      %s, 0\n", GenVariableReg( varmap, varname ) );
             else
@@ -2526,7 +2537,7 @@ void GenerateOptimizedExpression( FILE * fp, map<string, Variable> & varmap, int
         {
             assert( Token::MINUS == vals[ iToken + 1 ].token );
 
-            string & varname = vals[ iToken + 2 ].strValue;
+            string const & varname = vals[ iToken + 2 ].strValue;
             if ( IsVariableInReg( varmap, varname ) )
                 fprintf( fp, "    mov      eax, %s\n", GenVariableReg( varmap, varname ) );
             else
@@ -2605,7 +2616,7 @@ label_no_expression_optimization:
     }
 } //GenerateOptimizedExpression
 
-void GenerateExpressionCode( FILE * fp, map<string, Variable> & varmap, int iToken, vector<TokenValue> & vals )
+void GenerateExpressionCode( FILE * fp, map<string, Variable> & varmap, int iToken, vector<TokenValue> const & vals )
 {
     // This function exists because iToken can't be updated or callers will be broken.
     // Here, it's by value, not reference.
