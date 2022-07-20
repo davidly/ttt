@@ -1232,10 +1232,18 @@ int EvaluateFactor( int & iToken, vector<TokenValue> const & vals )
             {
                 value = pvar->value;
                 iToken++;
+
+                if ( iToken < vals.size() && Token::OPENPAREN == vals[ iToken ].token )
+                    RuntimeFail( "scalar variable used as an array", g_lineno );
             }
             else if ( 1 == pvar->dimensions )
             {
-                iToken += 2; // variable and openparen
+                iToken++; // variable
+
+                if ( Token::OPENPAREN != vals[ iToken ].token )
+                    RuntimeFail( "open parenthesis expected", g_lineno );
+
+                iToken++; // open paren
 
                 assert( Token::EXPRESSION == vals[ iToken ].token );
 
@@ -1260,13 +1268,21 @@ int EvaluateFactor( int & iToken, vector<TokenValue> const & vals )
             }
             else if ( 2 == pvar->dimensions )
             {
-                iToken += 2; // variable and openparen
+                iToken++; // variable
+
+                if ( Token::OPENPAREN != vals[ iToken ].token )
+                    RuntimeFail( "open parenthesis expected", g_lineno );
+
+                iToken++; // open paren
+
                 int offset1 = EvaluateExpression( iToken, vals );
 
                 if ( RangeCheckArrays && FailsRangeCheck( offset1, pvar->dims[ 0 ] ) )
                     RuntimeFail( "access of first dimension in 2-dimensional array beyond end", g_lineno );
 
-                assert( Token::COMMA == vals[ iToken ].token );
+                if ( Token::COMMA != vals[ iToken ].token )
+                    RuntimeFail( "comma expected for 2-dimensional array", g_lineno );
+
                 iToken++; // comma
 
                 int offset2 = EvaluateExpression( iToken, vals );
@@ -1483,7 +1499,7 @@ __makeinline int EvaluateLogicalExpression( int & iToken, vector<TokenValue> con
     return value;
 } //GenereateLogicalExpression
 
-__makeinline int EvaluateExpressionOptimized( int iToken, vector<TokenValue> const & vals )
+__makeinline int EvaluateExpressionOptimized( int & iToken, vector<TokenValue> const & vals )
 {
     if ( EnableTracing && g_Tracing )
         printf( "EvaluateExpressionOptimized starting at line %d, token %d, which is %s, length %d\n",
@@ -1499,6 +1515,7 @@ __makeinline int EvaluateExpressionOptimized( int iToken, vector<TokenValue> con
     if ( 2 == tokenCount )
     {
         value = GetSimpleValue( vals[ iToken + 1 ] );
+        iToken += tokenCount;
     }
     else if ( 6 == tokenCount &&
               Token::VARIABLE == vals[ iToken + 1 ].token &&
@@ -1522,6 +1539,7 @@ __makeinline int EvaluateExpressionOptimized( int iToken, vector<TokenValue> con
             RuntimeFail( "index beyond the bounds of an array", g_lineno );
 
         value = pvar->array[ offset ];
+        iToken += tokenCount;
     }
     else if ( 4 == tokenCount )
     {
@@ -1532,6 +1550,7 @@ __makeinline int EvaluateExpressionOptimized( int iToken, vector<TokenValue> con
         value = run_operator( GetSimpleValue( vals[ iToken + 1 ] ),
                               vals[ iToken + 2 ].token,
                               GetSimpleValue( vals[ iToken + 3 ] ) );
+        iToken += tokenCount;
     }
     else if ( 16 == tokenCount &&
               Token::VARIABLE == vals[ iToken + 1 ].token &&
@@ -1582,6 +1601,7 @@ __makeinline int EvaluateExpressionOptimized( int iToken, vector<TokenValue> con
                                       run_operator_relational( vals[ iToken + 9 ].pVariable->value,
                                                                vals[ iToken + 10 ].token,
                                                                vals[ iToken + 11 ].pVariable->array[ vals[ iToken + 14 ].value ] ) );
+        iToken += tokenCount;
     }
     else if ( 3 == tokenCount )
     {
@@ -1592,6 +1612,7 @@ __makeinline int EvaluateExpressionOptimized( int iToken, vector<TokenValue> con
             assert( Token::MINUS == vals[ iToken + 1 ].token );
             value = - GetSimpleValue( vals[ iToken + 2 ] );
         }
+        iToken += tokenCount;
     }
     else
     {
@@ -1605,17 +1626,6 @@ __makeinline int EvaluateExpressionOptimized( int iToken, vector<TokenValue> con
 
     return value;
 } //EvaluateExpressionOptimized
-
-int EvaluateExpressionInterpret( int iToken, vector<TokenValue> const & vals )
-{
-    // This function exists because iToken can't be updated or callers will be broken.
-    // Here, it's by value, not reference.
-    // This is called in the slow/unoptimized codepath, so the extra call isn't bad.
-
-    assert( Token::EXPRESSION == vals[ iToken ].token );
-
-    return EvaluateLogicalExpression( iToken, vals );
-} //EvaluateExpressionInterpret
 
 void PrintNumberWithCommas( char *pchars, long long n )
 {
@@ -2213,8 +2223,14 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
             else if ( 1 == vals[ iToken ].dimensions )
             {
                 int tokenVar = iToken;
-                iToken += 2; // variable + (
+                iToken++; // variable
 
+                if ( Token::OPENPAREN != vals[ iToken ].token )
+                    RuntimeFail( "open parenthesis expected", g_lineno );
+
+                iToken++; // open paren
+
+                assert( Token::EXPRESSION == vals[ iToken ].token );
                 GenerateExpression( fp, varmap, iToken, vals );
 
                 fprintf( fp, "    shl      rax, 2\n" );
@@ -2225,9 +2241,18 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
             else if ( 2 == vals[ iToken ].dimensions )
             {
                 int tokenVar = iToken;
-                iToken += 2; // variable + (
+
+                iToken++; // variable
+
+                if ( Token::OPENPAREN != vals[ iToken ].token )
+                    RuntimeFail( "open parenthesis expected", g_lineno );
+
+                iToken++; // open paren
+
                 GenerateExpression( fp, varmap, iToken, vals );
+
                 fprintf( fp, "    push      rax\n" );
+
                 if ( Token::COMMA != vals[ iToken ].token )
                     RuntimeFail( "expected a 2-dimensional array", g_lineno );
                 iToken++; // comma
@@ -3775,7 +3800,7 @@ extern int main( int argc, char *argv[] )
         Usage();
     }
 
-    printf( "running input file %s\n", inputfile );
+    printf( "parsing input file %s\n", inputfile );
 
     long filelen = portable_filelen( fileInput.get() );
     vector<char> input( filelen + 1 );
@@ -4042,14 +4067,13 @@ extern int main( int argc, char *argv[] )
     if ( !executeCode )
         exit( 0 );
 
-    // interpret the code
-
-    // The cost of this level of indirection is 10% in NDEBUG interpreter performance.
+    // Interpret the code
+    // The cost of this level of indirection is 15% in NDEBUG interpreter performance.
     // So it's not worth it to control the behavior at runtime except for testing / debug
 
     #ifdef DEBUG
-        typedef int ( * EvaluateProc )( int iToken, vector<TokenValue> const & vals );
-        EvaluateProc evalProc = EvaluateExpressionInterpret;
+        typedef int ( * EvaluateProc )( int & iToken, vector<TokenValue> const & vals );
+        EvaluateProc evalProc = EvaluateLogicalExpression;
         if ( g_ExpressionOptimization )
             evalProc = EvaluateExpressionOptimized;
     #else
@@ -4116,7 +4140,6 @@ extern int main( int argc, char *argv[] )
             {
                 t++;
                 int val = evalProc( t, vals );
-                t += vals[ t ].value;
                 assert( Token::THEN == vals[ t ].token );
 
                 if ( val )
@@ -4154,7 +4177,6 @@ extern int main( int argc, char *argv[] )
 
                     t++;
                     int arrayIndex = evalProc( t, vals );
-                    t += vals[ t ].value;
 
                     if ( RangeCheckArrays && FailsRangeCheck( arrayIndex, pvar->dims[ 0 ] ) )
                         RuntimeFail( "array offset out of bounds", g_lineno );
@@ -4167,7 +4189,6 @@ extern int main( int argc, char *argv[] )
                             RuntimeFail( "single-dimensional array used with 2 dimensions", g_lineno );
 
                         int indexB = evalProc( t, vals );
-                        t += vals[ t ].value;
 
                         if ( RangeCheckArrays && FailsRangeCheck( indexB, pvar->dims[ 1 ] ) )
                             RuntimeFail( "second dimension array offset out of bounds", g_lineno );
@@ -4181,7 +4202,6 @@ extern int main( int argc, char *argv[] )
 
                     t += 2; // past ) and =
                     int val = evalProc( t, vals );
-                    t += vals[ t ].value;
 
                     pvar->array[ arrayIndex ] = val;
                 }
@@ -4191,7 +4211,6 @@ extern int main( int argc, char *argv[] )
 
                     t++;
                     int val = evalProc( t, vals );
-                    t += vals[ t ].value;
 
                     if ( RangeCheckArrays && ( 0 != pvar->dimensions ) )
                         RuntimeFail( "array used as if it's a scalar", g_lineno );
@@ -4274,10 +4293,14 @@ extern int main( int argc, char *argv[] )
                 if ( continuation )
                     pvar->value += 1;
                 else
-                    pvar->value = evalProc( t + 1, vals );
+                {
+                    int teval = t + 1;
+                    pvar->value = evalProc( teval, vals );
+                }
 
                 int tokens = vals[ t + 1 ].value;
-                int endValue = evalProc( t + 1 + tokens, vals );
+                int tokenStart = t + 1 + tokens;
+                int endValue = evalProc( tokenStart, vals );
 
                 if ( EnableTracing && g_Tracing )
                     printf( "for loop for variable %s current %d, end value %d\n", vals[ 0 ].strValue.c_str(), pvar->value, endValue );
@@ -4374,7 +4397,6 @@ extern int main( int argc, char *argv[] )
                     else
                     {
                         int val = evalProc( t, vals );
-                        t += vals[ t ].value;
                         printf( "%d", val );
                     }
                 }
