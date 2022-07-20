@@ -144,15 +144,13 @@ const char * MappedRegisters64[] = { "rsi", "r9", "r11", "r12", "r13", "r14", "r
 __makeinline const char * TokenStr( Token i )
 {
     if ( i < 0 || i > Token::INVALID )
+    {
         printf( "token %d is malformed\n", i );
+        exit( 1 );
+    }
 
     return Tokens[ i ];
 } //TokenStr
-
-__makeinline const char * OperatorStr( Token t )
-{
-    return Operators[ t ];
-} //OperatorStr
 
 __makeinline bool isTokenOperator( Token t )
 {
@@ -2196,15 +2194,36 @@ void GenerateFactor( FILE * fp, map<string, Variable> & varmap, int & iToken, ve
                 else
                     fprintf( fp, "    movsxd   rax, DWORD PTR [%s]\n", GenVariableName( varname ) );
             }
-            else
+            else if ( 1 == vals[ iToken ].dimensions )
             {
                 int tokenVar = iToken;
-
-                iToken += 2;
+                iToken += 2; // variable + (
 
                 GenerateExpression( fp, varmap, iToken, vals );
 
-                fprintf( fp, "    shl      rax, 2 \n" );
+                fprintf( fp, "    shl      rax, 2\n" );
+                fprintf( fp, "    lea      rbx, [ %s ]\n", GenVariableName( varname ) );
+                fprintf( fp, "    add      rbx, rax\n" );
+                fprintf( fp, "    mov      eax, [ rbx ]\n" );
+            }
+            else if ( 2 == vals[ iToken ].dimensions )
+            {
+                int tokenVar = iToken;
+                iToken += 2; // variable + (
+                GenerateExpression( fp, varmap, iToken, vals );
+                fprintf( fp, "    push      rax\n" );
+                if ( Token::COMMA != vals[ iToken ].token )
+                    RuntimeFail( "expected a 2-dimensional array", g_lineno );
+                iToken++; // comma
+                GenerateExpression( fp, varmap, iToken, vals );
+
+                Variable * pvar = FindVariable( varmap, varname );
+                assert( pvar );
+
+                fprintf( fp, "    pop      rbx\n" );
+                fprintf( fp, "    imul     rbx, %d\n", pvar->dims[ 1 ] );
+                fprintf( fp, "    add      rax, rbx\n" );
+                fprintf( fp, "    shl      rax, 2\n" );
                 fprintf( fp, "    lea      rbx, [ %s ]\n", GenVariableName( varname ) );
                 fprintf( fp, "    add      rbx, rax\n" );
                 fprintf( fp, "    mov      eax, [ rbx ]\n" );
@@ -2651,10 +2670,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         {
             int cdwords = vals[ 0 ].dims[ 0 ];
             if ( 2 == vals[ 0 ].dimensions )
-            {
                 cdwords *= vals[ 0 ].dims[ 1 ];
-                RuntimeFail( "assembly generation not supported for 2-dimensional arrays", loc.lineNumber );
-            }
 
             Variable * pvar = FindVariable( varmap, vals[ 0 ].strValue );
 
@@ -2662,7 +2678,9 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
 
             if ( 0 != pvar )
             {
-                pvar->dimensions = 1; // don't allocate the array; it's not needed
+                pvar->dimensions = vals[ 0 ].dimensions;
+                pvar->dims[ 0 ] = vals[ 0 ].dims[ 0 ];
+                pvar->dims[ 1 ] = vals[ 0 ].dims[ 1 ];
 
                 fprintf( fp, "  align 16\n" );
                 fprintf( fp, "    %8s DD %d DUP (0)\n", GenVariableName( vals[ 0 ].strValue ), cdwords );
@@ -2893,6 +2911,22 @@ label_no_eq_optimization:
 label_no_array_eq_optimization:
                         GenerateExpressionCode( fp, varmap, t, vals );
                         t += vals[ t ].value;
+
+                        if ( Token::COMMA == vals[ t ].token )
+                        {
+                            Variable * pvar = FindVariable( varmap, vals[ variableToken ].strValue );
+
+                            if ( 2 != pvar->dimensions )
+                                RuntimeFail( "using a variable as if it has 2 dimensions.", g_lineno );
+
+                            t++; // comma
+                            fprintf( fp, "    push     rax\n" );
+                            GenerateExpressionCode( fp, varmap, t, vals );
+                            t += vals[ t ].value;
+                            fprintf( fp, "    pop      rbx\n" );
+                            fprintf( fp, "    imul     rbx, %d\n", pvar->dims[ 1 ] );
+                            fprintf( fp, "    add      rax, rbx\n" );
+                        }
         
                         t += 2; // ) =
         
