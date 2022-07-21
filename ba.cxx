@@ -111,10 +111,6 @@ const char * Operators[] = { "VARIABLE", "GOSUB", "GOTO", "PRINT", "RETURN", "EN
                              "COLON", "SEMICOLON", "EXPRESSION", "TIME$", "ELAP$", "TRON", "TROFF",
                              "ATOMIC", "INC", "DEC", "NOT", "INVALID" };
 
-const int OperatorPrecedence[] = { 0, 0, 0, 0, 0, 0,                          // filler
-                                   0, 0, 0, 0, 0,                             // filler
-                                   0, 0, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3 };   // actual operators
-
 const char * OperatorInstruction[] = { 0, 0, 0, 0, 0, 0,                          // filler
                                        0, 0, 0, 0, 0,                             // filler
                                        "imul", "idiv", "add", "sub", "sete", "setne", "setle", "setge", "setl", "setg", "and", "or", "xor", };
@@ -136,10 +132,9 @@ const char * CMovInstruction[] = { 0, 0, 0, 0, 0, 0,                          //
                                    0, 0, 0, 0, "cmove", "cmovne", "cmovle", "cmovge", "cmovl", "cmovg", 0, 0, 0, };
 
 // the most frequently used variables are mapped to these registers
-// r10 is used for complex expression calculations
 
-const char * MappedRegisters[] = { "esi", "r9d", "r11d", "r12d", "r13d", "r14d", "r15d" };
-const char * MappedRegisters64[] = { "rsi", "r9", "r11", "r12", "r13", "r14", "r15" };
+const char * MappedRegisters[] = {   "esi", "r9d", "r10d", "r11d", "r12d", "r13d", "r14d", "r15d" };
+const char * MappedRegisters64[] = { "rsi", "r9",  "r10",  "r11",  "r12",  "r13",  "r14",  "r15" };
 
 __makeinline const char * TokenStr( Token i )
 {
@@ -200,7 +195,7 @@ char * my_strlwr( char * str )
 
     while ( *p )
     {
-        *p = tolower( *p );
+        *p = (unsigned char) tolower( *p );
         p++;
     }
     return str;
@@ -240,15 +235,15 @@ struct Variable
     {
         memset( this, 0, sizeof *this );
         assert( strlen( name ) <= 3 );
-        strcpy( name, v );
+        strcpy_s( name, _countof( name ), v );
         my_strlwr( name );
     }
 
     int value;           // when a scalar
     char name[4];        // variables can only be 2 chars + type + null
-    int dimensions;      // 0 for scalar
-    int dims[ 2 ];       // only support up to 2 dimensional arrays
-    vector<int> array;
+    int dimensions;      // 0 for scalar. 1 or 2 for arrays.
+    int dims[ 2 ];       // only support up to 2 dimensional arrays.
+    vector<int> array;   // actual array values
     int references;      // when generating assembler: how many references in the basic app?
     string reg;          // when generating assembler: register mapped to this variable, if any
 };
@@ -276,12 +271,12 @@ struct TokenValue
     // note: 64 bytes in size, which is good because the compiler can use shl 6 for array lookups
 
     Token token;
-    int value;
+    int value;             // value's definition varies depending on the token. 
     int dimensions;        // 0 for scalar or 1-2 if an array. Only non-0 for DIM statements
     int dims[ 2 ];         // only support up to 2 dimensional arrays. Only used for DIM statements
-    int extra;
-    Variable * pVariable;
-    string strValue;
+    int extra;             // filler for now. unused.
+    Variable * pVariable;  // pointer to the actual variable where the value is stored
+    string strValue;       // strValue's definition varies depending on the token.
 };
 
 // maps to a line of BASIC
@@ -301,24 +296,15 @@ struct LineOfCode
     // These tokens will be scattered through memory. I tried making them all contiguous
     // and there was no performance benefit
 
-    Token firstToken;
-    vector<TokenValue> tokenValues;
-    string sourceCode;
-
-    int lineNumber;
+    Token firstToken;                  // optimization: first token in tokenValues.
+    vector<TokenValue> tokenValues;    // vector of tokens on the line of code
+    string sourceCode;                 // the original BASIC line of code
+    int lineNumber;                    // line number in BASIC
 
     #ifdef ENABLE_EXECUTION_TIME
         uint64_t timesExecuted;       // # of times this line is executed
         uint64_t duration;            // execution time so far on this line of code
     #endif
-};
-
-struct ParenItem
-{
-    ParenItem( int op, int off ) : open( op ), offset( off ) {}
-
-    int open;
-    int offset;
 };
 
 struct ForGosubItem
@@ -329,8 +315,8 @@ struct ForGosubItem
         pcReturn = p;
     }
 
-    int isFor;  // true if FOR, false if GOSUB
-    int  pcReturn;
+    int isFor;     // true if FOR, false if GOSUB
+    int pcReturn;  // where to return in a NEXT or RETURN statment
 };
 
 // this is faster than both <stack> and Stack using <vector> to implement a stack because there are no memory allocations.
@@ -353,7 +339,8 @@ template <class T> class Stack
 
 class CFile
 {
-    FILE * fp;
+    private:
+        FILE * fp;
 
     public:
         CFile( FILE * file ) : fp( file ) {}
@@ -529,7 +516,7 @@ Token readTokenInner( const char * p, int & len )
 
         if ( pend )
         {
-            len = (int) 1 + ( pend - p );
+            len = 1 + (int) ( pend - p );
             return Token::STRING;
         }
 
@@ -645,15 +632,15 @@ __makeinline int readNum( const char * p )
     return atoi( p );
 } //readNum
 
-void Fail( const char * error, int line, int column, const char * code )
+void Fail( const char * error, size_t line, size_t column, const char * code )
 {
-    printf( "Error: %s at line %d column %d: %s\n", error, line, column, code );
+    printf( "Error: %s at line %zd column %zd: %s\n", error, line, column, code );
     exit( 1 );
 } //Fail
 
-void RuntimeFail( const char * error, int line )
+void RuntimeFail( const char * error, size_t line )
 {
-    printf( "Runtime Error: %s at line %d\n", error, line );
+    printf( "Runtime Error: %s at line %zd\n", error, line );
     exit( 1 );
 } //RuntimeFail
 
@@ -675,7 +662,7 @@ const char * ParseExpression( vector<TokenValue> & lineTokens, const char * plin
     TokenValue expToken( Token::EXPRESSION );
     expToken.value = 666;
     lineTokens.push_back( expToken );
-    int exp = lineTokens.size() - 1;
+    size_t exp = lineTokens.size() - 1;
     bool isNegative = false;
 
     do
@@ -724,7 +711,7 @@ const char * ParseExpression( vector<TokenValue> & lineTokens, const char * plin
             token = readToken( pline, tokenLen );
             if ( Token::OPENPAREN == token )
             {
-                int iVarToken = lineTokens.size() - 1;
+                size_t iVarToken = lineTokens.size() - 1;
                 lineTokens[ iVarToken ].dimensions = 1;
 
                 tokenCount++;
@@ -733,7 +720,7 @@ const char * ParseExpression( vector<TokenValue> & lineTokens, const char * plin
                 lineTokens.push_back( tokenValue );
                 pline += tokenLen;
 
-                int expression = lineTokens.size();
+                size_t expression = lineTokens.size();
 
                 pline = ParseExpression( lineTokens, pline, line, fileLine );
                 tokenCount += lineTokens[ expression ].value;
@@ -748,7 +735,7 @@ const char * ParseExpression( vector<TokenValue> & lineTokens, const char * plin
                     lineTokens.push_back( tokenValue );
                     pline = pastWhite( pline + tokenLen );
 
-                    int subexpression = lineTokens.size();
+                    size_t subexpression = lineTokens.size();
                     pline = ParseExpression( lineTokens, pline, line, fileLine );
                     tokenCount += lineTokens[ subexpression ].value;
 
@@ -879,7 +866,7 @@ const char * ParseStatements( Token token, vector<TokenValue> & lineTokens, cons
 
             makelower( tokenValue.strValue );
             lineTokens.push_back( tokenValue );
-            int iVarToken = lineTokens.size() - 1;
+            size_t iVarToken = lineTokens.size() - 1;
 
             pline = pastWhite( pline + tokenLen );
             token = readToken( pline, tokenLen );
@@ -1208,7 +1195,7 @@ int EvaluateFactor( int & iToken, int beyond, vector<TokenValue> const & vals )
     if ( EnableTracing && g_Tracing )
         printf( " Evaluate factor # %d, %s\n", iToken, TokenStr( vals[ iToken ].token ) );
 
-    int limit = iToken + vals.size();
+    size_t limit = iToken + vals.size();
     int value = 0;
 
     if ( iToken < beyond )
@@ -1710,12 +1697,9 @@ void RemoveREMStatements()
         for ( size_t t = 0; t < loc.tokenValues.size(); t++ )
         {
             TokenValue & tv = loc.tokenValues[ t ];
-            bool found = false;
 
             if ( Token::GOTO == tv.token || Token::GOSUB == tv.token )
             {
-                int reference = tv.value;
-
                 for ( size_t lo = 0; lo < g_linesOfCode.size(); lo++ )
                 {
                     if ( ( g_linesOfCode[ lo ].lineNumber == tv.value ) &&
@@ -1746,7 +1730,7 @@ void RemoveREMStatements()
 
     // 2nd pass: remove all REM statements
 
-    int endloc = g_linesOfCode.size();
+    size_t endloc = g_linesOfCode.size();
     size_t curloc = 0;
 
     while ( curloc < endloc )
@@ -1780,7 +1764,7 @@ void AddENDStatement()
     }
 } //AddENDStatement
 
-void PatchGOTOGOSUBNumbers()
+void PatchGotoAndGosubNumbers()
 {
     // patch goto/gosub line numbers with actual offsets to remove runtime searches
     // also, pull out the first token for better memory locality
@@ -1800,7 +1784,7 @@ void PatchGOTOGOSUBNumbers()
                 {
                     if ( g_linesOfCode[ lo ].lineNumber == tv.value )
                     {
-                        tv.value = lo;
+                        tv.value = (int) lo;
                         found = true;
                         break;
                     }
@@ -1814,7 +1798,7 @@ void PatchGOTOGOSUBNumbers()
             }
         }
     }
-} //PatchGOTOGOSUBNumbers
+} //PatchGotoAndGosubNumbers
 
 void OptimizeWithRewrites( bool showListing )
 {
@@ -1993,9 +1977,10 @@ void CreateVariables( map<string, Variable> & varmap )
         for ( size_t t = 0; t < loc.tokenValues.size(); t++ )
         {
             TokenValue & tv = loc.tokenValues[ t ];
+
             if ( ( Token::INC == tv.token ) ||
                  ( Token::DEC == tv.token ) ||
-                 ( Token::VARIABLE == tv.token ) || // && 0 == tv.dimensions ) || // create arrays as singletons until a DIM statement
+                 ( Token::VARIABLE == tv.token ) || // create arrays as singletons until a DIM statement
                  ( Token::FOR == tv.token ) )
             {
                 Variable * pvar = GetVariablePerhapsCreate( tv, varmap );
@@ -2007,10 +1992,12 @@ void CreateVariables( map<string, Variable> & varmap )
 
 const char * GenVariableName( string const & s )
 {
-    static char acName[ 20 ];
+    static char acName[ 100 ];
 
-    strcpy( acName, "var_" );
-    strcpy( acName + 4, s.c_str() );
+    assert( s.length() < _countof( acName ) );
+
+    strcpy_s( acName, _countof( acName ), "var_" );
+    strcpy_s( acName + 4, _countof( acName ) - 4, s.c_str() );
     acName[ strlen( acName ) - 1 ] = 0;
     return acName;
 } //GenVariableName
@@ -2031,7 +2018,7 @@ const char * GenVariableReg64( map<string, Variable> const & varmap, string cons
     const char * r = pvar->reg.c_str();
 
     for ( int i = 0; i < _countof( MappedRegisters ); i++ )
-        if ( !stricmp( r, MappedRegisters[ i ] ) )
+        if ( !_stricmp( r, MappedRegisters[ i ] ) )
             return MappedRegisters64[ i ];
 
     assert( false && "why is there no 64 bit mapping to a register?" );
@@ -2259,7 +2246,6 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
             }
             else if ( 1 == vals[ iToken ].dimensions )
             {
-                int tokenVar = iToken;
                 iToken++; // variable
 
                 if ( Token::OPENPAREN != vals[ iToken ].token )
@@ -2277,8 +2263,6 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
             }
             else if ( 2 == vals[ iToken ].dimensions )
             {
-                int tokenVar = iToken;
-
                 iToken++; // variable
 
                 if ( Token::OPENPAREN != vals[ iToken ].token )
@@ -2544,14 +2528,17 @@ void GenerateLogicalExpression( FILE * fp, map<string, Variable> const & varmap,
     }
 } //GenereateLogicalExpression
 
-void GenerateOptimizedExpression( FILE * fp, map<string, Variable> const & varmap, int & iToken, vector<TokenValue> const & vals, int expOffset = 0 )
+void GenerateOptimizedExpression( FILE * fp, map<string, Variable> const & varmap, int & iToken, vector<TokenValue> const & vals )
 {
     // generate code to put the resulting expression in rax
     // only modifies rax, rbx, and rdx (without saving them)
 
     assert( Token::EXPRESSION == vals[ iToken ].token );
     int tokenCount = vals[ iToken ].value;
-    int firstToken = iToken;
+
+    #ifdef DEBUG
+        int firstToken = iToken;
+    #endif
 
     if ( EnableTracing && g_Tracing )
         printf( "  GenerateOptimizedExpression token %d, which is %s, length %d\n",
@@ -2712,7 +2699,7 @@ void GenerateOptimizedExpression( FILE * fp, map<string, Variable> const & varma
     }
     else
     {
-label_no_expression_optimization:
+        label_no_expression_optimization:
 
         GenerateLogicalExpression( fp, varmap, iToken, vals );
     }
@@ -2879,12 +2866,12 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
             fprintf( fp, "    xor      %s, %s\n", MappedRegisters[ i ], MappedRegisters[ i ] );
 
     static Stack<ForGosubItem> forGosubStack;
-    int activeIf = -1;
+    size_t activeIf = -1;
 
     for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
     {
         LineOfCode & loc = g_linesOfCode[ l ];
-        g_pc = l;
+        g_pc = (int) l;
         vector<TokenValue> & vals = loc.tokenValues;
         Token token = loc.firstToken;
         int t = 0;
@@ -3085,7 +3072,7 @@ label_no_array_eq_optimization:
                 else
                     fprintf( fp, "    mov      [%s], %d\n", GenVariableName( varname ), vals[ t + 2 ].value );
 
-                ForGosubItem item( true, l );
+                ForGosubItem item( true, (int) l );
                 forGosubStack.push( item );
     
                 fprintf( fp, "  for_loop_%zd:\n", l );
@@ -3233,7 +3220,6 @@ label_no_array_eq_optimization:
             }
             else if ( Token::IF == token )
             {
-                int ifToken = t;
                 activeIf = l;
     
                 t++;
@@ -3672,7 +3658,7 @@ label_no_if_optimization:
                 assert( -1 != activeIf );
                 fprintf( fp, "    jmp      line_number_%zd\n", l + 1 );
                 fprintf( fp, "    align    16\n" );
-                fprintf( fp, "  label_else_%d:\n", activeIf );
+                fprintf( fp, "  label_else_%zd:\n", activeIf );
                 activeIf = -1;
                 t++;
             }
@@ -3796,74 +3782,8 @@ label_no_if_optimization:
     printf( "created assembler file %s\n", outputfile );
 } //GenerateASM
 
-extern int main( int argc, char *argv[] )
+void ParseInputFile( const char * inputfile )
 {
-    steady_clock::time_point timeAppStart = steady_clock::now();
-
-    // validate the parallel arrays and enum are actually parallel
-
-    assert( ( Token::INVALID + 1 ) == _countof( Tokens ) );
-    assert( ( Token::INVALID + 1 ) == _countof( Operators ) );
-    assert( 3 == OperatorPrecedence[ Token::AND ] );
-    assert( 3 == OperatorPrecedence[ Token::OR ] );
-    assert( 3 == OperatorPrecedence[ Token::XOR ] );
-    assert( 0 == OperatorPrecedence[ Token::MULT ] );
-    assert( 0 == OperatorPrecedence[ Token::DIV ] );
-
-    assert( 64 == sizeof( TokenValue ) );
-
-    bool showListing = false;
-    bool executeCode = true;
-    bool showExecutionTime = false;
-    bool showParseTime = false;
-    bool generateASM = false;
-    bool useRegistersInASM = true;
-    static char inputfile[ 300 ] = {0};
-    static char asmfile[ 300 ] = {0};
-
-    for ( int i = 1; i < argc; i++ )
-    {
-        char * parg = argv[ i ];
-        int arglen = strlen( parg );
-        char c0 = parg[ 0 ];
-        char c1 = tolower( parg[ 1 ] );
-
-        if ( '-' == c0 || '/' == c0 )
-        {
-            if ( 'a' == c1 )
-                generateASM = true;
-            else if ( 'e' == c1 )
-                showExecutionTime = true;
-            else if ( 'l' == c1 )
-                showListing = true;
-            else if ( 'o' == c1 )
-                g_ExpressionOptimization = false;
-            else if ( 'p' == c1 )
-                showParseTime = true;
-            else if ( 'r' == c1 )
-                useRegistersInASM = false;
-            else if ( 't' == c1 )
-                g_Tracing = true;
-            else if ( 'x' == c1 )
-                executeCode = false;
-            else
-                Usage();
-        }
-        else
-        {
-            if ( strlen( argv[1] ) >= _countof( inputfile ) )
-                Usage();
-
-            strcpy( inputfile, argv[ i ] );
-        }
-    }
-
-    if ( !inputfile[0] )
-    {
-        printf( "input file not specified\n" );
-        Usage();
-    }
-
     CFile fileInput( fopen( inputfile, "rb" ) );
     if ( NULL == fileInput.get() )
     {
@@ -3875,11 +3795,11 @@ extern int main( int argc, char *argv[] )
 
     long filelen = portable_filelen( fileInput.get() );
     vector<char> input( filelen + 1 );
-    long lread = fread( input.data(), filelen, 1, fileInput.get() );
+    size_t lread = fread( input.data(), filelen, 1, fileInput.get() );
     if ( 1 != lread )
     {
         printf( "unable to read input file\n" );
-        return 0;
+        Usage();
     }
 
     fileInput.Close();
@@ -3969,7 +3889,6 @@ extern int main( int argc, char *argv[] )
             else if ( Token::IF == token )
             {
                 lineTokens.push_back( tokenValue );
-                int ifOffset = lineTokens.size() - 1;
                 pline = pastWhite( pline + tokenLen );
                 pline = ParseExpression( lineTokens, pline, line, fileLine );
                 if ( Token::EXPRESSION == lineTokens[ lineTokens.size() - 1 ].token )
@@ -3987,7 +3906,7 @@ extern int main( int argc, char *argv[] )
 
                 tokenValue.Clear();
                 tokenValue.token = Token::THEN;
-                int thenOffset = lineTokens.size();
+                size_t thenOffset = lineTokens.size();
                 lineTokens.push_back( tokenValue );
 
                 pline = ParseStatements( token, lineTokens, pline, line, fileLine );
@@ -4002,7 +3921,7 @@ extern int main( int argc, char *argv[] )
                     tokenValue.Clear();
                     tokenValue.token = token;
                     lineTokens.push_back( tokenValue );
-                    lineTokens[ thenOffset ].value = lineTokens.size() - thenOffset - 1;
+                    lineTokens[ thenOffset ].value = (int) ( lineTokens.size() - thenOffset - 1 );
                     
                     pline = pastWhite( pline + tokenLen );
                     token = readToken( pline, tokenLen );
@@ -4093,52 +4012,10 @@ extern int main( int argc, char *argv[] )
             }
         }
     }
+} //ParseInputFile
 
-    AddENDStatement();
-    RemoveREMStatements();
-
-    if ( showListing )
-    {
-        printf( "lines of code: %zd\n", g_linesOfCode.size() );
-    
-        for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
-            ShowLocListing( g_linesOfCode[ l ] );
-    }
-
-    PatchGOTOGOSUBNumbers();
-
-    OptimizeWithRewrites( showListing );
-
-    SetFirstTokens();
-
-    // Create all non-array variables and update references so lookups are always fast later
-
-    map<string, Variable> varmap;
-    CreateVariables( varmap );
-
-    if ( showParseTime )
-    {
-        steady_clock::time_point timeParseComplete = steady_clock::now();      
-        long long durationParse = duration_cast<std::chrono::nanoseconds>( timeParseComplete - timeAppStart ).count();
-        double parseInMS = (double) durationParse / 1000000.0;
-        printf( "Time to parse %s: %lf ms\n", inputfile, parseInMS );
-    }
-
-    if ( generateASM )
-    {
-        strcpy( asmfile, inputfile );
-        char * dot = strrchr( asmfile, '.' );
-        if ( !dot )
-            dot = asmfile + strlen( asmfile );
-        strcpy( dot, ".asm" );
-
-        GenerateASM( asmfile, varmap, useRegistersInASM );
-    }
-
-    if ( !executeCode )
-        exit( 0 );
-
-    // Interpret the code
+void InterpretCode( map<string, Variable> & varmap )
+{
     // The cost of this level of indirection is 15% in NDEBUG interpreter performance.
     // So it's not worth it to control the behavior at runtime except for testing / debug
 
@@ -4152,16 +4029,15 @@ extern int main( int argc, char *argv[] )
     #endif
 
     static Stack<ForGosubItem> forGosubStack;
-    int pcPrevious = 0;
-    int countOfLines = g_linesOfCode.size();
     bool basicTracing = false;
     g_pc = 0;  // program counter
 
     #ifdef ENABLE_EXECUTION_TIME
+        int pcPrevious = 0;
         g_linesOfCode[ 0 ].timesExecuted--; // avoid off by 1 on first iteration of loop
+        uint64_t timePrevious = __rdtsc();
     #endif
 
-    uint64_t timePrevious = __rdtsc();
     steady_clock::time_point timeBegin = steady_clock::now();
 
     do
@@ -4185,7 +4061,7 @@ extern int main( int argc, char *argv[] )
                 timePrevious = timeNow;
                 pcPrevious = g_pc;
             }
-        #endif
+        #endif //ENABLE_EXECUTION_TIME
 
         vector<TokenValue> const & vals = g_linesOfCode[ g_pc ].tokenValues;
         Token token = g_linesOfCode[ g_pc ].firstToken;
@@ -4522,9 +4398,9 @@ extern int main( int argc, char *argv[] )
                 {
                     LineOfCode & lineOC = g_linesOfCode[ l ];
     
-                    for ( size_t t = 0; t < lineOC.tokenValues.size(); t++ )
+                    for ( size_t z = 0; z < lineOC.tokenValues.size(); z++ )
                     {
-                        TokenValue & tv = lineOC.tokenValues[ t ];
+                        TokenValue & tv = lineOC.tokenValues[ z ];
                         if ( Token::VARIABLE == tv.token && !tv.strValue.compare( vals[ 0 ].strValue ) )
                             tv.pVariable = pvar;
                     }
@@ -4585,7 +4461,120 @@ extern int main( int argc, char *argv[] )
                 printf( "\n" );
             }
         }
-    #endif
+    #endif //ENABLE_EXECUTION_TIME
 
     printf( "exiting the basic interpreter\n" );
+} //InterpretCode
+
+extern int main( int argc, char *argv[] )
+{
+    steady_clock::time_point timeAppStart = steady_clock::now();
+
+    // validate the parallel arrays and enum are actually parallel
+
+    assert( ( Token::INVALID + 1 ) == _countof( Tokens ) );
+    assert( ( Token::INVALID + 1 ) == _countof( Operators ) );
+    assert( 11 == Token::MULT );
+
+    // not critical, but interpreted performance is faster if it's a multiple of 2.
+
+    assert( 64 == sizeof( TokenValue ) );
+
+    bool showListing = false;
+    bool executeCode = true;
+    bool showExecutionTime = false;
+    bool showParseTime = false;
+    bool generateASM = false;
+    bool useRegistersInASM = true;
+    static char inputfile[ 300 ] = {0};
+    static char asmfile[ 300 ] = {0};
+
+    for ( int i = 1; i < argc; i++ )
+    {
+        char * parg = argv[ i ];
+        char c0 = parg[ 0 ];
+        char c1 = (char) tolower( parg[ 1 ] );
+
+        if ( '-' == c0 || '/' == c0 )
+        {
+            if ( 'a' == c1 )
+                generateASM = true;
+            else if ( 'e' == c1 )
+                showExecutionTime = true;
+            else if ( 'l' == c1 )
+                showListing = true;
+            else if ( 'o' == c1 )
+                g_ExpressionOptimization = false;
+            else if ( 'p' == c1 )
+                showParseTime = true;
+            else if ( 'r' == c1 )
+                useRegistersInASM = false;
+            else if ( 't' == c1 )
+                g_Tracing = true;
+            else if ( 'x' == c1 )
+                executeCode = false;
+            else
+                Usage();
+        }
+        else
+        {
+            if ( strlen( argv[1] ) >= _countof( inputfile ) )
+                Usage();
+
+            strcpy_s( inputfile, _countof( inputfile ), argv[ i ] );
+        }
+    }
+
+    if ( !inputfile[0] )
+    {
+        printf( "input file not specified\n" );
+        Usage();
+    }
+
+    ParseInputFile( inputfile );
+
+    AddENDStatement();
+
+    RemoveREMStatements();
+
+    if ( showListing )
+    {
+        printf( "lines of code: %zd\n", g_linesOfCode.size() );
+    
+        for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
+            ShowLocListing( g_linesOfCode[ l ] );
+    }
+
+    PatchGotoAndGosubNumbers();
+
+    OptimizeWithRewrites( showListing );
+
+    SetFirstTokens();
+
+    // Create all non-array variables and update references so lookups are always fast later
+
+    map<string, Variable> varmap;
+    CreateVariables( varmap );
+
+    if ( showParseTime )
+    {
+        steady_clock::time_point timeParseComplete = steady_clock::now();      
+        long long durationParse = duration_cast<std::chrono::nanoseconds>( timeParseComplete - timeAppStart ).count();
+        double parseInMS = (double) durationParse / 1000000.0;
+        printf( "Time to parse %s: %lf ms\n", inputfile, parseInMS );
+    }
+
+    if ( generateASM )
+    {
+        strcpy_s( asmfile, _countof( asmfile ), inputfile );
+        char * dot = strrchr( asmfile, '.' );
+        if ( !dot )
+            dot = asmfile + strlen( asmfile );
+        strcpy_s( dot, _countof( asmfile) - ( dot - asmfile ), ".asm" );
+
+        GenerateASM( asmfile, varmap, useRegistersInASM );
+    }
+
+    if ( executeCode )
+        InterpretCode( varmap );
 } //main
