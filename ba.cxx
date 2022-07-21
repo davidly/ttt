@@ -73,19 +73,25 @@ vector<LineOfCode> g_linesOfCode;
         asm volatile("mrs %0, cntvct_el0" : "=r" (val ));
         return val;
     }
-#else
-    #include <intrin.h>
 #endif
 
-#ifndef _MSC_VER  // g++, clang++
+#ifdef _MSC_VER  
+    #include <intrin.h>
+#else // g++, clang++
     #define __assume( x )
     #undef __makeinline
     #define __makeinline inline
     #define _strnicmp strncasecmp
+    #define _stricmp strcasecmp
 
     #ifndef _countof
         template < typename T, size_t N > size_t _countof( T ( & arr )[ N ] ) { return std::extent< T[ N ] >::value; }
     #endif
+
+    void strcpy_s( char *pto, size_t size, const char *pfrom  )
+    {
+        strcpy( pto, pfrom );
+    }
 #endif
 
 const int MaxExpressionComplexity = 256;
@@ -283,7 +289,7 @@ struct TokenValue
 
 struct LineOfCode
 {
-    LineOfCode( int line, char * code ) : lineNumber( line ), firstToken( Token::INVALID ), sourceCode( code )
+    LineOfCode( int line, const char * code ) : lineNumber( line ), firstToken( Token::INVALID ), sourceCode( code )
 
     #ifdef ENABLE_EXECUTION_TIME
         , timesExecuted( 0 ), duration( 0 )
@@ -2709,8 +2715,8 @@ void GenerateOptimizedExpression( FILE * fp, map<string, Variable> const & varma
 
 struct VarCount
 {
-    VarCount() : refcount( 0 ) {};
-    string name;
+    VarCount() : name( 0 ), refcount( 0 ) {};
+    const char * name;
     int refcount;
 };
 
@@ -2798,13 +2804,13 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         if ( 0 == it->second.dimensions )
         {
             VarCount vc;
-            vc.name = it->first;
+            vc.name = it->first.c_str();
             vc.refcount = it->second.references;
             varscount.push_back( vc );
         }
     }
 
-    qsort( varscount.data(), varscount.size(), sizeof VarCount, CompareVarCount );
+    qsort( varscount.data(), varscount.size(), sizeof( VarCount ), CompareVarCount );
     int availableRegisters = useRegistersInASM ? _countof( MappedRegisters ) : 0;
 
     for ( size_t i = 0; i < varscount.size() && 0 != availableRegisters; i++ )
@@ -2815,7 +2821,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         pvar->reg = MappedRegisters[ availableRegisters ];
         if ( EnableTracing && g_Tracing )
             printf( "variable %s has %d references and is mapped to register %s\n",
-                    varscount[ i ].name.c_str(), varscount[ i ].refcount, pvar->reg.c_str() );
+                    varscount[ i ].name, varscount[ i ].refcount, pvar->reg.c_str() );
 
         fprintf( fp, "    ; variable %s (referenced %d times) will use register %s\n", pvar->name,
                  varscount[ i ].refcount, pvar->reg.c_str() );
@@ -3038,10 +3044,8 @@ label_no_array_eq_optimization:
                         else if ( Token::VARIABLE == vals[ t + 1 ].token && 2 == vals[ t ].value &&
                                   IsVariableInReg( varmap, vals[ t + 1 ].strValue ) )
                         {
-                            fprintf( fp, "    add      rbx, rax\n" );
                             string & varname = vals[ t + 1 ].strValue;
-                            if ( IsVariableInReg( varmap, varname ) )
-                                fprintf( fp, "    mov      DWORD PTR [rbx], %s\n", GenVariableReg( varmap, varname ) );
+                            fprintf( fp, "    mov      DWORD PTR [rbx + rax], %s\n", GenVariableReg( varmap, varname ) );
                             t += 2;
                         }
                         else
