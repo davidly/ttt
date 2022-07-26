@@ -298,6 +298,9 @@ struct TokenValue
     int extra;             // filler for now. unused.
     Variable * pVariable;  // pointer to the actual variable where the value is stored
     string strValue;       // strValue's definition varies depending on the token.
+#ifndef _MSC_VER           // make structure size 64 bytes on clang/g++
+    size_t extra2;
+#endif
 };
 
 // maps to a line of BASIC
@@ -3268,7 +3271,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "    startString:   .asciz \"running basic\\n\"\n" );
         fprintf( fp, "    stopString:    .asciz \"done running basic\\n\"\n" );
         fprintf( fp, "    newlineString: .asciz \"\\n\"\n" );
-        fprintf( fp, "    elapString:    .asciz \"%%lld ticks\\n\"\n" );
+        fprintf( fp, "    elapString:    .asciz \"%%lld microseconds (-6)\"\n" );
         fprintf( fp, "    intString:     .asciz \"%%d\"\n" );
         fprintf( fp, "    strString:     .asciz \"%%s\"\n" );
 
@@ -3287,7 +3290,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "    adrp     x3, startTicks@PAGE\n" );
         fprintf( fp, "    add      x3, x3, startTicks@PAGEOFF\n" );
         fprintf( fp, "    mrs      x0, cntvct_el0\n" );
-        fprintf( fp, "    str      w0, [x3]\n" );
+        fprintf( fp, "    str      x0, [x3]\n" );
     }
 
     if ( useRegistersInASM )
@@ -3835,9 +3838,14 @@ label_no_array_eq_optimization:
                             fprintf( fp, "    adrp     x3, startTicks@PAGE\n" );
                             fprintf( fp, "    add      x3, x3, startTicks@PAGEOFF\n" );
                             fprintf( fp, "    ldr      x0, [x3]\n" );
-                            fprintf( fp, "    mrs      x1, cntvct_el0\n" );
-                            fprintf( fp, "    sub      x1, x1, x0\n" );
+                            fprintf( fp, "    mrs      x1, cntvct_el0\n" ); //current time
+                            fprintf( fp, "    sub      x1, x1, x0\n" ); // elapsed time
+                            fprintf( fp, "    ldr      x4, =%#x\n", 1000000 ); // scale before divide
+                            fprintf( fp, "    mul      x1, x1, x4\n" );
 
+                            fprintf( fp, "    mrs      x2, cntfrq_el0\n" ); // frequency
+                            fprintf( fp, "    udiv     x1, x1, x2\n" );
+                            
                             fprintf( fp, "    adrp     x0, elapString@PAGE\n" );
                             fprintf( fp, "    add      x0, x0, elapString@PAGEOFF\n" );
                             fprintf( fp, "    bl       call_printf\n" );
@@ -5309,11 +5317,10 @@ extern int main( int argc, char *argv[] )
     assert( 11 == Token::MULT );
 
     // not critical, but interpreted performance is faster if it's a multiple of 2.
-    // clang makes it 56 bytes
 
-    #ifdef _MSC_VER  
+    if ( 64 != sizeof( TokenValue ) )
+        printf( "sizeof tokenvalue: %zd\n", sizeof( TokenValue ) );
     assert( 64 == sizeof( TokenValue ) );
-    #endif
 
     bool showListing = false;
     bool executeCode = true;
