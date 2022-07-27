@@ -2078,6 +2078,11 @@ bool fitsIn12Bits( int x )
     return ( x >= 0 && x < 4096 );
 } //fitsIn12Bits
 
+bool fitsIn8Bits( int x )
+{
+    return (x >= 0 && x < 256 );
+} //fitsIn8Bits
+
 void LoadArm64Address( FILE * fp, const char * reg, string const & varname )
 {
     fprintf( fp, "    adrp     %s, %s@PAGE\n", reg, GenVariableName( varname ) );
@@ -2117,9 +2122,18 @@ void GenerateOp( FILE * fp, map<string, Variable> const & varmap, vector<TokenVa
         else if ( arm64Mac == g_AssemblyTarget )
         {
             LoadArm64Address( fp, "x1", vals[ right ].strValue );
-            LoadArm64Constant( fp, "x0", 4 * vals[ rightArray ].value );
-            fprintf( fp, "    add      x1, x1, x0\n" );
-            fprintf( fp, "    ldr      w0, [x1]\n" );
+
+            int offset = 4 * vals[ rightArray ].value;
+
+            if ( fitsIn8Bits( offset ) )
+                fprintf( fp, "    ldr      w0, [x1, %d]\n", offset );
+            else
+            {
+                LoadArm64Constant( fp, "x0", 4 * vals[ rightArray ].value );
+                fprintf( fp, "    add      x1, x1, x0\n" );
+                fprintf( fp, "    ldr      w0, [x1]\n" );
+            }
+
             fprintf( fp, "    cmp      %s, w0\n", GenVariableReg( varmap, vals[ left ].strValue ) );
             fprintf( fp, "    cset     x0, %s\n", ConditionsArm64[ op ] );
         }
@@ -2203,9 +2217,17 @@ void GenerateOp( FILE * fp, map<string, Variable> const & varmap, vector<TokenVa
         else if ( arm64Mac == g_AssemblyTarget )
         {
             LoadArm64Address( fp, "x1", vals[ left ].strValue );
-            LoadArm64Constant( fp, "x0", 4 * vals[ leftArray ].value );
-            fprintf( fp, "    add      x1, x1, x0\n" );
-            fprintf( fp, "    ldr      w0, [x1]\n" );
+
+            int offset = 4 * vals[ leftArray ].value;
+
+            if ( fitsIn8Bits( offset ) )
+                fprintf( fp, "    ldr      w0, [x1 + %d]\n", offset );
+            else
+            {
+                LoadArm64Constant( fp, "x0", offset );
+                fprintf( fp, "    add      x1, x1, x0\n" );
+                fprintf( fp, "    ldr      w0, [x1]\n" );
+            }
         }
     }
 
@@ -2255,9 +2277,18 @@ void GenerateOp( FILE * fp, map<string, Variable> const & varmap, vector<TokenVa
             else if ( arm64Mac == g_AssemblyTarget )
             {
                 LoadArm64Address( fp, "x1", vals[ right ].strValue );
-                LoadArm64Constant( fp, "x3", 4 * vals[ rightArray ].value );
-                fprintf( fp, "    add      x1, x1, x3\n" );
-                fprintf( fp, "    ldr      w1, [x1]\n" );
+
+                int offset = 4 * vals[ rightArray ].value;
+
+                if ( fitsIn8Bits( offset ) )
+                    fprintf( fp, "    ldr      w1, [x1, %d]\n", offset );
+                else
+                {
+                    LoadArm64Constant( fp, "x3", offset );
+                    fprintf( fp, "    add      x1, x1, x3\n" );
+                    fprintf( fp, "    ldr      w1, [x1]\n" );
+                }
+
                 fprintf( fp, "    cmp      w0, w1\n" );
             }
         }
@@ -2338,9 +2369,18 @@ void GenerateOp( FILE * fp, map<string, Variable> const & varmap, vector<TokenVa
                 else if ( arm64Mac == g_AssemblyTarget )
                 {
                     LoadArm64Address( fp, "x1", vals[ right ].strValue );
-                    LoadArm64Constant( fp, "x3", 4 * vals[ rightArray ].value );
-                    fprintf( fp, "    add      x3, x1, x3\n" );
-                    fprintf( fp, "    ldr      w1, [x3]\n" );
+
+                    int offset = 4 * vals[ rightArray ].value;
+
+                    if ( fitsIn8Bits( offset ) )
+                        fprintf( fp, "    ldr      w1, [x1, %d]\n", offset );
+                    else
+                    {
+                        LoadArm64Constant( fp, "x3", offset );
+                        fprintf( fp, "    add      x3, x1, x3\n" );
+                        fprintf( fp, "    ldr      w1, [x3]\n" );
+                    }
+
                     fprintf( fp, "    %-6s     w0, w0, w1\n", OperatorInstructionArm64[ op ] );
                 }
             }
@@ -2931,9 +2971,17 @@ void GenerateOptimizedExpression( FILE * fp, map<string, Variable> const & varma
             else if ( arm64Mac == g_AssemblyTarget )
             {
                 LoadArm64Address( fp, "x1", varname );
-                LoadArm64Constant( fp, "x0", 4 * vals[ iToken + 4 ].value );
-                fprintf( fp, "    add      x1, x1, x0\n" );
-                fprintf( fp, "    ldr      w0, [x1]\n" );
+
+                int offset = 4 * vals[ iToken + 4 ].value;
+
+                if ( fitsIn8Bits( offset ) )
+                    fprintf( fp, "    ldr      w0, [x1, %d]\n", offset );
+                else
+                {
+                    LoadArm64Constant( fp, "x0", offset );
+                    fprintf( fp, "    add      x1, x1, x0\n" );
+                    fprintf( fp, "    ldr      w0, [x1]\n" );
+                }
             }
         }
         else
@@ -3124,6 +3172,26 @@ string ml64Escape( string & str )
     return result;
 } //ml64Escape
 
+bool isGoTarget( int target )
+{
+    // This is incredibly slow, but only happens once per line of code and just for compilation.
+
+    for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
+    {
+        LineOfCode & loc = g_linesOfCode[ l ];
+        vector<TokenValue> & vals = loc.tokenValues;
+
+        for ( int t = 0; t < vals.size(); t++ )
+        {
+            if ( ( Token::GOTO == vals[ t ].token || Token::GOSUB == vals[ t ].token ) &&
+                 ( target == vals[ t ].value ) )
+                return true;
+        }
+    }
+
+    return false;
+} //isGoTarget
+
 void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool useRegistersInASM )
 {
     CFile fileOut( fopen( outputfile, "w" ) );
@@ -3148,6 +3216,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, ".global _start\n" );
         fprintf( fp, ".data\n" );
     }
+
     for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
     {
         LineOfCode & loc = g_linesOfCode[ l ];
@@ -3342,7 +3411,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         if ( EnableTracing && g_Tracing )
             printf( "generating code for line %zd ====> %s\n", l, loc.sourceCode.c_str() );
 
-        if ( arm64Mac == g_AssemblyTarget )
+        if ( arm64Mac == g_AssemblyTarget && isGoTarget( l ) )
             fprintf( fp, ".align 4\n" );
 
         fprintf( fp, "  line_number_%zd:   ; ===>>> %s\n", l, loc.sourceCode.c_str() );
@@ -3454,22 +3523,32 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                                 if ( 0 != vals[ t + 4 ].value )
                                 {
                                     int constant = 4 * vals[ t + 4 ].value;
-                                    if ( fitsIn12Bits( constant ) )
-                                        fprintf( fp, "    add      x1, x1, %d\n", constant );
+
+                                    if ( fitsIn8Bits( constant ) )
+                                        fprintf( fp, "    ldr      %s, [x1, %d]\n", GenVariableReg( varmap, vals[ variableToken ].strValue ),
+                                                                                    constant );
                                     else
                                     {
-                                        LoadArm64Constant( fp, "x2", constant );
-                                        fprintf( fp, "    add      x1, x1, x2\n" );
+                                        if ( fitsIn12Bits( constant ) )
+                                            fprintf( fp, "    add      x1, x1, %d\n", constant );
+                                        else
+                                        {
+                                            LoadArm64Constant( fp, "x2", constant );
+                                            fprintf( fp, "    add      x1, x1, x2\n" );
+                                        }
+
+                                        fprintf( fp, "    ldr      %s, [x1]\n", GenVariableReg( varmap, vals[ variableToken ].strValue ) );
                                     }
                                 }
+                                else
+                                   fprintf( fp, "    ldr      %s, [x1]\n", GenVariableReg( varmap, vals[ variableToken ].strValue ) );
                             }
                             else
                             {
                                 fprintf( fp, "    lsl      w2, %s, 2\n", GenVariableReg( varmap, vals[ t + 4 ].strValue ) );
                                 fprintf( fp, "    add      x1, x1, x2\n" );
+                                fprintf( fp, "    ldr      %s, [x1]\n", GenVariableReg( varmap, vals[ variableToken ].strValue ) );
                             }
-
-                            fprintf( fp, "    ldr      %s, [x1]\n", GenVariableReg( varmap, vals[ variableToken ].strValue ) );
                         }
 
                         t += vals[ t ].value;
@@ -3509,7 +3588,7 @@ label_no_eq_optimization:
                         goto label_no_array_eq_optimization;
 
                     if ( x64Win == g_AssemblyTarget &&
-                         true &&                                   // This code is smaller, but overall runtime is 10% slower!?!
+                         false &&                        // This code is smaller on x64, but overall runtime is 10% slower!?!
                          8 == vals.size() &&
                          Token::CONSTANT == vals[ t + 1 ].token &&
                          Token::EQ == vals[ t + 3 ].token &&
@@ -4100,28 +4179,46 @@ label_no_array_eq_optimization:
                         LoadArm64Address( fp, "x2", vals[ t + 3 ].strValue );
                         
                         int offset = 4 * vals[ t + 6 ].value;
-                        if ( fitsIn12Bits( offset ) )
-                            fprintf( fp, "    add      x1, x2, %d\n", offset );
+
+                        if ( fitsIn8Bits( offset ) )
+                        {
+                            fprintf( fp, "    ldr      w0, [x2, %d]\n", offset );
+                        }
                         else
                         {
-                            LoadArm64Constant( fp, "x1", offset );
-                            fprintf( fp, "    add      x1, x1, x2\n" );
+                            if ( fitsIn12Bits( offset ) )
+                                fprintf( fp, "    add      x1, x2, %d\n", offset );
+                            else
+                            {
+                                LoadArm64Constant( fp, "x1", offset );
+                                fprintf( fp, "    add      x1, x1, x2\n" );
+                            }
+
+                            fprintf( fp, "    ldr      w0, [x1]\n" );
                         }
 
-                        fprintf( fp, "    ldr      w0, [x1]\n" );
                         fprintf( fp, "    cmp      %s, w0\n", GenVariableReg( varmap, vals[ t + 1 ].strValue ) );
                         fprintf( fp, "    b.%s     line_number_%zd\n", ConditionsNotArm64[ vals[ t + 2 ].token ], l + 1 );
 
                         offset = 4 * vals[ t + 14 ].value;
-                        if ( fitsIn12Bits( offset ) )
-                            fprintf( fp, "    add      x1, x2, %d\n", offset );
+
+                        if ( fitsIn8Bits( offset ) )
+                        {
+                            fprintf( fp, "    ldr      w0, [x2, %d]\n", offset );
+                        }
                         else
                         {
-                            LoadArm64Constant( fp, "x1", offset );
-                            fprintf( fp, "    add      x1, x1, x2\n" );
+                            if ( fitsIn12Bits( offset ) )
+                                fprintf( fp, "    add      x1, x2, %d\n", offset );
+                            else
+                            {
+                                LoadArm64Constant( fp, "x1", offset );
+                                fprintf( fp, "    add      x1, x1, x2\n" );
+                            }
+
+                            fprintf( fp, "    ldr      w0, [x1]\n" );
                         }
 
-                        fprintf( fp, "    ldr      w0, [x1]\n" );
                         fprintf( fp, "    cmp      %s, w0\n", GenVariableReg( varmap, vals[ t + 9 ].strValue ) );
                         fprintf( fp, "    b.%s     label_gosub_return\n", ConditionsArm64[ vals[ t + 10 ].token ] );
                     }
