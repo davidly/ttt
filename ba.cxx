@@ -3345,7 +3345,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         do  // all tokens in the line
         {
             if ( EnableTracing && g_Tracing )
-                printf( "generating code for line %zd, token %d %s\n", l, t, TokenStr( vals[ t ].token ) );
+                printf( "generating code for line %zd, token %d %s, valsize %zd\n", l, t, TokenStr( vals[ t ].token ), vals.size() );
 
             if ( Token::VARIABLE == token )
             {
@@ -3454,8 +3454,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                             }
                             else
                             {
-                                fprintf( fp, "    mov      w2, %s\n", GenVariableReg( varmap, vals[ t + 4 ].strValue ) );
-                                fprintf( fp, "    lsl      x2, x2, 2\n" );
+                                fprintf( fp, "    lsl      w2, %s, 2\n", GenVariableReg( varmap, vals[ t + 4 ].strValue ) );
                                 fprintf( fp, "    add      x1, x1, x2\n" );
                             }
 
@@ -4189,8 +4188,7 @@ label_no_array_eq_optimization:
                     else if ( arm64Mac == g_AssemblyTarget )
                     {
                         LoadArm64Address( fp, "x3", vals[ t + 5 ].strValue );
-                        fprintf( fp, "    mov      w4, %s\n", GenVariableReg( varmap, vals[ t + 8 ].strValue ) );
-                        fprintf( fp, "    lsl      x4, x4, 2\n" );
+                        fprintf( fp, "    lsl      w4, %s, 2\n", GenVariableReg( varmap, vals[ t + 8 ].strValue ) );
                         fprintf( fp, "    add      x3, x3, x4\n" );
 
                         LoadArm64Constant( fp, "x0", vals[ t + 12 ].value );
@@ -4282,8 +4280,7 @@ label_no_array_eq_optimization:
                     }
                     else
                     {
-                        fprintf( fp, "    mov      w1, %s\n", GenVariableReg( varmap, vals[ t + 4 ].strValue ) );
-                        fprintf( fp, "    lsl      x1, x1, 2\n" );
+                        fprintf( fp, "    lsl      w1, %s, 2\n", GenVariableReg( varmap, vals[ t + 4 ].strValue ) );
                         LoadArm64Address( fp, "x2", vals[ t + 1 ].strValue );
                         fprintf( fp, "    add      x1, x1, x2\n" );
                         fprintf( fp, "    ldr      w0, [x1]\n" );
@@ -4321,6 +4318,49 @@ label_no_array_eq_optimization:
                         fprintf( fp, "    tst      %s, %d\n", GenVariableReg( varmap, vals[ t + 1 ].strValue ), vals[ t + 3 ].value );
                         fprintf( fp, "    b.ne     line_number_%d\n", vals[ t + 5 ].value );
                     }
+                }
+                else if ( arm64Mac == g_AssemblyTarget &&
+                          6 == vals.size() &&
+                          3 == vals[ t ].value &&
+                          Token::NOT == vals[ t + 1 ].token &&
+                          Token::VARIABLE == vals[ t + 2 ].token &&
+                          IsVariableInReg( varmap, vals[ t + 2 ].strValue ) &&
+                          Token::THEN == vals[ t + 3 ].token &&
+                          0 == vals[ t + 3 ].value &&
+                          Token::GOTO == vals[ t + 4 ].token )
+                {
+                    // line 2110 has 6 tokens  ====>> 2110 if 0 = wi% goto 2200
+                    //  0 IF, value 0, strValue ''
+                    //  1 EXPRESSION, value 3, strValue ''
+                    //  2 NOT, value 0, strValue ''
+                    //  3 VARIABLE, value 0, strValue 'wi%'
+                    //  4 THEN, value 0, strValue ''
+                    //  5 GOTO, value 33, strValue ''
+
+                    fprintf( fp, "    cbz      %s, line_number_%d\n", GenVariableReg( varmap, vals [ t + 2 ].strValue ),
+                                                                      vals[ t + 4 ].value );
+                    break;
+                }
+                else if ( arm64Mac == g_AssemblyTarget &&
+                          6 == vals.size() &&
+                          3 == vals[ t ].value &&
+                          Token::NOT == vals[ t + 1 ].token &&
+                          Token::VARIABLE == vals[ t + 2 ].token &&
+                          IsVariableInReg( varmap, vals[ t + 2 ].strValue ) &&
+                          Token::THEN == vals[ t + 3 ].token &&
+                          0 == vals[ t + 3 ].value &&
+                          Token::RETURN == vals[ t + 4 ].token )
+                {
+                    // line 4530 has 6 tokens  ====>> 4530 if st% = 0 then return
+                    //  0 IF, value 0, strValue ''
+                    //  1 EXPRESSION, value 3, strValue ''
+                    //  2 NOT, value 0, strValue ''
+                    //  3 VARIABLE, value 0, strValue 'st%'
+                    //  4 THEN, value 0, strValue ''
+                    //  5 RETURN, value 0, strValue ''
+
+                    fprintf( fp, "    cbz      %s, label_gosub_return\n", GenVariableReg( varmap, vals [ t + 2 ].strValue ) );
+                    break;
                 }
                 else if ( x64Win == g_AssemblyTarget &&
                           4 == vals[ t ].value && 
