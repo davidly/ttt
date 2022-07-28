@@ -3127,7 +3127,7 @@ void GenerateOptimizedExpression( FILE * fp, map<string, Variable> const & varma
             if ( Token::AND == vals[ iToken + 8 ].token )
             {
                 if ( arm64Mac == g_AssemblyTarget )
-                    fprintf( fp, "  .align 4\n" );
+                    fprintf( fp, "  .p2align 3\n" );
 
                 fprintf( fp, "  label_early_out_%d:\n", g_pc );
             }
@@ -3245,7 +3245,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                 }
                 else if ( arm64Mac == g_AssemblyTarget )
                 {
-                    fprintf( fp, "  .align 16\n" );
+                    fprintf( fp, "  .p2align 4\n" );
                     fprintf( fp, "    %8s: .space %d\n", GenVariableName( vals[ 0 ].strValue ), cdwords * 4 );
                 }
             }
@@ -3308,7 +3308,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
     if ( x64Win == g_AssemblyTarget )
         fprintf( fp, "  align 16\n" );
     else if ( arm64Mac == g_AssemblyTarget )
-        fprintf( fp, "  .align 16\n" );
+        fprintf( fp, "  .p2align 4\n" );
 
     for ( auto it = varmap.begin(); it != varmap.end(); it++ )
     {
@@ -3358,18 +3358,20 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
     }
     else if ( arm64Mac == g_AssemblyTarget )
     {
-        fprintf( fp, "  .align 16\n" );
+        fprintf( fp, "  .p2align 4\n" );
         fprintf( fp, "    gosubCount:    .quad 0\n" );
         fprintf( fp, "    startTicks:    .quad 0\n" );
+        fprintf( fp, "    rawTime:       .quad 0\n" ); // time_t
         fprintf( fp, "    errorString:   .asciz \"internal error\\n\"\n" );
         fprintf( fp, "    startString:   .asciz \"running basic\\n\"\n" );
         fprintf( fp, "    stopString:    .asciz \"done running basic\\n\"\n" );
         fprintf( fp, "    newlineString: .asciz \"\\n\"\n" );
         fprintf( fp, "    elapString:    .asciz \"%%lld microseconds (-6)\"\n" );
+        fprintf( fp, "    timeString:    .asciz \"%%02d:%%02d:%%02d\"\n" );
         fprintf( fp, "    intString:     .asciz \"%%d\"\n" );
         fprintf( fp, "    strString:     .asciz \"%%s\"\n" );
 
-        fprintf( fp, ".align 16\n" );
+        fprintf( fp, ".p2align 4\n" );
         fprintf( fp, ".text\n" );
         fprintf( fp, "_start:\n" );
 
@@ -3412,7 +3414,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
             printf( "generating code for line %zd ====> %s\n", l, loc.sourceCode.c_str() );
 
         if ( arm64Mac == g_AssemblyTarget && isGoTarget( l ) )
-            fprintf( fp, ".align 4\n" );
+            fprintf( fp, ".p2align 2\n" ); // arm64 targets must be 4-byte aligned
 
         fprintf( fp, "  line_number_%zd:   ; ===>>> %s\n", l, loc.sourceCode.c_str() );
 
@@ -3615,6 +3617,35 @@ label_no_eq_optimization:
                               8 == vals.size() &&
                               Token::VARIABLE == vals[ t + 1 ].token &&
                               IsVariableInReg( varmap, vals[ t + 1 ].strValue ) &&
+                              Token::CONSTANT == vals[ t + 5 ].token )
+                    {
+                        // line 4328 has 8 tokens  ====>> 4328 b%(p%) = 0
+                        //   0 VARIABLE, value 0, strValue 'b%'
+                        //   1 OPENPAREN, value 0, strValue ''
+                        //   2 EXPRESSION, value 2, strValue ''
+                        //   3 VARIABLE, value 0, strValue 'p%'
+                        //   4 CLOSEPAREN, value 0, strValue ''
+                        //   5 EQ, value 0, strValue ''
+                        //   6 EXPRESSION, value 2, strValue ''
+                        //   7 CONSTANT, value 0, strValue ''
+
+                        LoadArm64Address( fp, "x2", vals[ variableToken ].strValue );
+                        fprintf( fp, "    lsl      w0, %s, 2\n", GenVariableReg( varmap, vals[ t + 1 ].strValue ) );
+                        fprintf( fp, "    add      x2, x2, x0\n" );
+                        
+                        if ( 0 == vals[ t + 5 ].value )
+                            fprintf( fp, "    str      wzr, [x2]\n" );
+                        else
+                        {
+                            LoadArm64Constant( fp, "x0", vals[ t + 5 ].value );                            
+                            fprintf( fp, "    str      w0, [x2]\n" );
+                        }
+                        break;
+                    }
+                    else if ( arm64Mac == g_AssemblyTarget &&
+                              8 == vals.size() &&
+                              Token::VARIABLE == vals[ t + 1 ].token &&
+                              IsVariableInReg( varmap, vals[ t + 1 ].strValue ) &&
                               Token::VARIABLE == vals[ t + 5 ].token &&
                               IsVariableInReg( varmap, vals[ t + 5 ].strValue ) )
                     {
@@ -3776,7 +3807,7 @@ label_no_array_eq_optimization:
                 forGosubStack.push( item );
     
                 if ( arm64Mac == g_AssemblyTarget )
-                    fprintf( fp, ".align 4\n" );
+                    fprintf( fp, ".p2align 2\n" );
                 
                 fprintf( fp, "  for_loop_%zd:\n", l );
 
@@ -3844,7 +3875,7 @@ label_no_array_eq_optimization:
                     }
 
                     fprintf( fp, "    bl       for_loop_%d\n", item.pcReturn );
-                    fprintf( fp, "    .align 4\n" );
+                    fprintf( fp, "    .p2align 2\n" );
                 }
 
                 fprintf( fp, "  after_for_loop_%d:\n", item.pcReturn );
@@ -3936,7 +3967,19 @@ label_no_array_eq_optimization:
                         }
                         else if ( arm64Mac == g_AssemblyTarget )
                         {
-
+                            fprintf( fp, "    adrp     x0, rawTime@PAGE\n" );
+                            fprintf( fp, "    add      x0, x0, rawTime@PAGEOFF\n" );
+                            fprintf( fp, "    bl       _time\n" );
+                            fprintf( fp, "    adrp     x0, rawTime@PAGE\n" );
+                            fprintf( fp, "    add      x0, x0, rawTime@PAGEOFF\n" );
+                            fprintf( fp, "    bl       _localtime\n" );
+                            fprintf( fp, "    ldp      w9, w8, [ x0, #4 ]\n" );
+                            fprintf( fp, "    ldr      w10, [x0]\n" );
+                            fprintf( fp, "    stp      x9, x10, [ sp, #8 ]\n" );
+                            fprintf( fp, "    str      x8, [sp]\n" );
+                            fprintf( fp, "    adrp     x0, timeString@PAGE\n" );
+                            fprintf( fp, "    add      x0, x0, timeString@PAGEOFF\n" );
+                            fprintf( fp, "    bl      _printf\n" );
                         }
 
                         t += vals[ t ].value;
@@ -4830,7 +4873,7 @@ label_no_if_optimization:
                 else if ( arm64Mac == g_AssemblyTarget )
                 {
                     fprintf( fp, "    bl       line_number_%zd\n", l + 1 );
-                    fprintf( fp, "  .align 4\n" );
+                    fprintf( fp, "  .p2align 2\n" );
                 }
 
                 fprintf( fp, "  label_else_%zd:\n", activeIf );
@@ -4942,31 +4985,31 @@ label_no_if_optimization:
     }
     else if ( arm64Mac == g_AssemblyTarget )
     {
-        fprintf( fp, ".align 4\n" );
+        fprintf( fp, ".p2align 2\n" );
         fprintf( fp, "label_gosub:\n" );
         fprintf( fp, "    str      x30, [sp, #-16]!\n" );
         fprintf( fp, "    br       x0\n" );
 
-        fprintf( fp, ".align 4\n" );
+        fprintf( fp, ".p2align 2\n" );
         fprintf( fp, "label_gosub_return:\n" );
         fprintf( fp, "    ldr      x30, [sp], #16\n" );
         fprintf( fp, "    ret\n" );
 
-        fprintf( fp, ".align 4\n" );
+        fprintf( fp, ".p2align 2\n" );
         fprintf( fp, "error_exit:\n" );
         fprintf( fp, "    adrp     x0, errorString@PAGE\n" );
         fprintf( fp, "    add      x0, x0, errorString@PAGEOFF\n" );
         fprintf( fp, "    bl       call_printf\n" ); 
         fprintf( fp, "    bl       leave_execution\n" );
 
-        fprintf( fp, ".align 4\n" );
+        fprintf( fp, ".p2align 2\n" );
         fprintf( fp, "end_execution:\n" );
         fprintf( fp, "    adrp     x0, stopString@PAGE\n" );
         fprintf( fp, "    add      x0, x0, stopString@PAGEOFF\n" );
         fprintf( fp, "    bl       call_printf\n" ); 
         fprintf( fp, "    bl       leave_execution\n" );
         
-        fprintf( fp, ".align 4\n" );
+        fprintf( fp, ".p2align 2\n" );
         fprintf( fp, "call_exit:\n" );
         fprintf( fp, "leave_execution:\n" );
         fprintf( fp, "    ; OS system call to exit the app\n" );
@@ -4974,7 +5017,7 @@ label_no_if_optimization:
         fprintf( fp, "    mov      x16, 1\n" );
         fprintf( fp, "    svc      0x80\n" );
 
-        fprintf( fp, ".align 4\n" );
+        fprintf( fp, ".p2align 2\n" );
         fprintf( fp, "call_printf:\n" );
         fprintf( fp, "    sub      sp, sp, #32\n" );
         fprintf( fp, "    stp      x29, x30, [sp, #16]\n" );
