@@ -309,7 +309,7 @@ struct TokenValue
     int extra;             // filler for now. unused.
     Variable * pVariable;  // pointer to the actual variable where the value is stored
     string strValue;       // strValue's definition varies depending on the token.
-#ifndef _MSC_VER           // make structure size 64 bytes on clang/g++
+#ifdef __APPLE__           // make structure size 64 bytes on mac/clang. Not needed for linux or Windows
     size_t extra2;
 #endif
 };
