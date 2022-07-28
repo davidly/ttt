@@ -1,6 +1,6 @@
-// a very basic basic interpreter.
+// a very basic basic interpreter. and compilers for x64 on Windows and arm64 on Apple Silicon.
 // implements a small subset of gw-basic; just enough to run a tic-tac-toe proof of failure app.
-// a few limitations:
+// a few of the many limitations:
 //    -- based on TRS-80 Model 100 gw-basic.
 //    -- only integer variables (4 byte) are supported
 //    -- variables can only be two characters long plus a mandatory %
@@ -88,7 +88,7 @@ vector<LineOfCode> g_linesOfCode;
         template < typename T, size_t N > size_t _countof( T ( & arr )[ N ] ) { return std::extent< T[ N ] >::value; }
     #endif
 
-    void strcpy_s( char *pto, size_t size, const char *pfrom  )
+    void strcpy_s( char * pto, size_t size, const char * pfrom  )
     {
         strcpy( pto, pfrom );
     }
@@ -97,69 +97,75 @@ vector<LineOfCode> g_linesOfCode;
 enum AssemblyTarget : int { x64Win, arm64Mac, z80CPM };
 AssemblyTarget g_AssemblyTarget = x64Win;
 
-enum Token : int { VARIABLE, GOSUB, GOTO, PRINT, RETURN, END,                     // statements
-                   REM, DIM, CONSTANT, OPENPAREN, CLOSEPAREN,
-                   MULT, DIV, PLUS, MINUS, EQ, NE, LE, GE, LT, GT, AND, OR, XOR,  // operators in order of precedence
-                   FOR, NEXT, IF, THEN, ELSE, LINENUM, STRING, TO, COMMA,
-                   COLON, SEMICOLON, EXPRESSION, TIME, ELAP, TRON, TROFF,
-                   ATOMIC, INC, DEC, NOT, INVALID };
+enum Token : int { 
+    VARIABLE, GOSUB, GOTO, PRINT, RETURN, END,                     // statements
+    REM, DIM, CONSTANT, OPENPAREN, CLOSEPAREN,
+    MULT, DIV, PLUS, MINUS, EQ, NE, LE, GE, LT, GT, AND, OR, XOR,  // operators in order of precedence
+    FOR, NEXT, IF, THEN, ELSE, LINENUM, STRING, TO, COMMA,
+    COLON, SEMICOLON, EXPRESSION, TIME, ELAP, TRON, TROFF,
+    ATOMIC, INC, DEC, NOT, INVALID };
 
-const char * Tokens[] = { "VARIABLE", "GOSUB", "GOTO", "PRINT", "RETURN", "END",
-                          "REM", "DIM", "CONSTANT", "OPENPAREN", "CLOSEPAREN",
-                          "MULT", "DIV", "PLUS", "MINUS", "EQ", "NE", "LE", "GE", "LT", "GT", "AND", "OR", "XOR",
-                          "FOR", "NEXT", "IF", "THEN", "ELSE", "LINENUM", "STRING", "TO", "COMMA",
-                          "COLON", "SEMICOLON", "EXPRESSION", "TIME$", "ELAP$", "TRON", "TROFF",
-                          "ATOMIC", "INC", "DEC", "NOT", "INVALID" };
+const char * Tokens[] = { 
+    "VARIABLE", "GOSUB", "GOTO", "PRINT", "RETURN", "END",
+    "REM", "DIM", "CONSTANT", "OPENPAREN", "CLOSEPAREN",
+    "MULT", "DIV", "PLUS", "MINUS", "EQ", "NE", "LE", "GE", "LT", "GT", "AND", "OR", "XOR",
+    "FOR", "NEXT", "IF", "THEN", "ELSE", "LINENUM", "STRING", "TO", "COMMA",
+    "COLON", "SEMICOLON", "EXPRESSION", "TIME$", "ELAP$", "TRON", "TROFF",
+    "ATOMIC", "INC", "DEC", "NOT", "INVALID" };
 
-const char * Operators[] = { "VARIABLE", "GOSUB", "GOTO", "PRINT", "RETURN", "END",
-                             "REM", "DIM", "CONSTANT", "(", ")",
-                             "*", "/", "+", "-", "=", "<>", "<=", ">=", "<", ">", "&", "|", "^", 
-                             "FOR", "NEXT", "IF", "THEN", "ELSE", "LINENUM", "STRING", "TO", "COMMA",
-                             "COLON", "SEMICOLON", "EXPRESSION", "TIME$", "ELAP$", "TRON", "TROFF",
-                             "ATOMIC", "INC", "DEC", "NOT", "INVALID" };
+const char * Operators[] = { 
+    "VARIABLE", "GOSUB", "GOTO", "PRINT", "RETURN", "END",
+    "REM", "DIM", "CONSTANT", "(", ")",
+    "*", "/", "+", "-", "=", "<>", "<=", ">=", "<", ">", "&", "|", "^", 
+    "FOR", "NEXT", "IF", "THEN", "ELSE", "LINENUM", "STRING", "TO", "COMMA",
+    "COLON", "SEMICOLON", "EXPRESSION", "TIME$", "ELAP$", "TRON", "TROFF",
+    "ATOMIC", "INC", "DEC", "NOT", "INVALID" };
 
 const char * OperatorInstruction[] = { 
     0, 0, 0, 0, 0, 0,                          // filler
     0, 0, 0, 0, 0,                             // filler
     "imul", "idiv", "add", "sub", "sete", "setne", "setle", "setge", "setl", "setg", "and", "or", "xor", };
 
-const char * OperatorInstructionArm64[] =
-    { 0, 0, 0, 0, 0, 0,                          // filler
-      0, 0, 0, 0, 0,                             // filler
-      "mul", "sdiv", "add", "sub", "sete", "setne", "setle", "setge", "setl", "setg", "and", "orr", "eor", };
+const char * OperatorInstructionArm64[] = {
+    0, 0, 0, 0, 0, 0,                          // filler
+    0, 0, 0, 0, 0,                             // filler
+    "mul", "sdiv", "add", "sub", "sete", "setne", "setle", "setge", "setl", "setg", "and", "orr", "eor", };
 
-const char * ConditionsArm64[] =
-    { 0, 0, 0, 0, 0, 0,                          // filler
-      0, 0, 0, 0, 0,                             // filler
-      0, 0, 0, 0, "eq", "ne", "le", "ge", "lt", "gt", 0, 0, 0 };
+const char * ConditionsArm64[] = { 
+    0, 0, 0, 0, 0, 0,                          // filler
+    0, 0, 0, 0, 0,                             // filler
+    0, 0, 0, 0, "eq", "ne", "le", "ge", "lt", "gt", 0, 0, 0 };
 
-const char * ConditionsNotArm64[] =
-    { 0, 0, 0, 0, 0, 0,                          // filler
-      0, 0, 0, 0, 0,                             // filler
-      0, 0, 0, 0, "ne", "eq", "gt", "lt", "ge", "le", 0, 0, 0 };
+const char * ConditionsNotArm64[] = { 
+    0, 0, 0, 0, 0, 0,                          // filler
+    0, 0, 0, 0, 0,                             // filler
+    0, 0, 0, 0, "ne", "eq", "gt", "lt", "ge", "le", 0, 0, 0 };
 
 // jump instruction if the condition is true
 
-const char * RelationalInstruction[] = { 0, 0, 0, 0, 0, 0,                          // filler
-                                         0, 0, 0, 0, 0,                             // filler
-                                         0, 0, 0, 0, "je", "jne", "jle", "jge", "jl", "jg", 0, 0, 0, };
+const char * RelationalInstruction[] = { 
+    0, 0, 0, 0, 0, 0,                          // filler
+    0, 0, 0, 0, 0,                             // filler
+    0, 0, 0, 0, "je", "jne", "jle", "jge", "jl", "jg", 0, 0, 0, };
 
 // jump instruction if the condition is false
 
-const char * RelationalNotInstruction[] = { 0, 0, 0, 0, 0, 0,                          // filler
-                                            0, 0, 0, 0, 0,                             // filler
-                                            0, 0, 0, 0, "jne", "je", "jg", "jl", "jge", "jle", 0, 0, 0, };
+const char * RelationalNotInstruction[] = { 
+    0, 0, 0, 0, 0, 0,                          // filler
+    0, 0, 0, 0, 0,                             // filler
+    0, 0, 0, 0, "jne", "je", "jg", "jl", "jge", "jle", 0, 0, 0, };
 
-const char * CMovInstruction[] = { 0, 0, 0, 0, 0, 0,                          // filler
-                                   0, 0, 0, 0, 0,                             // filler
-                                   0, 0, 0, 0, "cmove", "cmovne", "cmovle", "cmovge", "cmovl", "cmovg", 0, 0, 0, };
+const char * CMovInstruction[] = { 
+    0, 0, 0, 0, 0, 0,                          // filler
+    0, 0, 0, 0, 0,                             // filler
+    0, 0, 0, 0, "cmove", "cmovne", "cmovle", "cmovge", "cmovl", "cmovg", 0, 0, 0, };
 
 // the most frequently used variables are mapped to these registers
 
-const char * MappedRegistersX64[] = {   "esi", "r9d", "r10d", "r11d", "r12d", "r13d", "r14d", "r15d" };
-const char * MappedRegistersX64_64[] = { "rsi", "r9",  "r10",  "r11",  "r12",  "r13",  "r14",  "r15" };
+const char * MappedRegistersX64[] = {    "esi", "r9d", "r10d", "r11d", "r12d", "r13d", "r14d", "r15d" };
+const char * MappedRegistersX64_64[] = { "rsi",  "r9",  "r10",  "r11",  "r12",  "r13",  "r14",  "r15" };
 
-const char * MappedRegistersArm64[] = { "w19", "w20", "w21", "w22", "w23", "w24", "w25", "w26", "w27", "w28" };
+const char * MappedRegistersArm64[] = {    "w19", "w20", "w21", "w22", "w23", "w24", "w25", "w26", "w27", "w28" };
 const char * MappedRegistersArm64_64[] = { "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28" };
 
 __makeinline const char * TokenStr( Token i )
@@ -260,13 +266,13 @@ struct Variable
     Variable( const char * v )
     {
         memset( this, 0, sizeof *this );
-        assert( strlen( name ) <= 3 );
+        assert( strlen( v ) <= 3 );
         strcpy_s( name, _countof( name ), v );
         my_strlwr( name );
     }
 
     int value;           // when a scalar
-    char name[4];        // variables can only be 2 chars + type + null
+    char name[4];        // variables can only be 2 chars + type (%) + null
     int dimensions;      // 0 for scalar. 1 or 2 for arrays.
     int dims[ 2 ];       // only support up to 2 dimensional arrays.
     vector<int> array;   // actual array values
@@ -312,7 +318,8 @@ struct TokenValue
 
 struct LineOfCode
 {
-    LineOfCode( int line, const char * code ) : lineNumber( line ), firstToken( Token::INVALID ), sourceCode( code )
+    LineOfCode( int line, const char * code ) : 
+        lineNumber( line ), firstToken( Token::INVALID ), sourceCode( code ), goTarget( false )
 
     #ifdef ENABLE_EXECUTION_TIME
         , timesExecuted( 0 ), duration( 0 )
@@ -329,6 +336,7 @@ struct LineOfCode
     vector<TokenValue> tokenValues;    // vector of tokens on the line of code
     string sourceCode;                 // the original BASIC line of code
     int lineNumber;                    // line number in BASIC
+    bool goTarget;                     // true if a goto/gosub points at this line.
 
     #ifdef ENABLE_EXECUTION_TIME
         uint64_t timesExecuted;       // # of times this line is executed
@@ -1788,7 +1796,7 @@ void AddENDStatement()
     if ( addEnd )
     {
         int linenumber = 1 + g_linesOfCode[ g_linesOfCode.size() - 1 ].lineNumber;
-        LineOfCode loc( linenumber, "END" );
+        LineOfCode loc( linenumber, "2000000000 end" );
         g_linesOfCode.push_back( loc );
         TokenValue tokenValue( Token::END );
         g_linesOfCode[ g_linesOfCode.size() - 1 ].tokenValues.push_back( tokenValue );
@@ -1817,6 +1825,7 @@ void PatchGotoAndGosubNumbers()
                     {
                         tv.value = (int) lo;
                         found = true;
+                        g_linesOfCode[ lo ].goTarget = true;
                         break;
                     }
                 }
@@ -2083,9 +2092,13 @@ bool fitsIn8Bits( int x )
     return (x >= 0 && x < 256 );
 } //fitsIn8Bits
 
+int g_lohCount = 0;
+
 void LoadArm64Address( FILE * fp, const char * reg, string const & varname )
 {
+    fprintf( fp, "Lloh%d:\n", g_lohCount++ );
     fprintf( fp, "    adrp     %s, %s@PAGE\n", reg, GenVariableName( varname ) );
+    fprintf( fp, "Lloh%d:\n", g_lohCount++ );
     fprintf( fp, "    add      %s, %s, %s@PAGEOFF\n", reg, reg, GenVariableName( varname ) );
 } //LoadArm64Address
 
@@ -3172,26 +3185,6 @@ string ml64Escape( string & str )
     return result;
 } //ml64Escape
 
-bool isGoTarget( int target )
-{
-    // This is incredibly slow, but only happens once per line of code and just for compilation.
-
-    for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
-    {
-        LineOfCode & loc = g_linesOfCode[ l ];
-        vector<TokenValue> & vals = loc.tokenValues;
-
-        for ( int t = 0; t < vals.size(); t++ )
-        {
-            if ( ( Token::GOTO == vals[ t ].token || Token::GOSUB == vals[ t ].token ) &&
-                 ( target == vals[ t ].value ) )
-                return true;
-        }
-    }
-
-    return false;
-} //isGoTarget
-
 void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool useRegistersInASM )
 {
     CFile fileOut( fopen( outputfile, "w" ) );
@@ -3413,8 +3406,8 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         if ( EnableTracing && g_Tracing )
             printf( "generating code for line %zd ====> %s\n", l, loc.sourceCode.c_str() );
 
-        if ( arm64Mac == g_AssemblyTarget && isGoTarget( l ) )
-            fprintf( fp, ".p2align 2\n" ); // arm64 targets must be 4-byte aligned
+        if ( arm64Mac == g_AssemblyTarget && loc.goTarget )
+            fprintf( fp, ".p2align 2\n" ); // arm64 branch targets must be 4-byte aligned
 
         fprintf( fp, "  line_number_%zd:   ; ===>>> %s\n", l, loc.sourceCode.c_str() );
 
@@ -3611,6 +3604,41 @@ label_no_eq_optimization:
                         fprintf( fp, "    mov      DWORD PTR [ %s + %d ], %d\n", GenVariableName( vals[ variableToken ].strValue ),
                                                                                  4 * vals[ t + 1 ].value,
                                                                                  vals[ t + 5 ].value );
+                        break;
+                    }
+                    else if ( arm64Mac == g_AssemblyTarget &&
+                              8 == vals.size() &&
+                              Token::CONSTANT == vals[ t + 1 ].token &&
+                              Token::EQ == vals[ t + 3 ].token &&
+                              Token::CONSTANT == vals[ t + 5 ].token )
+                    {
+                        // line 73 has 8 tokens  ====>> 73 b%(4) = 0
+                        //   0 VARIABLE, value 0, strValue 'b%'
+                        //   1 OPENPAREN, value 0, strValue ''
+                        //   2 EXPRESSION, value 2, strValue ''
+                        //   3 CONSTANT, value 4, strValue ''
+                        //   4 CLOSEPAREN, value 0, strValue ''
+                        //   5 EQ, value 0, strValue ''
+                        //   6 EXPRESSION, value 2, strValue ''
+                        //   7 CONSTANT, value 0, strValue ''
+
+                        LoadArm64Address( fp, "x2", vals[ variableToken ].strValue );
+
+                        int offset = 4 * vals[ t + 1 ].value;
+                        if ( !fitsIn8Bits( offset ) )
+                        {
+                            LoadArm64Constant( fp, "x1", offset );
+                            fprintf( fp, "    add      x2, x1, x2\n" );
+                            offset = 0;
+                        }
+
+                        if ( 0 == vals[ t + 5 ].value )
+                            fprintf( fp, "    str      wzr, [x2, %d]\n", offset );
+                        else
+                        {
+                            LoadArm64Constant( fp, "x0", vals[ t + 5 ].value );                            
+                            fprintf( fp, "    str      w0, [x2, %d]\n", offset );
+                        }
                         break;
                     }
                     else if ( arm64Mac == g_AssemblyTarget &&
@@ -5027,6 +5055,9 @@ label_no_if_optimization:
         fprintf( fp, "    ldp      x29, x30, [sp, #16]\n" );
         fprintf( fp, "    add      sp, sp, #32\n" );
         fprintf( fp, "    ret\n" );
+
+        for ( int i = 0; i < g_lohCount; i += 2 )
+            fprintf( fp, ".loh AdrpAdd   Lloh%d, Lloh%d\n", i, i + 1 );
     }
 
     printf( "created assembler file %s\n", outputfile );
