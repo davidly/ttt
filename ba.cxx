@@ -3140,7 +3140,7 @@ void GenerateOptimizedExpression( FILE * fp, map<string, Variable> const & varma
             if ( Token::AND == vals[ iToken + 8 ].token )
             {
                 if ( arm64Mac == g_AssemblyTarget )
-                    fprintf( fp, "  .p2align 3\n" );
+                    fprintf( fp, "  .p2align 4\n" );
 
                 fprintf( fp, "  label_early_out_%d:\n", g_pc );
             }
