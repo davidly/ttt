@@ -57,7 +57,7 @@ to generate the .asm file, and ma.bat to create the .exe. For example:
     ma ttt_1dim
     ttt_1dim.exe
     
-The compiler generates code that's in the middle of the pack of most real compilers. 
+The compiler generates code that's in the middle of the pack of most real compilers on both x64 Windows and arm64 Mac. 
 
 To build BA:
 
@@ -66,7 +66,8 @@ To build BA:
     On Linux with clang: "c:\program files\llvm\bin\clang++.exe" ba.cxx -D_CRT_SECURE_NO_WARNINGS -DNDEBUG -o ba.exe -O3 -Ofast
     On a Mac: mmac.sh or this: clang++ ba.cxx -DNDEBUG -o ba -O3 -std=c++11
 	
-![image](https://user-images.githubusercontent.com/1497921/181560708-3cf553b3-2df9-4e88-b7e8-3e4a43b056da.png)
+![image](https://user-images.githubusercontent.com/1497921/182632267-1134cc7e-6ed8-4beb-a2e1-e3e8f045a76a.png)
+
 
 
 
