@@ -131,6 +131,11 @@ const char * OperatorInstructionArm64[] = {
     0, 0, 0, 0, 0,                             // filler
     "mul", "sdiv", "add", "sub", "sete", "setne", "setle", "setge", "setl", "setg", "and", "orr", "eor", };
 
+const char * OperatorInstructionZ80[] = {
+    0, 0, 0, 0, 0, 0,                          // filler
+    0, 0, 0, 0, 0,                             // filler
+    "mul", "sdiv", "add", "sub", "sete", "setne", "setle", "setge", "setl", "setg", "ana", "ora", "xra", };
+
 const char * ConditionsArm64[] = { 
     0, 0, 0, 0, 0, 0,                          // filler
     0, 0, 0, 0, 0,                             // filler
@@ -1461,7 +1466,7 @@ __makeinline int EvaluateRelationalExpression( int & iToken, int beyond, vector<
     }
 
     // This won't be an EXPRESSION for cases like x = x + ...
-    // But it will be EXPRESSION when called from GenerateLogicalExpression
+    // But it will be EXPRESSION when called from EvaluateLogicalExpression
 
     if ( Token::EXPRESSION == vals[ iToken ].token )
         iToken++;
@@ -1727,6 +1732,7 @@ void ShowLocListing( LineOfCode & loc )
 
 void RemoveREMStatements()
 {
+    // Also, remove lines with no statements
     // 1st pass: move goto/gosub targets to the first following non-REM statement 
 
     for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
@@ -1742,7 +1748,8 @@ void RemoveREMStatements()
                 for ( size_t lo = 0; lo < g_linesOfCode.size(); lo++ )
                 {
                     if ( ( g_linesOfCode[ lo ].lineNumber == tv.value ) &&
-                         ( Token::REM == g_linesOfCode[ lo ].tokenValues[ 0 ].token ) )
+                         ( ( 0 == g_linesOfCode[ lo ].tokenValues.size() ) ||
+                           ( Token::REM == g_linesOfCode[ lo ].tokenValues[ 0 ].token ) ) )
                     {
                         // look for the next statement that's not REM
 
@@ -1776,7 +1783,7 @@ void RemoveREMStatements()
     {
         LineOfCode & loc = g_linesOfCode[ curloc ];
 
-        if ( Token::REM == loc.tokenValues[ 0 ].token ) 
+        if ( ( 0 == loc.tokenValues.size() ) || ( Token::REM == loc.tokenValues[ 0 ].token ) )
         {
             g_linesOfCode.erase( g_linesOfCode.begin() + curloc );
             endloc--;
@@ -1847,6 +1854,9 @@ void OptimizeWithRewrites( bool showListing )
         LineOfCode & loc = g_linesOfCode[ l ];
         vector<TokenValue> & vals = loc.tokenValues;
         bool rewritten = false;
+
+        if ( 0 == vals.size() )
+            continue;
 
         // if 0 <> EXPRESSION   ========>>>>>>>>  if EXPRESSION
         // 4180 has 11 tokens
@@ -2036,8 +2046,12 @@ const char * GenVariableName( string const & s )
 
     assert( s.length() < _countof( acName ) );
 
-    strcpy_s( acName, _countof( acName ), "var_" );
-    strcpy_s( acName + 4, _countof( acName ) - 4, s.c_str() );
+    if ( z80CPM == g_AssemblyTarget )
+        strcpy_s( acName, _countof( acName ), "var$" );
+    else
+        strcpy_s( acName, _countof( acName ), "var_" );
+
+    strcpy_s( acName + strlen( acName ), _countof( acName ) - 4, s.c_str() );
     acName[ strlen( acName ) - 1 ] = 0;
     return acName;
 } //GenVariableName
@@ -2430,6 +2444,10 @@ void GenerateMultiply( FILE * fp, map<string, Variable> const & varmap, int & iT
         fprintf( fp, "    ldr      x1, [sp], #16\n" );
         fprintf( fp, "    mul      w0, w0, w1\n" );
     }
+    else if ( z80CPM == g_AssemblyTarget )
+    {
+        fprintf( fp, "    pop      d\n" );
+    }
 } //GenerateMultiply
 
 void GenerateDivide( FILE * fp, map<string, Variable> const & varmap, int & iToken, int beyond, vector<TokenValue> const & vals )
@@ -2451,6 +2469,10 @@ void GenerateDivide( FILE * fp, map<string, Variable> const & varmap, int & iTok
         fprintf( fp, "    ldr      x1, [sp], #16\n" );
         fprintf( fp, "    sdiv     w0, w1, w0\n" );
         
+    }
+    else if ( z80CPM == g_AssemblyTarget )
+    {
+        fprintf( fp, "    pop      d\n" );
     }
 } //GenerateDivide
 
@@ -2475,6 +2497,8 @@ void GenerateTerm( FILE * fp, map<string, Variable> const & varmap, int & iToken
             fprintf( fp, "    push     rax\n" );
         else if ( arm64Mac == g_AssemblyTarget )
             fprintf( fp, "    str      x0, [sp, #-16]!\n" ); // save 4 bytes in a 16-byte spot
+        else if ( z80CPM == g_AssemblyTarget )
+            fprintf( fp, "    push     h\n" );
 
         if ( Token::MULT == t )
             GenerateMultiply( fp, varmap, iToken, beyond, vals );
@@ -2536,6 +2560,10 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
                         fprintf( fp, "    ldr      w0, [x1]\n" );
                     }
                 }
+                else if ( z80CPM == g_AssemblyTarget )
+                {
+                    fprintf( fp, "    lhld     %s\n", GenVariableName( varname ) );
+                }
             }
             else if ( 1 == vals[ iToken ].dimensions )
             {
@@ -2563,6 +2591,22 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
                     fprintf( fp, "    add      x1, x1, x0\n" );
                     fprintf( fp, "    ldr      w0, [x1], 0\n" );
                 }
+                else if ( z80CPM == g_AssemblyTarget )
+                {
+                    // double h because each variable in the array is 2 bytes
+
+                    fprintf( fp, "    push     h\n" );
+                    fprintf( fp, "    pop      d\n" );
+                    fprintf( fp, "    dad      d\n" );
+
+                    fprintf( fp, "    lxi      d, %s\n", GenVariableName( varname ) );
+                    fprintf( fp, "    dad      d\n" );
+
+                    fprintf( fp, "    mov      e, m\n" );
+                    fprintf( fp, "    inx      h\n" );
+                    fprintf( fp, "    mov      d, m\n" );
+                    fprintf( fp, "    xchg\n" );
+                }
             }
             else if ( 2 == vals[ iToken ].dimensions )
             {
@@ -2580,6 +2624,8 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
                     fprintf( fp, "    push     rax\n" );
                 else if ( arm64Mac == g_AssemblyTarget )
                     fprintf( fp, "    str      x0, [sp, #-16]!\n" ); // save 4 bytes in a 16-byte spot
+                else if ( z80CPM == g_AssemblyTarget )
+                    fprintf( fp, "    push     h\n" );
 
                 if ( Token::COMMA != vals[ iToken ].token )
                     RuntimeFail( "expected a 2-dimensional array", g_lineno );
@@ -2622,6 +2668,9 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
                 fprintf( fp, "    mov      rax, %d\n", vals[ iToken ].value );
             else if ( arm64Mac == g_AssemblyTarget )
                 LoadArm64Constant( fp, "x0", vals[ iToken ].value );
+            else if ( z80CPM == g_AssemblyTarget )
+                fprintf( fp, "    lxi      h, %d\n", vals[ iToken ].value );
+
             iToken++;
         }
         else if ( Token::CLOSEPAREN == t )
@@ -2660,6 +2709,29 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
 
                 fprintf( fp, "    cset     x0, eq\n" );
             }
+            else if ( z80CPM == g_AssemblyTarget )
+            {
+                static int s_notLabel = 0;
+
+                fprintf( fp, "    lhld     %s\n", GenVariableName( varname ) );
+                fprintf( fp, "    mov      a, h\n" );
+                fprintf( fp, "    cmp      0\n" );
+                fprintf( fp, "    jnz      nl$%d\n", s_notLabel );
+
+                fprintf( fp, "    mov      a, l\n" );
+                fprintf( fp, "    cmp      0\n" );
+                fprintf( fp, "    jnz      nl$%d\n", s_notLabel );
+
+                fprintf( fp, "    lxi      h, 1\n" );
+                fprintf( fp, "    jmp      nl2$%d\n", s_notLabel );
+
+                fprintf( fp, "  nl$%d:\n", s_notLabel );
+                fprintf( fp, "    lxi      h, 0\n" );
+
+                fprintf( fp, "  nl2$%d:\n", s_notLabel );
+
+                s_notLabel++;
+            }
 
             iToken++;
         }
@@ -2693,6 +2765,11 @@ void GenerateAdd( FILE * fp, map<string, Variable> const & varmap, int & iToken,
         fprintf( fp, "    ldr      x1, [sp], #16\n" );
         fprintf( fp, "    add      w0, w0, w1\n" );
     }
+    else if ( z80CPM == g_AssemblyTarget )
+    {
+        fprintf( fp, "    pop      d\n" );
+        fprintf( fp, "    dad      d\n" );
+    }
 } //GenerateAdd
 
 void GenerateSubtract( FILE * fp, map<string, Variable> const & varmap, int & iToken, int beyond, vector<TokenValue> const & vals )
@@ -2715,6 +2792,16 @@ void GenerateSubtract( FILE * fp, map<string, Variable> const & varmap, int & iT
         fprintf( fp, "    mov      x1, x0\n" );
         fprintf( fp, "    ldr      x0, [sp], #16\n" );
         fprintf( fp, "    sub      w0, w0, w1\n" );
+    }
+    else if ( z80CPM == g_AssemblyTarget )
+    {
+        fprintf( fp, "    pop      d\n" );
+        fprintf( fp, "    mov      a, e\n" );
+        fprintf( fp, "    sub      l\n" );
+        fprintf( fp, "    mov      l, a\n" );
+        fprintf( fp, "    mov      a, d\n" );
+        fprintf( fp, "    sbb      h\n" );
+        fprintf( fp, "    mov      h, a\n" );
     }
 } //GenerateSubtract
 
@@ -2763,6 +2850,8 @@ void GenerateExpression( FILE * fp, map<string, Variable> const & varmap, int & 
             fprintf( fp, "    push     rax\n" );
         else if ( arm64Mac == g_AssemblyTarget )
             fprintf( fp, "    str      x0, [sp, #-16]!\n" ); // save 4 bytes in a 16-byte spot
+        else if ( z80CPM == g_AssemblyTarget )
+            fprintf( fp, "    push     h\n" );
 
         if ( Token::PLUS == t )
             GenerateAdd( fp, varmap, iToken, beyond, vals );
@@ -2803,7 +2892,96 @@ void GenerateRelational( FILE * fp, map<string, Variable> const & varmap, int & 
         fprintf( fp, "    ldr      x1, [sp], #16\n" );
         fprintf( fp, "    cmp      w1, w0\n" );
         fprintf( fp, "    csel     x0, x2, xzr, %s\n", ConditionsArm64[ op ] );
-    }   
+    }
+    else if ( z80CPM == g_AssemblyTarget )
+    {
+        static int s_labelVal = 0;
+
+        // "EQ", "NE", "LE", "GE", "LT", "GT"
+        // d == lhs, h = rhs
+
+        fprintf( fp, "    pop      d\n" );
+        fprintf( fp, "    mov      a, d\n" );
+        fprintf( fp, "    cmp      h\n" );
+
+        if ( Token::EQ == op )
+        {
+            fprintf( fp, "    jnz      fRE%d\n", s_labelVal );
+            fprintf( fp, "    mov      a, e\n" );
+            fprintf( fp, "    cmp      l\n" );
+            fprintf( fp, "    jnz      fRE%d\n", s_labelVal );
+        }
+        else if ( Token::NE == op )
+        {
+            fprintf( fp, "    jnz      tRE%d\n", s_labelVal );
+            fprintf( fp, "    mov      a, e\n" );
+            fprintf( fp, "    cmp      l\n" );
+            fprintf( fp, "    jz       fRE%d\n", s_labelVal );
+        }
+        else if ( Token::LE == op )
+        {
+            fprintf( fp, "    jz       leRE%d\n", s_labelVal );
+            fprintf( fp, "    jm       tRE%d\n", s_labelVal );
+            fprintf( fp, "    jmp      fRE%d\n", s_labelVal );
+
+            fprintf( fp, "  leRE%d:\n", s_labelVal );
+
+            fprintf( fp, "    mov      a, e\n" );
+            fprintf( fp, "    cmp      l\n" );
+            fprintf( fp, "    jz       tRE%d\n", s_labelVal );
+            fprintf( fp, "    jm       tRE%d\n", s_labelVal );
+            fprintf( fp, "    jmp      fRE%d\n", s_labelVal );
+        }
+        else if ( Token::GE == op )
+        {
+            fprintf( fp, "    jm       fRE%d\n", s_labelVal );
+            fprintf( fp, "    jz       geRE%d\n", s_labelVal );
+            fprintf( fp, "    jp       tRE%d\n", s_labelVal );
+
+            fprintf( fp, "  geRE%d:\n", s_labelVal );
+
+            fprintf( fp, "    mov      a, e\n" );
+            fprintf( fp, "    cmp      l\n" );
+            fprintf( fp, "    jm       fRE%d\n", s_labelVal );
+        }
+        else if ( Token::LT == op )
+        {
+            fprintf( fp, "    jz       ltRE%d\n", s_labelVal );
+            fprintf( fp, "    jm       tRE%d\n", s_labelVal );
+            fprintf( fp, "    jmp      fRE%d\n", s_labelVal );
+
+            fprintf( fp, "  ltRE%d:\n", s_labelVal );
+
+            fprintf( fp, "    mov      a, e\n" );
+            fprintf( fp, "    cmp      l\n" );
+            fprintf( fp, "    jm       tRE%d\n", s_labelVal );
+            fprintf( fp, "    jmp      fRE%d\n", s_labelVal );
+        }
+        else if ( Token::GT == op )
+        {
+            fprintf( fp, "    jm       fRE%d\n", s_labelVal );
+            fprintf( fp, "    jz       gtRE%d\n", s_labelVal );
+            fprintf( fp, "    jmp      tRE%d\n", s_labelVal );
+
+            fprintf( fp, "  gtRE%d:\n", s_labelVal );
+
+            fprintf( fp, "    mov      a, e\n" );
+            fprintf( fp, "    cmp      l\n" );
+            fprintf( fp, "    jm       fRE%d\n", s_labelVal );
+            fprintf( fp, "    jz       fRE%d\n", s_labelVal );
+        }
+
+        fprintf( fp, "  tRE%d:\n", s_labelVal );
+        fprintf( fp, "    lxi      h, 1\n" );
+        fprintf( fp, "    jmp      dRE%d\n", s_labelVal );
+
+        fprintf( fp, "  fRE%d:\n", s_labelVal );
+        fprintf( fp, "    lxi      h, 0\n" );
+        
+        fprintf( fp, "  dRE%d:\n", s_labelVal );
+
+        s_labelVal++;
+    }
 } //GenerateRelational
 
 void GenerateRelationalExpression( FILE * fp, map<string, Variable> const & varmap, int & iToken, int beyond, vector<TokenValue> const & vals )
@@ -2838,6 +3016,8 @@ void GenerateRelationalExpression( FILE * fp, map<string, Variable> const & varm
             fprintf( fp, "    push     rax\n" );
         else if ( arm64Mac == g_AssemblyTarget )
             fprintf( fp, "    str      x0, [sp, #-16]!\n" ); // save 4 bytes in a 16-byte spot
+        else if ( z80CPM == g_AssemblyTarget )
+            fprintf( fp, "    push     h\n" );
 
         GenerateRelational( fp, varmap, iToken, beyond, vals );
 
@@ -2863,15 +3043,27 @@ void GenerateLogical( FILE * fp, map<string, Variable> const & varmap, int & iTo
 
     if ( x64Win == g_AssemblyTarget )
     {
-        fprintf( fp, "    pop      rbx\n" );
+        fprintf( fp, "    pop     rbx\n" );
         fprintf( fp, "    %-6s   rax, rbx\n", OperatorInstruction[ op ] );
-        fprintf( fp, "    movzx    rax, al\n" );
+        //fprintf( fp, "    movzx    rax, al\n" );
     }
     else if ( arm64Mac == g_AssemblyTarget )
     {
-        fprintf( fp, "    ldr      x1, [sp], #16\n" );
+        fprintf( fp, "    ldr     x1, [sp], #16\n" );
         fprintf( fp, "    %-6s   x0, x1, x0\n", OperatorInstructionArm64[ op ] );
     }   
+    else if ( z80CPM == g_AssemblyTarget )
+    {
+        // lhs in de, rhs in hl
+
+        fprintf( fp, "    pop     d\n" );
+        fprintf( fp, "    mov     a, h\n" );
+        fprintf( fp, "    %-6s  d\n", OperatorInstructionZ80[ op ] );
+        fprintf( fp, "    mov     h, a\n" );
+        fprintf( fp, "    mov     a, l\n" );
+        fprintf( fp, "    %-6s  e\n", OperatorInstructionZ80[ op ] );
+        fprintf( fp, "    mov     l, a\n" );
+    }
 } //GenerateLogical
 
 void GenerateLogicalExpression( FILE * fp, map<string, Variable> const & varmap, int & iToken, vector<TokenValue> const & vals )
@@ -2905,6 +3097,8 @@ void GenerateLogicalExpression( FILE * fp, map<string, Variable> const & varmap,
             fprintf( fp, "    push     rax\n" );
         else if ( arm64Mac == g_AssemblyTarget )
             fprintf( fp, "    str      x0, [sp, #-16]!\n" ); // save 4 bytes in a 16-byte spot
+        else if ( z80CPM == g_AssemblyTarget )
+            fprintf( fp, "    push     h\n" );
 
         GenerateLogical( fp, varmap, iToken, beyond, vals );
 
@@ -2918,7 +3112,9 @@ void GenerateLogicalExpression( FILE * fp, map<string, Variable> const & varmap,
 void GenerateOptimizedExpression( FILE * fp, map<string, Variable> const & varmap, int & iToken, vector<TokenValue> const & vals )
 {
     // generate code to put the resulting expression in rax
-    // only modifies rax, rbx, and rdx (without saving them)
+    // On x64, only modifies rax, rbx, and rdx (without saving them)
+    // On arm64, result is in r0
+    // on Z80, result is in HL
 
     assert( Token::EXPRESSION == vals[ iToken ].token );
     int tokenCount = vals[ iToken ].value;
@@ -3217,6 +3413,18 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, ".global _start\n" );
         fprintf( fp, ".data\n" );
     }
+    else if ( z80CPM == g_AssemblyTarget )
+    {
+        fprintf( fp, "; assemble, load, and run using for test.asm:\n" );
+        fprintf( fp, ";   asm test\n" );
+        fprintf( fp, ";   load test\n" );
+        fprintf( fp, ";   test\n" );
+        fprintf( fp, "BDOS equ 5\n" );
+        fprintf( fp, "WCONF equ 2\n" );
+        fprintf( fp, "PRSTR equ 9\n" );
+        fprintf( fp, "    org      100h\n" );
+        fprintf( fp, "    jmp      start\n" ); // jump over data
+    }
 
     for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
     {
@@ -3249,6 +3457,10 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                     fprintf( fp, "  .p2align 4\n" );
                     fprintf( fp, "    %8s: .space %d\n", GenVariableName( vals[ 0 ].strValue ), cdwords * 4 );
                 }
+                else if ( z80CPM == g_AssemblyTarget )
+                {
+                    fprintf( fp, "    %8s: DS %d\n", GenVariableName( vals[ 0 ].strValue ), cdwords * 2 ); 
+                }
             }
         }
         else if ( Token::PRINT == vals[ 0 ].token || Token::IF == vals[ 0 ].token )
@@ -3262,6 +3474,8 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                         fprintf( fp, "    str_%zd_%d   db  '%s', 0\n", l, t , strEscaped.c_str() );
                     else if ( arm64Mac == g_AssemblyTarget )
                         fprintf( fp, "    str_%zd_%d: .asciz \"%s\"\n", l, t, strEscaped.c_str() );
+                    else if ( z80CPM == g_AssemblyTarget )
+                        fprintf( fp, "    s$%zd$%d: db '%s', '$'\n", l, t, strEscaped.c_str() );
                 }
             }
         }
@@ -3322,6 +3536,8 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                 fprintf( fp, "    %8s DD   0\n", GenVariableName( it->first ) );
             else if ( arm64Mac == g_AssemblyTarget )
                 fprintf( fp, "    %8s: .quad 0\n", GenVariableName( it->first ) );
+            else if ( z80CPM == g_AssemblyTarget )
+                fprintf( fp, "    %8s: dw  0\n", GenVariableName( it->first ) );
         }
     }
 
@@ -3392,6 +3608,44 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "    mrs      x0, cntvct_el0\n" );
         fprintf( fp, "    str      x0, [x3]\n" );
     }
+    else if ( z80CPM == g_AssemblyTarget )
+    {
+        fprintf( fp, "    errorString:    db    'internal error', 10, 13, '$'\n" );
+        fprintf( fp, "    startString:    db    'running basic', 10, 13, '$'\n" );
+        fprintf( fp, "    stopString:     db    'done running basic', 10, 13, '$'\n" );
+        fprintf( fp, "    newlineString:  db    10, 13, '$'\n" );
+
+        fprintf( fp, "start:\n" );
+        fprintf( fp, "    push     b\n" );
+        fprintf( fp, "    push     d\n" );
+        fprintf( fp, "    push     h\n" );
+
+        for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
+        {
+            LineOfCode & loc = g_linesOfCode[ l ];
+            vector<TokenValue> & vals = loc.tokenValues;
+    
+            if ( Token::DIM == vals[ 0 ].token )
+            {
+                int cdwords = vals[ 0 ].dims[ 0 ];
+                if ( 2 == vals[ 0 ].dimensions )
+                    cdwords *= vals[ 0 ].dims[ 1 ];
+    
+                Variable * pvar = FindVariable( varmap, vals[ 0 ].strValue );
+    
+                if ( 0 != pvar )
+                {
+                    fprintf( fp, "    lxi      d, %d\n", cdwords * 2 );
+                    fprintf( fp, "    lxi      b, %s\n", GenVariableName( vals[ 0 ].strValue ) );
+                    fprintf( fp, "    call     zeromem\n" );
+                }
+            }
+        }
+
+        fprintf( fp, "    mvi      c, PRSTR\n" );
+        fprintf( fp, "    lxi      d, startString\n" );
+        fprintf( fp, "    call     BDOS\n" );
+    }
 
     if ( useRegistersInASM )
     {
@@ -3433,7 +3687,10 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         if ( arm64Mac == g_AssemblyTarget && loc.goTarget )
             fprintf( fp, ".p2align 2\n" ); // arm64 branch targets must be 4-byte aligned
 
-        fprintf( fp, "  line_number_%zd:   ; ===>>> %s\n", l, loc.sourceCode.c_str() );
+        if ( z80CPM == g_AssemblyTarget )
+            fprintf( fp, "  ln$%zd:   ; ===>>> %s\n", l, loc.sourceCode.c_str() );
+        else
+            fprintf( fp, "  line_number_%zd:   ; ===>>> %s\n", l, loc.sourceCode.c_str() );
 
         do  // all tokens in the line
         {
@@ -3612,6 +3869,10 @@ label_no_eq_optimization:
                                 LoadArm64Address( fp, "x1", varname );
                                 fprintf( fp, "    str      w0, [x1]\n" );
                             }
+                        }
+                        else if ( z80CPM == g_AssemblyTarget )
+                        {
+                            fprintf( fp, "    shld     %s\n", GenVariableName( varname ) );
                         }
                     }
                 }
@@ -3796,6 +4057,15 @@ label_no_array_eq_optimization:
                             LoadArm64Address( fp, "x1", varmap, varname );
                             fprintf( fp, "    add      x1, x1, x0\n" );
                         }
+                        else if ( z80CPM == g_AssemblyTarget )
+                        {
+                            fprintf( fp, "    push     h\n" );
+                            fprintf( fp, "    pop      d\n" );
+                            fprintf( fp, "    dad      d\n" );
+                            fprintf( fp, "    lxi      d, %s\n", GenVariableName( varname ) );
+                            fprintf( fp, "    dad      d\n" );
+                            fprintf( fp, "    xchg\n" );
+                        }
 
                         assert( Token::EXPRESSION == vals[ t ].token );
     
@@ -3808,6 +4078,15 @@ label_no_array_eq_optimization:
                                 LoadArm64Constant( fp, "x0", vals[ t + 1 ].value );
                                 fprintf( fp, "    str      w0, [x1]\n" );
                             }
+                            else if ( z80CPM == g_AssemblyTarget )
+                            {
+                                fprintf( fp, "    mvi      a, %d\n", ( vals[ t + 1 ].value ) & 0xff );
+                                fprintf( fp, "    stax     d\n" );
+                                fprintf( fp, "    inx      d\n" );
+                                fprintf( fp, "    mvi      a, %d\n", ( ( vals[ t + 1 ].value ) >> 8 ) & 0xff );
+                                fprintf( fp, "    stax     d\n" );
+                            }
+
                             t += 2;
                         }
                         else if ( Token::VARIABLE == vals[ t + 1 ].token && 2 == vals[ t ].value &&
@@ -3831,6 +4110,8 @@ label_no_array_eq_optimization:
                             }
                             else if ( arm64Mac == g_AssemblyTarget )
                                 fprintf( fp, "    str      x1, [sp, #-16]!\n" );
+                            else if ( z80CPM == g_AssemblyTarget )
+                                fprintf( fp, "    push      d\n" );
                             
                             GenerateOptimizedExpression( fp, varmap, t, vals );
                             
@@ -3843,6 +4124,15 @@ label_no_array_eq_optimization:
                             {
                                 fprintf( fp, "    ldr      x1, [sp], #16\n" );
                                 fprintf( fp, "    str      w0, [x1]\n" );
+                            }
+                            else if ( z80CPM == g_AssemblyTarget )
+                            {
+                                fprintf( fp, "    pop      d\n" );
+                                fprintf( fp, "    mov      a, l\n" );
+                                fprintf( fp, "    stax     d\n" );
+                                fprintf( fp, "    inx      d\n" );
+                                fprintf( fp, "    mov      a, h\n" );
+                                fprintf( fp, "    stax     d\n" );
                             }
                         }
                     }
@@ -3857,6 +4147,8 @@ label_no_array_eq_optimization:
                     fprintf( fp, "    jmp      end_execution\n" );
                 else if ( arm64Mac == g_AssemblyTarget )
                     fprintf( fp, "    bl       end_execution\n" );
+                else if ( z80CPM == g_AssemblyTarget )
+                    fprintf( fp, "    jmp      end$execution\n" );
                 break;
             }
             else if ( Token::FOR == token )
@@ -3881,14 +4173,23 @@ label_no_array_eq_optimization:
                         fprintf( fp, "    str      w1, [x0]\n" );
                     }
                 }
+                else if ( z80CPM == g_AssemblyTarget )
+                {
+                    fprintf( fp, "    lxi      h, %d\n", vals[ t + 2 ].value );
+                    fprintf( fp, "    shld     %s\n", GenVariableName( varname ) );
+                    
+                }
 
                 ForGosubItem item( true, (int) l );
                 forGosubStack.push( item );
     
                 if ( arm64Mac == g_AssemblyTarget )
                     fprintf( fp, ".p2align 2\n" );
-                
-                fprintf( fp, "  for_loop_%zd:\n", l );
+
+                if ( z80CPM == g_AssemblyTarget )
+                    fprintf( fp, "  fl$%zd:\n", l ); // fl = for loop
+                else
+                    fprintf( fp, "  for_loop_%zd:\n", l );
 
                 if ( x64Win == g_AssemblyTarget )
                 {
@@ -3915,6 +4216,25 @@ label_no_array_eq_optimization:
                     }
 
                     fprintf( fp, "    b.gt       after_for_loop_%zd\n", l );
+                }
+                else if ( z80CPM == g_AssemblyTarget )
+                {
+                    // load 1 + the target due to no good 8080 instruction for jump if > 0
+
+                    fprintf( fp, "    lxi      d, %d\n", 1 + vals[ t + 4 ].value );
+
+                    fprintf( fp, "    mov      a, h\n" );
+                    fprintf( fp, "    cmp      d\n" );
+                    fprintf( fp, "    jz       flb$%zd\n", l );  // flb = for lower byte
+                    fprintf( fp, "    jp       af$%zd\n", l );
+                    fprintf( fp, "    jm       fc$%zd\n", l ); // fc == for code
+
+                    fprintf( fp, "  flb$%zd:\n", l );
+                    fprintf( fp, "    mov      a, l\n" );
+                    fprintf( fp, "    cmp      e\n" );
+                    fprintf( fp, "    jp       af$%zd\n", l ); // af == after for
+
+                    fprintf( fp, "  fc$%zd:\n", l );
                 }
 
                 break;
@@ -3956,8 +4276,18 @@ label_no_array_eq_optimization:
                     fprintf( fp, "    bl       for_loop_%d\n", item.pcReturn );
                     fprintf( fp, "    .p2align 2\n" );
                 }
+                else if ( z80CPM == g_AssemblyTarget )
+                {
+                    fprintf( fp, "    lhld     %s\n", GenVariableName( loopVal ) );
+                    fprintf( fp, "    inx      h\n" );
+                    fprintf( fp, "    shld     %s\n", GenVariableName( loopVal ) );
+                    fprintf( fp, "    jmp      fl$%d\n", item.pcReturn ); // fl = for loop
+                }
 
-                fprintf( fp, "  after_for_loop_%d:\n", item.pcReturn );
+                if ( z80CPM == g_AssemblyTarget )
+                    fprintf( fp, "  af$%d:\n", item.pcReturn );
+                else
+                    fprintf( fp, "  after_for_loop_%d:\n", item.pcReturn );
 
                 forGosubStack.pop();
                 break;
@@ -3974,6 +4304,9 @@ label_no_array_eq_optimization:
                     fprintf( fp, "    adr      x0, line_number_%d\n", vals[ t ].value );
                     fprintf( fp, "    bl       label_gosub\n" );
                 }
+                else if ( z80CPM == g_AssemblyTarget)
+                    fprintf( fp, "    call     ln$%d\n", vals[ t ].value );
+
                 break;
             }
             else if ( Token::GOTO == token )
@@ -3982,6 +4315,9 @@ label_no_array_eq_optimization:
                     fprintf( fp, "    jmp      line_number_%d\n", vals[ t ].value );
                 else if (arm64Mac == g_AssemblyTarget )
                     fprintf( fp, "    bl       line_number_%d\n", vals[ t ].value );
+                else if ( z80CPM == g_AssemblyTarget )
+                    fprintf( fp, "    jmp      ln$%d\n", vals[ t ].value );
+
                 break;
             }
             else if ( Token::RETURN == token )
@@ -3990,6 +4326,8 @@ label_no_array_eq_optimization:
                     fprintf( fp, "    jmp      label_gosub_return\n" );
                 else if ( arm64Mac == g_AssemblyTarget )
                     fprintf( fp, "    bl       label_gosub_return\n" );
+                else if ( z80CPM == g_AssemblyTarget )
+                    fprintf( fp, "    jmp      label$gosub$return\n" );
                 break;
             }
             else if ( Token::PRINT == token )
@@ -4024,6 +4362,13 @@ label_no_array_eq_optimization:
                             fprintf( fp, "    add      x1, x1, str_%zd_%d@PAGEOFF\n", l, t + 1 );
                             fprintf( fp, "    bl       call_printf\n" );
                         }
+                        else if ( z80CPM == g_AssemblyTarget )
+                        {
+                            fprintf( fp, "    mvi      c, PRSTR\n" );
+                            fprintf( fp, "    lxi      d, s$%zd$%d\n", l, t + 1 );
+                            fprintf( fp, "    call     BDOS\n" );
+                        }
+
                         t += vals[ t ].value;
                     }
                     else if ( Token::TIME == vals[ t + 1 ].token )
@@ -4120,6 +4465,10 @@ label_no_array_eq_optimization:
                             fprintf( fp, "    add      x0, x0, intString@PAGEOFF\n" );
                             fprintf( fp, "    bl       call_printf\n" );
                         }
+                        else if ( z80CPM == g_AssemblyTarget )
+                        {
+                            fprintf( fp, "    call     puthl\n" );
+                        }
                     }
                 }
     
@@ -4133,6 +4482,12 @@ label_no_array_eq_optimization:
                     fprintf( fp, "    adrp     x0, newlineString@PAGE\n" );
                     fprintf( fp, "    add      x0, x0, newlineString@PAGEOFF\n" );
                     fprintf( fp, "    bl       call_printf\n" );
+                }
+                else if ( z80CPM == g_AssemblyTarget )
+                {
+                     fprintf( fp, "    mvi      c, PRSTR\n" );
+                     fprintf( fp, "    lxi      d, newlineString\n" );
+                     fprintf( fp, "    call     BDOS\n" );
                 }
 
                 if ( t == vals.size() )
@@ -4181,6 +4536,17 @@ label_no_array_eq_optimization:
                         fprintf( fp, "    str      w1, [x0]\n" );
 
                     }
+                }
+                else if ( z80CPM == g_AssemblyTarget )
+                {
+                    fprintf( fp, "    lhld     %s\n", GenVariableName( varname ) );
+
+                    if ( Token::INC == vals[ t + 1 ].token )
+                        fprintf( fp, "    inx      h\n" );
+                    else
+                        fprintf( fp, "    dcx      h\n" );
+
+                    fprintf( fp, "    shld     %s\n", GenVariableName( varname ) );
                 }
                 break;
             }
@@ -4927,6 +5293,20 @@ label_no_if_optimization:
                         fprintf( fp, "    cmp      rax, 0\n" );
                     else if ( arm64Mac == g_AssemblyTarget )
                         fprintf( fp, "    cmp      x0, 0\n" );
+                    else if ( z80CPM == g_AssemblyTarget )
+                    {
+                        static int s_ifLabel = 0;
+
+                        fprintf( fp, "    mov      a, h\n" );
+                        fprintf( fp, "    cmp      0\n" );
+                        fprintf( fp, "    jnz      dIf%d\n", s_ifLabel );
+                        fprintf( fp, "    mov      a, l\n" );
+                        fprintf( fp, "    cmp      0\n" );
+
+                        fprintf( fp, "  dIf%d:\n", s_ifLabel );
+
+                        s_ifLabel++;
+                    }
 
                     if ( Token::GOTO == vals[ t ].token )
                     {
@@ -4934,6 +5314,8 @@ label_no_if_optimization:
                             fprintf( fp, "    jne      line_number_%d\n", vals[ t ].value );
                         else if ( arm64Mac == g_AssemblyTarget )
                             fprintf( fp, "    b.ne     line_number_%d\n", vals[ t ].value );
+                        else if ( z80CPM == g_AssemblyTarget )
+                            fprintf( fp, "    jnz      ln$%d\n", vals[ t ].value );
                         break;
                     }
                     else if ( Token::RETURN == vals[ t ].token )
@@ -4942,6 +5324,8 @@ label_no_if_optimization:
                             fprintf( fp, "    jne      label_gosub_return\n" );
                         else if ( arm64Mac == g_AssemblyTarget )
                             fprintf( fp, "    b.ne     label_gosub_return\n" );
+                        else if ( z80CPM == g_AssemblyTarget )
+                            fprintf( fp, "    jnz      label$gosub$return\n" );
                         break;
                     }
                     else
@@ -4960,12 +5344,18 @@ label_no_if_optimization:
                             else
                                 fprintf( fp, "    b.eq     line_number_%zd\n", l + 1 );
                         }
+                        else if ( z80CPM == g_AssemblyTarget )
+                        {
+                            if ( vals[ t - 1 ].value ) // is there an else clause?
+                                fprintf( fp, "    jz       els$%zd\n", l );
+                            else
+                                fprintf( fp, "    jz       ln$%zd\n", l + 1 );
+                        }
                     }
                 }
             }
             else if ( Token::ELSE == token )
             {
-
                 assert( -1 != activeIf );
                 if ( x64Win == g_AssemblyTarget )
                 {
@@ -4977,8 +5367,16 @@ label_no_if_optimization:
                     fprintf( fp, "    bl       line_number_%zd\n", l + 1 );
                     fprintf( fp, "  .p2align 2\n" );
                 }
+                else if ( z80CPM == g_AssemblyTarget )
+                {
+                    fprintf( fp, "    jmp      ln$%zd\n", l + 1 );
+                }
 
-                fprintf( fp, "  label_else_%zd:\n", activeIf );
+                if ( z80CPM == g_AssemblyTarget )
+                    fprintf( fp, "  els$%zd\n", activeIf );
+                else
+                    fprintf( fp, "  label_else_%zd:\n", activeIf );
+
                 activeIf = -1;
                 t++;
             }
@@ -5132,6 +5530,95 @@ label_no_if_optimization:
 
         for ( int i = 0; i < g_lohCount; i += 2 )
             fprintf( fp, ".loh AdrpAdd   Lloh%d, Lloh%d\n", i, i + 1 );
+    }
+    else if ( z80CPM == g_AssemblyTarget )
+    {
+        fprintf( fp, "    jmp      0\n" );
+
+        fprintf( fp, "label$gosub$return:\n" );
+        fprintf( fp, "    ret\n" );
+
+        fprintf( fp, "error$exit:\n" );
+        fprintf( fp, "    mvi      c, PRSTR\n" );
+        fprintf( fp, "    lxi      d, errorString\n" );
+        fprintf( fp, "    call     BDOS\n" );
+        fprintf( fp, "    jmp      leave$execution\n" );
+
+        fprintf( fp, "end$execution:\n" );
+        fprintf( fp, "    mvi      c, PRSTR\n" );
+        fprintf( fp, "    lxi      d, stopString\n" );
+        fprintf( fp, "    call     BDOS\n" );
+
+        fprintf( fp, "leave$execution:\n" );
+        fprintf( fp, "    pop      h\n" );
+        fprintf( fp, "    pop      d\n" );
+        fprintf( fp, "    pop      b\n" );
+        fprintf( fp, "    jmp      0\n" );
+
+        // zeros memory. byte count in de, starting at address bc
+
+        fprintf( fp, "zeromem:\n" );
+        fprintf( fp, "    mvi      a, 0\n" );
+        fprintf( fp, "  zmAgain:\n" );
+        fprintf( fp, "    cmp      d\n" );
+        fprintf( fp, "    jnz      zmWrite\n" );
+        fprintf( fp, "    cmp      e\n" );
+        fprintf( fp, "    rz\n" );
+
+        fprintf( fp, "  zmWrite:\n" );
+        fprintf( fp, "    stax     b\n" );
+        fprintf( fp, "    inx      b\n" );
+        fprintf( fp, "    dcx      d\n" );
+        fprintf( fp, "    jmp      zmAgain\n" );
+
+        // function I found in the internet to print the integer in hl
+
+        fprintf( fp, "puthl:  mov     a,h     ; Get the sign bit of the integer,\n" );
+        fprintf( fp, "        ral             ; which is the top bit of the high byte\n" );
+        fprintf( fp, "        sbb     a       ; A=00 if positive, FF if negative\n" );
+        fprintf( fp, "        sta     negf    ; Store it as the negative flag\n" );
+        fprintf( fp, "        cnz     neghl   ; And if HL was negative, make it positive\n" );
+        fprintf( fp, "        lxi     d,num   ; Load pointer to end of number string\n" );
+        fprintf( fp, "        push    d       ; Onto the stack\n" );
+        fprintf( fp, "        lxi     b,-10   ; Divide by ten (by trial subtraction)\n" );
+        fprintf( fp, "digit:  lxi     d,-1    ; DE = quotient. There is no 16-bit subtraction,\n" );
+        fprintf( fp, "dgtdiv: dad     b       ; so we just add a negative value,\n" );
+        fprintf( fp, "        inx     d\n" );
+        fprintf( fp, "        jc      dgtdiv  ; while that overflows.\n" );
+        fprintf( fp, "        mvi     a,'0'+10        ; The loop runs once too much so we're 10 out\n" );
+        fprintf( fp, "        add     l       ; The remainder (minus 10) is in L\n" );
+        fprintf( fp, "        xthl            ; Swap HL with top of stack (i.e., the string pointer)\n" );
+        fprintf( fp, "        dcx     h       ; Go back one byte\n" );
+        fprintf( fp, "        mov     m,a     ; And store the digit\n" );
+        fprintf( fp, "        xthl            ; Put the pointer back on the stack\n" );
+        fprintf( fp, "        xchg            ; Do all of this again with the quotient\n" );
+        fprintf( fp, "        mov     a,h     ; If it is zero, we're done\n" );
+        fprintf( fp, "        ora     l\n" );
+        fprintf( fp, "        jnz     digit   ; But if not, there are more digits\n" );
+        fprintf( fp, "        mvi     c, PRSTR  ; Prepare to call CP/M and print the string\n" );
+        fprintf( fp, "        pop     d       ; Put the string pointer from the stack in DE\n" );
+        fprintf( fp, "        lda     negf    ; See if the number was supposed to be negative\n" );
+        fprintf( fp, "        inr     a\n" );
+        fprintf( fp, "        jnz     bdos    ; If not, print the string we have and return\n" );
+        fprintf( fp, "        dcx     d       ; But if so, we need to add a minus in front\n" );
+        fprintf( fp, "        mvi     a,'-'\n" );
+        fprintf( fp, "        stax    d\n" );
+        fprintf( fp, "        jmp     bdos    ; And only then print the string\n" );
+        fprintf( fp, "\n" );
+        fprintf( fp, "\n" );
+        fprintf( fp, "neghl:  mov     a,h     ; HL = -HL; i.e. HL = (~HL) + 1\n" );
+        fprintf( fp, "        cma             ; Get bitwise complement of the high byte,\n" );
+        fprintf( fp, "        mov     h,a\n" );
+        fprintf( fp, "        mov     a,l     ; And the low byte\n" );
+        fprintf( fp, "        cma             ; We have to do it byte for byte since it is an 8-bit\n" );
+        fprintf( fp, "        mov     l,a     ; processor.\n" );
+        fprintf( fp, "        inx     h       ; Then add one\n" );
+        fprintf( fp, "        ret             \n" );
+        fprintf( fp, "negf:   db      0       ; Space for negative flag\n" );
+        fprintf( fp, "        db      '-00000'\n" );
+        fprintf( fp, "num:    db      '$'     ; Space for number\n" );
+
+        fprintf( fp, "    end\n" );
     }
 
     printf( "created assembler file %s\n", outputfile );
@@ -5957,3 +6444,5 @@ extern int main( int argc, char *argv[] )
     if ( executeCode )
         InterpretCode( varmap );
 } //main
+
+
