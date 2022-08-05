@@ -2658,6 +2658,22 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
                     fprintf( fp, "    add      x1, x1, x0\n" );
                     fprintf( fp, "    ldr      w0, [x1], 0\n" );
                 }
+                else if ( z80CPM == g_AssemblyTarget )
+                {
+                    fprintf( fp, "    pop      d\n" );
+                    fprintf( fp, "    push     h\n" );
+                    fprintf( fp, "    lxi      h, %d\n", pvar->dims[ 1 ] );
+                    fprintf( fp, "    call     imul\n" );
+                    fprintf( fp, "    pop      d\n" );
+                    fprintf( fp, "    dad      d\n" );
+                    fprintf( fp, "    dad      h\n" );
+                    fprintf( fp, "    lxi      d, %s\n", GenVariableName( varname ) );
+                    fprintf( fp, "    dad      d\n" );
+                    fprintf( fp, "    mov      e, m\n" );
+                    fprintf( fp, "    inx      h\n" );
+                    fprintf( fp, "    mov      d, m\n" );
+                    fprintf( fp, "    xchg\n" );
+                }
             }
 
             iToken++;
@@ -4021,6 +4037,8 @@ label_no_array_eq_optimization:
                                 fprintf( fp, "    push     rax\n" );
                             else if ( arm64Mac == g_AssemblyTarget )
                                 fprintf( fp, "    str      x0, [sp, #-16]!\n" );
+                            else if ( z80CPM == g_AssemblyTarget )
+                                fprintf( fp, "    push     h\n" );
 
                             GenerateOptimizedExpression( fp, varmap, t, vals );
 
@@ -4036,6 +4054,15 @@ label_no_array_eq_optimization:
                                 LoadArm64Constant( fp, "x2", pvar->dims[ 1 ] );
                                 fprintf( fp, "    mul      w1, w1, w2\n" );
                                 fprintf( fp, "    add      w0, w0, w1\n" );
+                            }
+                            else if ( z80CPM == g_AssemblyTarget )
+                            {
+                                fprintf( fp, "    pop      d\n" );
+                                fprintf( fp, "    push     h\n" );
+                                fprintf( fp, "    lxi      h, %d\n", pvar->dims[ 1 ] );
+                                fprintf( fp, "    call     imul\n" );
+                                fprintf( fp, "    pop      d\n" );
+                                fprintf( fp, "    dad      d\n" );
                             }
                         }
         
@@ -4106,7 +4133,7 @@ label_no_array_eq_optimization:
                             else if ( arm64Mac == g_AssemblyTarget )
                                 fprintf( fp, "    str      x1, [sp, #-16]!\n" );
                             else if ( z80CPM == g_AssemblyTarget )
-                                fprintf( fp, "    push      d\n" );
+                                fprintf( fp, "    push     d\n" );
                             
                             GenerateOptimizedExpression( fp, varmap, t, vals );
                             
