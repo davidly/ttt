@@ -131,6 +131,7 @@ const char * OperatorInstructionArm64[] = {
     0, 0, 0, 0, 0,                             // filler
     "mul", "sdiv", "add", "sub", "sete", "setne", "setle", "setge", "setl", "setg", "and", "orr", "eor", };
 
+// only the last 3 are used
 const char * OperatorInstructionZ80[] = {
     0, 0, 0, 0, 0, 0,                          // filler
     0, 0, 0, 0, 0,                             // filler
@@ -2447,6 +2448,7 @@ void GenerateMultiply( FILE * fp, map<string, Variable> const & varmap, int & iT
     else if ( z80CPM == g_AssemblyTarget )
     {
         fprintf( fp, "    pop      d\n" );
+        fprintf( fp, "    call     imul\n" );
     }
 } //GenerateMultiply
 
@@ -2473,6 +2475,7 @@ void GenerateDivide( FILE * fp, map<string, Variable> const & varmap, int & iTok
     else if ( z80CPM == g_AssemblyTarget )
     {
         fprintf( fp, "    pop      d\n" );
+        fprintf( fp, "    call     idiv\n" );
     }
 } //GenerateDivide
 
@@ -2715,20 +2718,14 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
 
                 fprintf( fp, "    lhld     %s\n", GenVariableName( varname ) );
                 fprintf( fp, "    mov      a, h\n" );
-                fprintf( fp, "    cmp      0\n" );
-                fprintf( fp, "    jnz      nl$%d\n", s_notLabel );
-
-                fprintf( fp, "    mov      a, l\n" );
-                fprintf( fp, "    cmp      0\n" );
-                fprintf( fp, "    jnz      nl$%d\n", s_notLabel );
-
-                fprintf( fp, "    lxi      h, 1\n" );
+                fprintf( fp, "    mvi      h, 0\n" );
+                fprintf( fp, "    ora      l\n" );
+                fprintf( fp, "    jz       nl$%d\n", s_notLabel );
+                fprintf( fp, "    mvi      l, 0\n" );
                 fprintf( fp, "    jmp      nl2$%d\n", s_notLabel );
-
                 fprintf( fp, "  nl$%d:\n", s_notLabel );
-                fprintf( fp, "    lxi      h, 0\n" );
-
-                fprintf( fp, "  nl2$%d:\n", s_notLabel );
+                fprintf( fp, "    mvi      l, 1\n" );
+                fprintf( fp, "  nl2$%d\n", s_notLabel );
 
                 s_notLabel++;
             }
@@ -2833,6 +2830,8 @@ void GenerateExpression( FILE * fp, map<string, Variable> const & varmap, int & 
             fprintf( fp, "    xor      rax, rax\n" );
         else if ( arm64Mac == g_AssemblyTarget )
             fprintf( fp, "    mov      x0, 0\n" );
+        else if ( z80CPM == g_AssemblyTarget )
+            fprintf( fp, "    lxi      h, 0\n" );
     }
     else
     {
@@ -3056,13 +3055,13 @@ void GenerateLogical( FILE * fp, map<string, Variable> const & varmap, int & iTo
     {
         // lhs in de, rhs in hl
 
-        fprintf( fp, "    pop     d\n" );
-        fprintf( fp, "    mov     a, h\n" );
-        fprintf( fp, "    %-6s  d\n", OperatorInstructionZ80[ op ] );
-        fprintf( fp, "    mov     h, a\n" );
-        fprintf( fp, "    mov     a, l\n" );
-        fprintf( fp, "    %-6s  e\n", OperatorInstructionZ80[ op ] );
-        fprintf( fp, "    mov     l, a\n" );
+        fprintf( fp, "    pop      d\n" );
+        fprintf( fp, "    mov      a, h\n" );
+        fprintf( fp, "    %-6s   d\n", OperatorInstructionZ80[ op ] );
+        fprintf( fp, "    mov      h, a\n" );
+        fprintf( fp, "    mov      a, l\n" );
+        fprintf( fp, "    %-6s   e\n", OperatorInstructionZ80[ op ] );
+        fprintf( fp, "    mov      l, a\n" );
     }
 } //GenerateLogical
 
@@ -3614,6 +3613,8 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "    startString:    db    'running basic', 10, 13, '$'\n" );
         fprintf( fp, "    stopString:     db    'done running basic', 10, 13, '$'\n" );
         fprintf( fp, "    newlineString:  db    10, 13, '$'\n" );
+        fprintf( fp, "    mathTmp:        dw    0\n" ); // temporary for imul and idiv functions
+        fprintf( fp, "    divRem:         dw    0\n" ); // idiv remainder
 
         fprintf( fp, "start:\n" );
         fprintf( fp, "    push     b\n" );
@@ -5295,17 +5296,8 @@ label_no_if_optimization:
                         fprintf( fp, "    cmp      x0, 0\n" );
                     else if ( z80CPM == g_AssemblyTarget )
                     {
-                        static int s_ifLabel = 0;
-
                         fprintf( fp, "    mov      a, h\n" );
-                        fprintf( fp, "    cmp      0\n" );
-                        fprintf( fp, "    jnz      dIf%d\n", s_ifLabel );
-                        fprintf( fp, "    mov      a, l\n" );
-                        fprintf( fp, "    cmp      0\n" );
-
-                        fprintf( fp, "  dIf%d:\n", s_ifLabel );
-
-                        s_ifLabel++;
+                        fprintf( fp, "    ora      l\n" );
                     }
 
                     if ( Token::GOTO == vals[ t ].token )
@@ -5571,6 +5563,96 @@ label_no_if_optimization:
         fprintf( fp, "    dcx      d\n" );
         fprintf( fp, "    jmp      zmAgain\n" );
 
+        /////////////////////////////////////////
+        // negate the de and hl register pairs. handy for idiv and imul
+        // negate using complement then add 1
+
+        fprintf( fp, "neg$dehl:\n" );
+        fprintf( fp, "    mov      a, d\n" );
+        fprintf( fp, "    cma\n" );
+        fprintf( fp, "    mov      d, a\n" );
+        fprintf( fp, "    mov      a, e\n" );
+        fprintf( fp, "    cma\n" );
+        fprintf( fp, "    mov      e, a\n" );
+        fprintf( fp, "    inx      d\n" );
+        fprintf( fp, "    mov      a, h\n" );
+        fprintf( fp, "    cma\n" );
+        fprintf( fp, "    mov      h, a\n" );
+        fprintf( fp, "    mov      a, l\n" );
+        fprintf( fp, "    cma\n" );
+        fprintf( fp, "    mov      l, a\n" );
+        fprintf( fp, "    inx      h\n" );
+        fprintf( fp, "    ret\n" );
+
+        /////////////////////////////////////////
+        // multiply de by hl, result in hl
+        // incredibly slow iterative addition.
+
+        fprintf( fp, "imul:\n" );
+
+        // if hl is negative, negate both de and hl
+
+        fprintf( fp, "    mvi      b, 80h\n" );
+        fprintf( fp, "    mov      a, h\n" );
+        fprintf( fp, "    ana      b\n" );
+        fprintf( fp, "    jz       mul$notneg\n" );
+        fprintf( fp, "    call     neg$dehl\n" );
+        fprintf( fp, "  mul$notneg:\n" );
+        fprintf( fp, "    push     h\n" );
+        fprintf( fp, "    pop      b\n" );
+        fprintf( fp, "    lxi      h, 0\n" );
+        fprintf( fp, "    shld     mathTmp\n" );
+        fprintf( fp, "  mul$loop:\n" );
+        fprintf( fp, "    dad      d\n" );
+        fprintf( fp, "    jnc      mul$ninc\n" );
+        fprintf( fp, "    push     h\n" );
+        fprintf( fp, "    lhld     mathTmp\n" );
+        fprintf( fp, "    inx      h\n" );
+        fprintf( fp, "    shld     mathTmp\n" );
+        fprintf( fp, "    pop      h\n" );
+        fprintf( fp, "  mul$ninc:\n" );
+        fprintf( fp, "    dcx      b\n" );
+        fprintf( fp, "    mov      a, b\n" );
+        fprintf( fp, "    ora      c\n" );
+        fprintf( fp, "    jnz      mul$loop\n" );
+        fprintf( fp, "    ret\n" );
+        /////////////////////////////////////////
+
+        /////////////////////////////////////////
+        // divide de by hl, result in hl
+        // incredibly slow iterative subtraction
+
+        fprintf( fp, "idiv:\n" );
+        fprintf( fp, "    xchg\n" ); // now it's hl / de
+
+        // if de is negative, negate both de and hl
+
+        fprintf( fp, "    mvi      b, 80h\n" );
+        fprintf( fp, "    mov      a, d\n" );
+        fprintf( fp, "    ana      b\n" );
+        fprintf( fp, "    jz       div$notneg\n" );
+        fprintf( fp, "    call     neg$dehl\n" );
+        fprintf( fp, "  div$notneg:\n" );
+        fprintf( fp, "    lxi      b, 0\n" );
+        fprintf( fp, "  div$loop:\n" );
+        fprintf( fp, "    mov      a, l\n" );
+        fprintf( fp, "    sub      e\n" );
+        fprintf( fp, "    mov      l, a\n" );
+        fprintf( fp, "    mov      a, h\n" );
+        fprintf( fp, "    sbb      d\n" );
+        fprintf( fp, "    mov      h, a\n" );
+        fprintf( fp, "    jc       div$skip\n" );
+        fprintf( fp, "    inx      b\n" );
+        fprintf( fp, "    jmp      div$loop\n" );
+        fprintf( fp, "  div$skip:\n" );
+        fprintf( fp, "    dad      d\n" );
+        fprintf( fp, "    shld     divRem\n" );
+        fprintf( fp, "    mov      l, c\n" );
+        fprintf( fp, "    mov      h, b\n" );
+        fprintf( fp, "    ret\n" );
+        /////////////////////////////////////////
+
+        /////////////////////////////////////////
         // function I found in the internet to print the integer in hl
 
         fprintf( fp, "puthl:  mov     a,h     ; Get the sign bit of the integer,\n" );
@@ -5617,6 +5699,7 @@ label_no_if_optimization:
         fprintf( fp, "negf:   db      0       ; Space for negative flag\n" );
         fprintf( fp, "        db      '-00000'\n" );
         fprintf( fp, "num:    db      '$'     ; Space for number\n" );
+        /////////////////////////////////////////
 
         fprintf( fp, "    end\n" );
     }
