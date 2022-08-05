@@ -2598,10 +2598,7 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
                 {
                     // double h because each variable in the array is 2 bytes
 
-                    fprintf( fp, "    push     h\n" );
-                    fprintf( fp, "    pop      d\n" );
-                    fprintf( fp, "    dad      d\n" );
-
+                    fprintf( fp, "    dad      h\n" );
                     fprintf( fp, "    lxi      d, %s\n", GenVariableName( varname ) );
                     fprintf( fp, "    dad      d\n" );
 
@@ -2953,8 +2950,7 @@ void GenerateRelational( FILE * fp, map<string, Variable> const & varmap, int & 
 
             fprintf( fp, "    mov      a, e\n" );
             fprintf( fp, "    cmp      l\n" );
-            fprintf( fp, "    jm       tRE%d\n", s_labelVal );
-            fprintf( fp, "    jmp      fRE%d\n", s_labelVal );
+            fprintf( fp, "    jp       fRE%d\n", s_labelVal );
         }
         else if ( Token::GT == op )
         {
@@ -4060,9 +4056,7 @@ label_no_array_eq_optimization:
                         }
                         else if ( z80CPM == g_AssemblyTarget )
                         {
-                            fprintf( fp, "    push     h\n" );
-                            fprintf( fp, "    pop      d\n" );
-                            fprintf( fp, "    dad      d\n" );
+                            fprintf( fp, "    dad      h\n" );
                             fprintf( fp, "    lxi      d, %s\n", GenVariableName( varname ) );
                             fprintf( fp, "    dad      d\n" );
                             fprintf( fp, "    xchg\n" );
@@ -5564,10 +5558,10 @@ label_no_if_optimization:
         fprintf( fp, "    jmp      zmAgain\n" );
 
         /////////////////////////////////////////
-        // negate the de and hl register pairs. handy for idiv and imul
+        // negate the de register pair. handy for idiv and imul
         // negate using complement then add 1
 
-        fprintf( fp, "neg$dehl:\n" );
+        fprintf( fp, "neg$de:\n" );
         fprintf( fp, "    mov      a, d\n" );
         fprintf( fp, "    cma\n" );
         fprintf( fp, "    mov      d, a\n" );
@@ -5575,6 +5569,14 @@ label_no_if_optimization:
         fprintf( fp, "    cma\n" );
         fprintf( fp, "    mov      e, a\n" );
         fprintf( fp, "    inx      d\n" );
+        fprintf( fp, "    ret\n" );
+        /////////////////////////////////////////
+
+        /////////////////////////////////////////
+        // negate the hl register pair. handy for idiv and imul
+        // negate using complement then add 1
+
+        fprintf( fp, "neg$hl:\n" );
         fprintf( fp, "    mov      a, h\n" );
         fprintf( fp, "    cma\n" );
         fprintf( fp, "    mov      h, a\n" );
@@ -5596,7 +5598,8 @@ label_no_if_optimization:
         fprintf( fp, "    mov      a, h\n" );
         fprintf( fp, "    ana      b\n" );
         fprintf( fp, "    jz       mul$notneg\n" );
-        fprintf( fp, "    call     neg$dehl\n" );
+        fprintf( fp, "    call     neg$hl\n" );
+        fprintf( fp, "    call     neg$de\n" );
         fprintf( fp, "  mul$notneg:\n" );
         fprintf( fp, "    push     h\n" );
         fprintf( fp, "    pop      b\n" );
@@ -5604,13 +5607,13 @@ label_no_if_optimization:
         fprintf( fp, "    shld     mathTmp\n" );
         fprintf( fp, "  mul$loop:\n" );
         fprintf( fp, "    dad      d\n" );
-        fprintf( fp, "    jnc      mul$ninc\n" );
+        fprintf( fp, "    jnc      mul$done\n" );
         fprintf( fp, "    push     h\n" );
         fprintf( fp, "    lhld     mathTmp\n" );
         fprintf( fp, "    inx      h\n" );
         fprintf( fp, "    shld     mathTmp\n" );
         fprintf( fp, "    pop      h\n" );
-        fprintf( fp, "  mul$ninc:\n" );
+        fprintf( fp, "  mul$done:\n" );
         fprintf( fp, "    dcx      b\n" );
         fprintf( fp, "    mov      a, b\n" );
         fprintf( fp, "    ora      c\n" );
@@ -5625,14 +5628,24 @@ label_no_if_optimization:
         fprintf( fp, "idiv:\n" );
         fprintf( fp, "    xchg\n" ); // now it's hl / de
 
-        // if de is negative, negate both de and hl
+        // remember how many are negative and make negative values positive.
 
+        fprintf( fp, "    mvi      c, 0\n" );
         fprintf( fp, "    mvi      b, 80h\n" );
         fprintf( fp, "    mov      a, d\n" );
         fprintf( fp, "    ana      b\n" );
-        fprintf( fp, "    jz       div$notneg\n" );
-        fprintf( fp, "    call     neg$dehl\n" );
-        fprintf( fp, "  div$notneg:\n" );
+        fprintf( fp, "    jz       div$denotneg\n" );
+        fprintf( fp, "    inr      c\n" );
+        fprintf( fp, "    call     neg$de\n" );
+        fprintf( fp, "  div$denotneg:\n" );
+        fprintf( fp, "    mov      a, h\n" );
+        fprintf( fp, "    ana      b\n" );
+        fprintf( fp, "    jz       div$hlnotneg\n" );
+        fprintf( fp, "    inr      c\n" );
+        fprintf( fp, "    call     neg$hl\n" );
+
+        fprintf( fp, "  div$hlnotneg:\n" );
+        fprintf( fp, "    push     b\n" );    // save c -- count of negatives
         fprintf( fp, "    lxi      b, 0\n" );
         fprintf( fp, "  div$loop:\n" );
         fprintf( fp, "    mov      a, l\n" );
@@ -5641,14 +5654,18 @@ label_no_if_optimization:
         fprintf( fp, "    mov      a, h\n" );
         fprintf( fp, "    sbb      d\n" );
         fprintf( fp, "    mov      h, a\n" );
-        fprintf( fp, "    jc       div$skip\n" );
+        fprintf( fp, "    jc       div$done\n" );
         fprintf( fp, "    inx      b\n" );
         fprintf( fp, "    jmp      div$loop\n" );
-        fprintf( fp, "  div$skip:\n" );
+        fprintf( fp, "  div$done:\n" );
         fprintf( fp, "    dad      d\n" );
         fprintf( fp, "    shld     divRem\n" );
         fprintf( fp, "    mov      l, c\n" );
         fprintf( fp, "    mov      h, b\n" );
+        fprintf( fp, "    pop      b\n" );
+        fprintf( fp, "    mov      a, c\n" );
+        fprintf( fp, "    ani      1\n" );
+        fprintf( fp, "    cnz      neg$hl\n" );
         fprintf( fp, "    ret\n" );
         /////////////////////////////////////////
 
@@ -5659,7 +5676,7 @@ label_no_if_optimization:
         fprintf( fp, "        ral             ; which is the top bit of the high byte\n" );
         fprintf( fp, "        sbb     a       ; A=00 if positive, FF if negative\n" );
         fprintf( fp, "        sta     negf    ; Store it as the negative flag\n" );
-        fprintf( fp, "        cnz     neghl   ; And if HL was negative, make it positive\n" );
+        fprintf( fp, "        cnz     neg$hl  ; And if HL was negative, make it positive\n" );
         fprintf( fp, "        lxi     d,num   ; Load pointer to end of number string\n" );
         fprintf( fp, "        push    d       ; Onto the stack\n" );
         fprintf( fp, "        lxi     b,-10   ; Divide by ten (by trial subtraction)\n" );
@@ -5686,16 +5703,6 @@ label_no_if_optimization:
         fprintf( fp, "        mvi     a,'-'\n" );
         fprintf( fp, "        stax    d\n" );
         fprintf( fp, "        jmp     bdos    ; And only then print the string\n" );
-        fprintf( fp, "\n" );
-        fprintf( fp, "\n" );
-        fprintf( fp, "neghl:  mov     a,h     ; HL = -HL; i.e. HL = (~HL) + 1\n" );
-        fprintf( fp, "        cma             ; Get bitwise complement of the high byte,\n" );
-        fprintf( fp, "        mov     h,a\n" );
-        fprintf( fp, "        mov     a,l     ; And the low byte\n" );
-        fprintf( fp, "        cma             ; We have to do it byte for byte since it is an 8-bit\n" );
-        fprintf( fp, "        mov     l,a     ; processor.\n" );
-        fprintf( fp, "        inx     h       ; Then add one\n" );
-        fprintf( fp, "        ret             \n" );
         fprintf( fp, "negf:   db      0       ; Space for negative flag\n" );
         fprintf( fp, "        db      '-00000'\n" );
         fprintf( fp, "num:    db      '$'     ; Space for number\n" );
