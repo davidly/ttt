@@ -3,7 +3,7 @@ tic-tac-toe and its applicability to nuclear war and WOPR
 
 Source code referred to here: https://medium.com/@davidly_33504/tic-tac-toe-and-its-applicability-to-nuclear-war-and-wopr-13be09ec05c9
 
-Aside from tic-tac-toe, this code provides examples of how to do things in various languages (go, Rust, C#, C++, swift, assembly languages) including concurrency, high resolution timing, pointers to functions, passing arguments by reference and value, basic control flow, atomic increments, etc.
+Aside from tic-tac-toe, this code provides examples of how to do things in various languages (go, Python, Lua, Julia, Rust, Visual Basic, Pascal, C#, C++, Swift, x64 and 8080 assembly languages) including concurrency, high resolution timing, pointers to functions, passing arguments by reference and value, basic control flow, atomic increments, etc.
 
 To build:
 
@@ -49,22 +49,37 @@ The BA version is faster than Python even when Python is using function pointers
 
 I'm not really proud of BA -- it was a very quickly written hack. But it shows that Python could benefit from some performance work.
 
-I added minimal support in BA to compile BASIC apps to .asm files which can then be assembled into a .exe file. It's not deeply tested
-yet and doesn't support arrays with more than 1 dimension. But it works for ttt_1dim.bas. Use the -a flag in BA
+I added minimal support in BA to compile BASIC apps to x64 .asm files which can then be assembled into a Windows .exe file. Use the -a flag in BA
 to generate the .asm file, and ma.bat to create the .exe. For example:
 
     ba ttt_1dim.bas /x /a
-    ma ttt_1dim
+    ma.bat ttt_1dim
     ttt_1dim.exe
     
+To compile code and run on an 8080/Z80 CP/M 2.2 machine:
+
+    ba app.bas /x /8
+    (copy app.asm to a CP/M machine)
+    asm app
+    load app
+    app
+    
+To commpile code and run on an arm64 Mac:
+
+    ba ttt_1dim.bas /x /m
+    ./ma.sh ttt_1dim
+    ./ttt_1dim
+    
 The compiler generates code that's in the middle of the pack of most real compilers on both x64 Windows and arm64 Mac. The 8080 code
-generated for CP/M 2.2 systems is about 3x as fast as Turbo Pascal 3.01A.
+generated for CP/M 2.2 systems is about 3x as fast as Turbo Pascal 3.01A and 2x slower than hand-written assembler code (mostly due
+to using 16-bit integers and lack of global optimizations).
 
 To build BA:
 
     On Windows in CMD with Visual Studio's vcvars64.bat use m.bat (for retail) or mdbg (for debug).
     On Linux with gnu: g++ -DNDEBUG ba.cxx -o ba -O3
-    On Linux with clang: "c:\program files\llvm\bin\clang++.exe" ba.cxx -D_CRT_SECURE_NO_WARNINGS -DNDEBUG -o ba.exe -O3 -Ofast
+    On Linux with clang: clang++ -DNDEBUG ba.cxx -o ba -O3
+    On Windows with clang: "c:\program files\llvm\bin\clang++.exe" ba.cxx -D_CRT_SECURE_NO_WARNINGS -DNDEBUG -o ba.exe -O3 -Ofast
     On a Mac: mmac.sh or this: clang++ ba.cxx -DNDEBUG -o ba -O3 -std=c++11
 	
 ![image](https://user-images.githubusercontent.com/1497921/183231243-44d981f1-5881-4576-b3ee-384bf828be87.png)
