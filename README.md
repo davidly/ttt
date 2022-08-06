@@ -58,7 +58,7 @@ to generate the .asm file, and ma.bat to create the .exe. For example:
     ttt_1dim.exe
     
 The compiler generates code that's in the middle of the pack of most real compilers on both x64 Windows and arm64 Mac. The 8080 code
-generated for CP/M 2.2 systems is about 2x as fast as Turbo Pascal 3.01A.
+generated for CP/M 2.2 systems is about 3x as fast as Turbo Pascal 3.01A.
 
 To build BA:
 
@@ -66,8 +66,8 @@ To build BA:
     On Linux with gnu: g++ -DNDEBUG ba.cxx -o ba -O3
     On Linux with clang: "c:\program files\llvm\bin\clang++.exe" ba.cxx -D_CRT_SECURE_NO_WARNINGS -DNDEBUG -o ba.exe -O3 -Ofast
     On a Mac: mmac.sh or this: clang++ ba.cxx -DNDEBUG -o ba -O3 -std=c++11
-
-![image](https://user-images.githubusercontent.com/1497921/182999817-667e6866-6d3d-40fa-8ede-6325f982c7e7.png)
+	
+![image](https://user-images.githubusercontent.com/1497921/183231243-44d981f1-5881-4576-b3ee-384bf828be87.png)
 
 
 
