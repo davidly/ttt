@@ -2345,8 +2345,6 @@ void GenerateOp( FILE * fp, map<string, Variable> const & varmap, vector<TokenVa
 
         if ( x64Win == g_AssemblyTarget && Token::DIV == op )
         {
-            fprintf( fp, "    xor      rdx, rdx\n" );
-
             if ( Token::CONSTANT == vals[ right ].token )
                 fprintf( fp, "    mov      rbx, %d\n", vals[ right ].value );
             else if ( 0 == vals[ right ].dimensions )
@@ -2464,7 +2462,6 @@ void GenerateDivide( FILE * fp, map<string, Variable> const & varmap, int & iTok
     {
         fprintf( fp, "    mov      rbx, rax\n" );
         fprintf( fp, "    pop      rax\n" );
-        fprintf( fp, "    xor      rdx, rdx\n" );
         fprintf( fp, "    cdq\n" );
         fprintf( fp, "    idiv     ebx\n" );
     }
