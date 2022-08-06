@@ -2361,7 +2361,8 @@ void GenerateOp( FILE * fp, map<string, Variable> const & varmap, vector<TokenVa
                 fprintf( fp, "    mov      ebx, DWRD PTR [%s + %d]\n", GenVariableName( vals[ right ].strValue ),
                          4 * vals[ rightArray ].value );
 
-            fprintf( fp, "    idiv     rbx\n" );
+            fprintf( fp, "    cdq\n" );
+            fprintf( fp, "    idiv     ebx\n" );
         }
         else
         {
@@ -2464,7 +2465,8 @@ void GenerateDivide( FILE * fp, map<string, Variable> const & varmap, int & iTok
         fprintf( fp, "    mov      rbx, rax\n" );
         fprintf( fp, "    pop      rax\n" );
         fprintf( fp, "    xor      rdx, rdx\n" );
-        fprintf( fp, "    idiv     rbx\n" );
+        fprintf( fp, "    cdq\n" );
+        fprintf( fp, "    idiv     ebx\n" );
     }
     else if ( arm64Mac == g_AssemblyTarget )
     {
@@ -3138,7 +3140,7 @@ void GenerateOptimizedExpression( FILE * fp, map<string, Variable> const & varma
         printf( "  GenerateOptimizedExpression token %d, which is %s, length %d\n",
                 iToken, TokenStr( vals[ iToken ].token ), vals[ iToken ].value );
 
-    if ( !g_ExpressionOptimization )
+    if ( i8080CPM == g_AssemblyTarget || !g_ExpressionOptimization )
         goto label_no_expression_optimization;
 
     if ( 2 == tokenCount )
@@ -3486,7 +3488,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                     else if ( arm64Mac == g_AssemblyTarget )
                         fprintf( fp, "    str_%zd_%d: .asciz \"%s\"\n", l, t, strEscaped.c_str() );
                     else if ( i8080CPM == g_AssemblyTarget )
-                        fprintf( fp, "    s$%zd$%d: db '%s', '$'\n", l, t, strEscaped.c_str() );
+                        fprintf( fp, "      s$%zd$%d: db '%s', '$'\n", l, t, strEscaped.c_str() );
                 }
             }
         }
@@ -3625,7 +3627,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "    startString:    db    'running basic', 10, 13, '$'\n" );
         fprintf( fp, "    stopString:     db    'done running basic', 10, 13, '$'\n" );
         fprintf( fp, "    newlineString:  db    10, 13, '$'\n" );
-        fprintf( fp, "    mathTmp:        dw    0\n" ); // temporary for imul and idiv functions
+        fprintf( fp, "    mulTmp:         dw    0\n" ); // temporary for imul and idiv functions
         fprintf( fp, "    divRem:         dw    0\n" ); // idiv remainder
 
         fprintf( fp, "start:\n" );
@@ -3683,6 +3685,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         }
     }
 
+    static int s_uniqueLabel = 0;
     static Stack<ForGosubItem> forGosubStack;
     size_t activeIf = -1;
 
@@ -3721,7 +3724,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
     
                     assert( Token::EXPRESSION == vals[ t ].token );
 
-                    if ( !g_ExpressionOptimization )
+                    if ( i8080CPM == g_AssemblyTarget || !g_ExpressionOptimization )
                         goto label_no_eq_optimization;
 
                     if ( Token::CONSTANT == vals[ t + 1 ].token && ( 2 == vals[ t ].value ) )
@@ -4171,7 +4174,7 @@ label_no_array_eq_optimization:
                 else if ( arm64Mac == g_AssemblyTarget )
                     fprintf( fp, "    bl       end_execution\n" );
                 else if ( i8080CPM == g_AssemblyTarget )
-                    fprintf( fp, "    jmp      end$execution\n" );
+                    fprintf( fp, "    jmp      endExecution\n" );
                 break;
             }
             else if ( Token::FOR == token )
@@ -4585,22 +4588,88 @@ label_no_array_eq_optimization:
 
                 // Optimize for really simple IF cases like "IF var/constant relational var/constant"
 
-                if ( 10 == vals.size() &&
-                     4 == vals[ t ].value &&
+                if ( i8080CPM == g_AssemblyTarget &&
+                     19 == vals.size() &&
+                     16 == vals[ t ].value &&
                      Token::VARIABLE == vals[ t + 1 ].token &&
-                     IsVariableInReg( varmap, vals[ t + 1 ].strValue ) &&
-                     isOperatorRelational( vals[ t + 2 ].token ) &&
-                     Token::VARIABLE == vals[ t + 3 ].token &&
-                     IsVariableInReg( varmap, vals[ t + 3 ].strValue ) &&
-                     Token::THEN == vals[ t + 4 ].token &&
-                     0 == vals[ t + 4 ].value &&
-                     Token::VARIABLE == vals[ t + 5 ].token &&
-                     IsVariableInReg( varmap, vals[ t + 5 ].strValue ) &&
-                     Token::EQ == vals[ t + 6 ].token &&
-                     Token::EXPRESSION == vals[ t + 7 ].token &&
-                     2 == vals[ t + 7 ].value &&
-                     Token::VARIABLE == vals[ t + 8 ].token &&
-                     IsVariableInReg( varmap, vals[ t + 8 ].strValue ) )
+                     Token::EQ ==  vals[ t + 2 ].token &&
+                     Token::OPENPAREN == vals[ t + 4 ].token &&
+                     Token::CONSTANT == vals[ t + 6 ].token &&
+                     Token::AND == vals[ t + 8 ].token &&
+                     Token::VARIABLE == vals[ t + 9 ].token &&
+                     Token::EQ == vals[ t + 10 ].token &&
+                     Token::OPENPAREN == vals[ t + 12 ].token &&
+                     Token::CONSTANT == vals[ t + 14 ].token &&
+                     Token::THEN == vals[ t + 16 ].token &&
+                     0 == vals[ t + 16 ].value &&
+                     !vals[ t + 3 ].strValue.compare( vals[ t + 11 ].strValue ) &&
+                     Token::RETURN == vals[ t + 17 ].token )
+                {
+                    // line 2020 has 19 tokens  ====>> 2020 if wi% = b%( 1 ) and wi% = b%( 2 ) then return
+                    //    0 IF, value 0, strValue ''
+                    //    1 EXPRESSION, value 16, strValue ''
+                    //    2 VARIABLE, value 0, strValue 'wi%'
+                    //    3 EQ, value 0, strValue ''
+                    //    4 VARIABLE, value 0, strValue 'b%'
+                    //    5 OPENPAREN, value 0, strValue ''
+                    //    6 EXPRESSION, value 2, strValue ''
+                    //    7 CONSTANT, value 1, strValue ''
+                    //    8 CLOSEPAREN, value 0, strValue ''
+                    //    9 AND, value 0, strValue ''
+                    //   10 VARIABLE, value 0, strValue 'wi%'
+                    //   11 EQ, value 0, strValue ''
+                    //   12 VARIABLE, value 0, strValue 'b%'
+                    //   13 OPENPAREN, value 0, strValue ''
+                    //   14 EXPRESSION, value 2, strValue ''
+                    //   15 CONSTANT, value 2, strValue ''
+                    //   16 CLOSEPAREN, value 0, strValue ''
+                    //   17 THEN, value 0, strValue ''
+                    //   18 RETURN, value 0, strValue ''
+
+                    fprintf( fp, "    lhld     %s\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                    fprintf( fp, "    xchg\n" );
+                    fprintf( fp, "    lxi      h, %s\n", GenVariableName( vals[ t + 3 ].strValue ) );
+                    fprintf( fp, "    lxi      b, %d\n", 2 * vals[ t + 6 ].value );
+                    fprintf( fp, "    dad      b\n" );
+                    fprintf( fp, "    mov      a, m\n" );
+                    fprintf( fp, "    cmp      e\n" );
+                    fprintf( fp, "    jnz      ln$%zd\n", l + 1 );
+                    fprintf( fp, "    inx      h\n" );
+                    fprintf( fp, "    mov      a, m\n" );
+                    fprintf( fp, "    cmp      d\n" );
+                    fprintf( fp, "    jnz      ln$%zd\n", l + 1 );
+
+                    fprintf( fp, "    lxi      h, %s\n", GenVariableName( vals[ t + 3 ].strValue ) );
+                    fprintf( fp, "    lxi      b, %d\n", 2 * vals[ t + 14 ].value );
+                    fprintf( fp, "    dad      b\n" );
+                    fprintf( fp, "    mov      a, m\n" );
+                    fprintf( fp, "    cmp      e\n" );
+                    fprintf( fp, "    jnz      ln$%zd\n", l + 1 );
+                    fprintf( fp, "    inx      h\n" );
+                    fprintf( fp, "    mov      a, m\n" );
+                    fprintf( fp, "    cmp      d\n" );
+                    fprintf( fp, "    jnz      ln$%zd\n", l + 1 );
+                    fprintf( fp, "    jmp      gosubReturn\n" );
+
+                    break;
+                }
+                else if ( i8080CPM != g_AssemblyTarget &&
+                          10 == vals.size() &&
+                          4 == vals[ t ].value &&
+                          Token::VARIABLE == vals[ t + 1 ].token &&
+                          IsVariableInReg( varmap, vals[ t + 1 ].strValue ) &&
+                          isOperatorRelational( vals[ t + 2 ].token ) &&
+                          Token::VARIABLE == vals[ t + 3 ].token &&
+                          IsVariableInReg( varmap, vals[ t + 3 ].strValue ) &&
+                          Token::THEN == vals[ t + 4 ].token &&
+                          0 == vals[ t + 4 ].value &&
+                          Token::VARIABLE == vals[ t + 5 ].token &&
+                          IsVariableInReg( varmap, vals[ t + 5 ].strValue ) &&
+                          Token::EQ == vals[ t + 6 ].token &&
+                          Token::EXPRESSION == vals[ t + 7 ].token &&
+                          2 == vals[ t + 7 ].value &&
+                          Token::VARIABLE == vals[ t + 8 ].token &&
+                          IsVariableInReg( varmap, vals[ t + 8 ].strValue ) )
                 {
                     // line 4342 has 10 tokens  ====>> 4342 if v% > al% then al% = v%
                     //   0 IF, value 0, strValue ''
@@ -4634,7 +4703,8 @@ label_no_array_eq_optimization:
                     }
                     break;
                 }
-                else if ( 19 == vals.size() &&
+                else if ( i8080CPM != g_AssemblyTarget &&
+                          19 == vals.size() &&
                           16 == vals[ t ].value &&
                           Token::VARIABLE == vals[ t + 1 ].token &&
                           IsVariableInReg( varmap, vals[ t + 1 ].strValue ) &&
@@ -4745,7 +4815,8 @@ label_no_array_eq_optimization:
                     }
                     break;
                 }
-                else if ( 15 == vals.size() &&
+                else if ( i8080CPM != g_AssemblyTarget &&
+                          15 == vals.size() &&
                           4 == vals[ t ].value &&
                           Token::VARIABLE == vals[ t + 1 ].token &&
                           IsVariableInReg( varmap, vals[ t + 1 ].strValue ) &&
@@ -4763,6 +4834,7 @@ label_no_array_eq_optimization:
                           IsVariableInReg( varmap, vals[ t + 10 ].strValue ) &&
                           Token::EQ == vals[ t + 11 ].token &&
                           2 == vals[ t + 12 ].value &&
+                          !vals[ t + 5 ].strValue.compare( vals[ t + 10 ].strValue ) &&
                           Token::CONSTANT == vals[ t + 13 ].token )
                 {
                     // line 4150 has 15 tokens  ====>> 4150 if st% and 1 then v% = 2 else v% = 9
@@ -4799,7 +4871,61 @@ label_no_array_eq_optimization:
 
                     break;
                 }
-                else if ( 23 == vals.size() &&
+                else if ( i8080CPM == g_AssemblyTarget &&
+                          15 == vals.size() &&
+                          4 == vals[ t ].value &&
+                          Token::VARIABLE == vals[ t + 1 ].token &&
+                          Token::AND == vals[ t + 2 ].token  &&
+                          Token::CONSTANT == vals[ t + 3 ].token &&
+                          1 == vals[ t + 3 ].value &&
+                          Token::THEN == vals[ t + 4 ].token &&
+                          Token::VARIABLE == vals[ t + 5 ].token &&
+                          Token::EQ == vals[ t + 6 ].token &&
+                          2 == vals[ t + 7 ].value &&
+                          Token::CONSTANT == vals[ t + 8 ].token &&
+                          Token::ELSE == vals[ t + 9 ].token &&
+                          Token::VARIABLE == vals[ t + 10 ].token &&
+                          Token::EQ == vals[ t + 11 ].token &&
+                          2 == vals[ t + 12 ].value &&
+                          !vals[ t + 5 ].strValue.compare( vals[ t + 10 ].strValue ) &&
+                          Token::CONSTANT == vals[ t + 13 ].token )
+                {
+                    // line 4150 has 15 tokens  ====>> 4150 if st% and 1 then v% = 2 else v% = 9
+                    // token   0 IF, value 0, strValue ''
+                    // token   1 EXPRESSION, value 4, strValue ''
+                    // token   2 VARIABLE, value 0, strValue 'st%'
+                    // token   3 AND, value 0, strValue ''
+                    // token   4 CONSTANT, value 1, strValue ''
+                    // token   5 THEN, value 5, strValue ''
+                    // token   6 VARIABLE, value 0, strValue 'v%'
+                    // token   7 EQ, value 0, strValue ''
+                    // token   8 EXPRESSION, value 2, strValue ''
+                    // token   9 CONSTANT, value 2, strValue ''
+                    // token  10 ELSE, value 0, strValue ''
+                    // token  11 VARIABLE, value 0, strValue 'v%'
+                    // token  12 EQ, value 0, strValue ''
+                    // token  13 EXPRESSION, value 2, strValue ''
+                    // token  14 CONSTANT, value 9, strValue ''
+
+
+                    fprintf( fp, "    lda      %s\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                    fprintf( fp, "    ani      %d\n", vals[ t + 3 ].value );
+                    fprintf( fp, "    jz       uniq%d\n", s_uniqueLabel );
+                    fprintf( fp, "    lxi      h, %d\n", vals[ t + 8 ].value );
+                    fprintf( fp, "    jmp      uniq%d\n", s_uniqueLabel + 1 );
+
+                    fprintf( fp, "  uniq%d:\n", s_uniqueLabel );
+                    fprintf( fp, "    lxi      h, %d\n", vals[ t + 13 ].value );
+                    s_uniqueLabel++;
+                    fprintf( fp, "  uniq%d:\n", s_uniqueLabel );
+                    fprintf( fp, "    shld     %s\n", GenVariableName( vals[ t + 10 ].strValue ) );
+
+                    s_uniqueLabel++;
+
+                    break;
+                }
+                else if ( i8080CPM != g_AssemblyTarget &&
+                          23 == vals.size() &&
                           4 == vals[ t ].value &&
                           Token::VARIABLE == vals[ t + 1 ].token &&
                           IsVariableInReg( varmap, vals[ t + 1 ].strValue ) &&
@@ -4873,7 +4999,8 @@ label_no_array_eq_optimization:
                     }
                     break;
                 }
-                else if ( 11 == vals.size() &&
+                else if ( i8080CPM != g_AssemblyTarget &&
+                          11 == vals.size() &&
                           4 == vals[ t ].value &&
                           Token::VARIABLE == vals[ t + 1 ].token &&
                           IsVariableInReg( varmap, vals[ t + 1 ].strValue ) &&
@@ -4922,7 +5049,8 @@ label_no_array_eq_optimization:
                     }
                     break;
                 }
-                else if ( 9 == vals.size() &&
+                else if ( i8080CPM != g_AssemblyTarget &&
+                          9 == vals.size() &&
                           6 == vals[ t ].value &&
                           Token::VARIABLE == vals[ t + 1 ].token &&
                           Token::OPENPAREN == vals[ t + 2 ].token &&
@@ -4969,7 +5097,8 @@ label_no_array_eq_optimization:
                     }
                     break;
                 }
-                else if ( 7 == vals.size() &&
+                else if ( i8080CPM != g_AssemblyTarget &&
+                          7 == vals.size() &&
                           Token::VARIABLE == vals[ t + 1 ].token &&
                           IsVariableInReg( varmap, vals[ t + 1 ].strValue ) &&
                           Token::AND == vals[ t + 2 ].token &&
@@ -5000,6 +5129,32 @@ label_no_array_eq_optimization:
                         fprintf( fp, "    b.ne     line_number_%d\n", vals[ t + 5 ].value );
                     }
                 }
+                else if ( i8080CPM == g_AssemblyTarget &&
+                          7 == vals.size() &&
+                          Token::VARIABLE == vals[ t + 1 ].token &&
+                          Token::AND == vals[ t + 2 ].token &&
+                          Token::CONSTANT == vals[ t + 3 ].token &&
+                          vals[ t + 3 ].value < 256 &&  // arm64 requires small values 
+                          vals[ t + 3 ].value >= 0 &&
+                          Token::THEN == vals[ t + 4 ].token &&
+                          0 == vals[ t + 4 ].value &&
+                          Token::GOTO == vals[ t + 5 ].token )
+                {
+                    // line 4330 has 7 tokens  ====>> 4330 if st% and 1 goto 4340
+                    //    0 IF, value 0, strValue ''
+                    //    1 EXPRESSION, value 4, strValue ''
+                    //    2 VARIABLE, value 0, strValue 'st%'
+                    //    3 AND, value 0, strValue ''
+                    //    4 CONSTANT, value 1, strValue ''
+                    //    5 THEN, value 0, strValue ''
+                    //    6 GOTO, value 4340, strValue ''
+
+                    fprintf( fp, "    lda      %s\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                    fprintf( fp, "    ani      1\n" );
+                    fprintf( fp, "    jnz      ln$%d\n", vals[ t + 5 ].value );
+
+                    break;
+                }
                 else if ( arm64Mac == g_AssemblyTarget &&
                           6 == vals.size() &&
                           3 == vals[ t ].value &&
@@ -5020,6 +5175,54 @@ label_no_array_eq_optimization:
 
                     fprintf( fp, "    cbz      %s, line_number_%d\n", GenVariableReg( varmap, vals [ t + 2 ].strValue ),
                                                                       vals[ t + 4 ].value );
+                    break;
+                }
+                else if ( i8080CPM == g_AssemblyTarget &&
+                          6 == vals.size() &&
+                          3 == vals[ t ].value &&
+                          Token::NOT == vals[ t + 1 ].token &&
+                          Token::VARIABLE == vals[ t + 2 ].token &&
+                          Token::THEN == vals[ t + 3 ].token &&
+                          0 == vals[ t + 3 ].value &&
+                          Token::GOTO == vals[ t + 4 ].token )
+                {
+                    // line 2110 has 6 tokens  ====>> 2110 if 0 = wi% goto 2200
+                    //  0 IF, value 0, strValue ''
+                    //  1 EXPRESSION, value 3, strValue ''
+                    //  2 NOT, value 0, strValue ''
+                    //  3 VARIABLE, value 0, strValue 'wi%'
+                    //  4 THEN, value 0, strValue ''
+                    //  5 GOTO, value 33, strValue ''
+
+                    fprintf( fp, "    lhld     %s\n", GenVariableName( vals[ t + 2 ].strValue ) );
+                    fprintf( fp, "    mov      a, h\n" );
+                    fprintf( fp, "    ora      l\n" );
+                    fprintf( fp, "    jz       ln$%d\n", vals[ t + 4 ].value );
+
+                    break;
+                }
+                else if ( i8080CPM == g_AssemblyTarget &&
+                          6 == vals.size() &&
+                          3 == vals[ t ].value &&
+                          Token::NOT == vals[ t + 1 ].token &&
+                          Token::VARIABLE == vals[ t + 2 ].token &&
+                          Token::THEN == vals[ t + 3 ].token &&
+                          0 == vals[ t + 3 ].value &&
+                          Token::RETURN == vals[ t + 4 ].token )
+                {
+                    // line 2110 has 6 tokens  ===>>> 4530 if st% = 0 then return
+                    //  0 IF, value 0, strValue ''
+                    //  1 EXPRESSION, value 3, strValue ''
+                    //  2 NOT, value 0, strValue ''
+                    //  3 VARIABLE, value 0, strValue 'wi%'
+                    //  4 THEN, value 0, strValue ''
+                    //  5 GOTO, value 33, strValue ''
+
+                    fprintf( fp, "    lhld     %s\n", GenVariableName( vals[ t + 2 ].strValue ) );
+                    fprintf( fp, "    mov      a, h\n" );
+                    fprintf( fp, "    ora      l\n" );
+                    fprintf( fp, "    jz       gosubReturn\n" );
+
                     break;
                 }
                 else if ( arm64Mac == g_AssemblyTarget &&
@@ -5043,7 +5246,8 @@ label_no_array_eq_optimization:
                     fprintf( fp, "    cbz      %s, label_gosub_return\n", GenVariableReg( varmap, vals [ t + 2 ].strValue ) );
                     break;
                 }
-                else if ( 4 == vals[ t ].value && 
+                else if ( i8080CPM != g_AssemblyTarget &&
+                          4 == vals[ t ].value && 
                           isOperatorRelational( vals[ t + 2 ].token ) )
                 {
                     // e.g.: if p% < 0 then goto 4180
@@ -5232,7 +5436,8 @@ label_no_array_eq_optimization:
                         }
                     }
                 }
-                else if ( 3 == vals[ t ].value && 
+                else if ( i8080CPM != g_AssemblyTarget &&
+                          3 == vals[ t ].value && 
                           Token::NOT == vals[ t + 1 ].token && 
                           Token::VARIABLE == vals[ t + 2 ].token )
                 {
@@ -5552,23 +5757,24 @@ label_no_if_optimization:
         fprintf( fp, "gosubReturn:\n" );
         fprintf( fp, "    ret\n" );
 
-        fprintf( fp, "error$exit:\n" );
+        fprintf( fp, "errorExit:\n" );
         fprintf( fp, "    mvi      c, PRSTR\n" );
         fprintf( fp, "    lxi      d, errorString\n" );
         fprintf( fp, "    call     BDOS\n" );
-        fprintf( fp, "    jmp      leave$execution\n" );
+        fprintf( fp, "    jmp      leaveExecution\n" );
 
-        fprintf( fp, "end$execution:\n" );
+        fprintf( fp, "endExecution:\n" );
         fprintf( fp, "    mvi      c, PRSTR\n" );
         fprintf( fp, "    lxi      d, stopString\n" );
         fprintf( fp, "    call     BDOS\n" );
 
-        fprintf( fp, "leave$execution:\n" );
+        fprintf( fp, "leaveExecution:\n" );
         fprintf( fp, "    pop      h\n" );
         fprintf( fp, "    pop      d\n" );
         fprintf( fp, "    pop      b\n" );
         fprintf( fp, "    jmp      0\n" );
 
+        /////////////////////////////////////////
         // zeros memory. byte count in de, starting at address bc
 
         fprintf( fp, "zeromem:\n" );
@@ -5578,12 +5784,13 @@ label_no_if_optimization:
         fprintf( fp, "    jnz      zmWrite\n" );
         fprintf( fp, "    cmp      e\n" );
         fprintf( fp, "    rz\n" );
-
         fprintf( fp, "  zmWrite:\n" );
         fprintf( fp, "    stax     b\n" );
         fprintf( fp, "    inx      b\n" );
         fprintf( fp, "    dcx      d\n" );
         fprintf( fp, "    jmp      zmAgain\n" );
+
+        /////////////////////////////////////////
 
         /////////////////////////////////////////
         // negate the de register pair. handy for idiv and imul
@@ -5598,6 +5805,7 @@ label_no_if_optimization:
         fprintf( fp, "    mov      e, a\n" );
         fprintf( fp, "    inx      d\n" );
         fprintf( fp, "    ret\n" );
+
         /////////////////////////////////////////
 
         /////////////////////////////////////////
@@ -5615,13 +5823,12 @@ label_no_if_optimization:
         fprintf( fp, "    ret\n" );
 
         /////////////////////////////////////////
+
+        /////////////////////////////////////////
         // multiply de by hl, result in hl
         // incredibly slow iterative addition.
 
         fprintf( fp, "imul:\n" );
-
-        // if hl is negative, negate both de and hl
-
         fprintf( fp, "    mvi      b, 80h\n" );
         fprintf( fp, "    mov      a, h\n" );
         fprintf( fp, "    ana      b\n" );
@@ -5632,14 +5839,14 @@ label_no_if_optimization:
         fprintf( fp, "    push     h\n" );
         fprintf( fp, "    pop      b\n" );
         fprintf( fp, "    lxi      h, 0\n" );
-        fprintf( fp, "    shld     mathTmp\n" );
+        fprintf( fp, "    shld     mulTmp\n" );
         fprintf( fp, "  mul$loop:\n" );
         fprintf( fp, "    dad      d\n" );
         fprintf( fp, "    jnc      mul$done\n" );
         fprintf( fp, "    push     h\n" );
-        fprintf( fp, "    lhld     mathTmp\n" );
+        fprintf( fp, "    lhld     mulTmp\n" );
         fprintf( fp, "    inx      h\n" );
-        fprintf( fp, "    shld     mathTmp\n" );
+        fprintf( fp, "    shld     mulTmp\n" );
         fprintf( fp, "    pop      h\n" );
         fprintf( fp, "  mul$done:\n" );
         fprintf( fp, "    dcx      b\n" );
@@ -5647,6 +5854,7 @@ label_no_if_optimization:
         fprintf( fp, "    ora      c\n" );
         fprintf( fp, "    jnz      mul$loop\n" );
         fprintf( fp, "    ret\n" );
+
         /////////////////////////////////////////
 
         /////////////////////////////////////////
@@ -5655,9 +5863,6 @@ label_no_if_optimization:
 
         fprintf( fp, "idiv:\n" );
         fprintf( fp, "    xchg\n" ); // now it's hl / de
-
-        // remember how many are negative and make negative values positive.
-
         fprintf( fp, "    mvi      c, 0\n" );
         fprintf( fp, "    mvi      b, 80h\n" );
         fprintf( fp, "    mov      a, d\n" );
@@ -5671,7 +5876,6 @@ label_no_if_optimization:
         fprintf( fp, "    jz       div$hlnotneg\n" );
         fprintf( fp, "    inr      c\n" );
         fprintf( fp, "    call     neg$hl\n" );
-
         fprintf( fp, "  div$hlnotneg:\n" );
         fprintf( fp, "    push     b\n" );    // save c -- count of negatives
         fprintf( fp, "    lxi      b, 0\n" );
@@ -5693,8 +5897,9 @@ label_no_if_optimization:
         fprintf( fp, "    pop      b\n" );
         fprintf( fp, "    mov      a, c\n" );
         fprintf( fp, "    ani      1\n" );
-        fprintf( fp, "    cnz      neg$hl\n" );
+        fprintf( fp, "    cnz      neg$hl\n" ); // if 1 of the inputs was negative, negate
         fprintf( fp, "    ret\n" );
+
         /////////////////////////////////////////
 
         /////////////////////////////////////////
@@ -5734,6 +5939,7 @@ label_no_if_optimization:
         fprintf( fp, "negf:   db      0       ; Space for negative flag\n" );
         fprintf( fp, "        db      '-00000'\n" );
         fprintf( fp, "num:    db      '$'     ; Space for number\n" );
+
         /////////////////////////////////////////
 
         fprintf( fp, "    end\n" );
@@ -6550,11 +6756,6 @@ extern int main( int argc, char *argv[] )
             strcpy_s( dot, _countof( asmfile) - ( dot - asmfile ), ".s" );
         else
             strcpy_s( dot, _countof( asmfile) - ( dot - asmfile ), ".asm" );
-
-        // not supported yet
-
-        if ( i8080CPM == g_AssemblyTarget )
-            g_ExpressionOptimization = false;
 
         GenerateASM( asmfile, varmap, useRegistersInASM );
     }
