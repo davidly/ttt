@@ -171,8 +171,14 @@ const char * CMovInstruction[] = {
 const char * MappedRegistersX64[] = {    "esi", "r9d", "r10d", "r11d", "r12d", "r13d", "r14d", "r15d" };
 const char * MappedRegistersX64_64[] = { "rsi",  "r9",  "r10",  "r11",  "r12",  "r13",  "r14",  "r15" };
 
-const char * MappedRegistersArm64[] = {    "w19", "w20", "w21", "w22", "w23", "w24", "w25", "w26", "w27", "w28" };
-const char * MappedRegistersArm64_64[] = { "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28" };
+// Use of x10-x15 is dangerous since these aren't preserved during function calls.
+// Whenever a call happens (to printf, time, etc.) use the macros save_volatile_registers and restore_volatile_registers.
+// The macros are slow, but calling out is very uncommon and it's generally to slow functions.
+// Use of the extra registers results in about a 3% overall benefit for tp.bas.
+// Note that x16, x17, x18, x29, and x30 are reserved.
+
+const char * MappedRegistersArm64[] = {    "w10", "w11", "w12", "w13", "w14", "w15", "w19", "w20", "w21", "w22", "w23", "w24", "w25", "w26", "w27", "w28" };
+const char * MappedRegistersArm64_64[] = { "x10", "x11", "x12", "x13", "x14", "x15", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28" };
 
 __makeinline const char * TokenStr( Token i )
 {
@@ -2498,7 +2504,7 @@ void GenerateTerm( FILE * fp, map<string, Variable> const & varmap, int & iToken
         if ( x64Win == g_AssemblyTarget )
             fprintf( fp, "    push     rax\n" );
         else if ( arm64Mac == g_AssemblyTarget )
-            fprintf( fp, "    str      x0, [sp, #-16]!\n" ); // save 4 bytes in a 16-byte spot
+            fprintf( fp, "    str      x0, [sp, #-16]!\n" ); // save 8 bytes in a 16-byte spot
         else if ( i8080CPM == g_AssemblyTarget )
             fprintf( fp, "    push     h\n" );
 
@@ -3422,6 +3428,18 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
     {
         fprintf( fp, ".global _start\n" );
         fprintf( fp, ".data\n" );
+        fprintf( fp, ".macro save_volatile_registers\n" );
+        fprintf( fp, "    stp      x10, x11, [sp, #-16]!\n" ); 
+        fprintf( fp, "    stp      x12, x13, [sp, #-16]!\n" ); 
+        fprintf( fp, "    stp      x14, x15, [sp, #-16]!\n" );
+        fprintf( fp, "    sub      sp, sp, #32\n" ); // save room for locals and arguments 
+        fprintf( fp, ".endmacro\n" );
+        fprintf( fp, ".macro restore_volatile_registers\n" );
+        fprintf( fp, "    add      sp, sp, #32\n" );
+        fprintf( fp, "    ldp      x14, x15, [sp], #16\n" );
+        fprintf( fp, "    ldp      x12, x13, [sp], #16\n" );
+        fprintf( fp, "    ldp      x10, x11, [sp], #16\n" );
+        fprintf( fp, ".endmacro\n" );
     }
     else if ( i8080CPM == g_AssemblyTarget )
     {
@@ -3850,11 +3868,20 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                             }
                             else
                             {
-                                LoadArm64Address( fp, "x1", varmap, vararray );
+                                if ( IsVariableInReg( varmap, vararray ) )
+                                {
+                                    fprintf( fp, "    lsl      w2, %s, 2\n", GenVariableReg( varmap, vals[ t + 4 ].strValue ) );
+                                    fprintf( fp, "    add      x1, %s, x2\n", GenVariableReg64( varmap, vararray ) );
+                                    fprintf( fp, "    ldr      %s, [x1]\n", GenVariableReg( varmap, varname ) );
+                                }
+                                else
+                                {
+                                    LoadArm64Address( fp, "x1", varmap, vararray );
 
-                                fprintf( fp, "    lsl      w2, %s, 2\n", GenVariableReg( varmap, vals[ t + 4 ].strValue ) );
-                                fprintf( fp, "    add      x1, x1, x2\n" );
-                                fprintf( fp, "    ldr      %s, [x1]\n", GenVariableReg( varmap, varname ) );
+                                    fprintf( fp, "    lsl      w2, %s, 2\n", GenVariableReg( varmap, vals[ t + 4 ].strValue ) );
+                                    fprintf( fp, "    add      x1, x1, x2\n" );
+                                    fprintf( fp, "    ldr      %s, [x1]\n", GenVariableReg( varmap, varname ) );
+                                }
                             }
                         }
 
@@ -4012,10 +4039,22 @@ label_no_eq_optimization:
                         //   6 EXPRESSION, value 2, strValue ''
                         //   7 VARIABLE, value 0, strValue 'v%'
 
-                        LoadArm64Address( fp, "x2", varmap, vals[ variableToken ].strValue );
-                        fprintf( fp, "    lsl      w0, %s, 2\n", GenVariableReg( varmap, vals[ t + 1 ].strValue ) );
-                        fprintf( fp, "    add      x2, x2, x0\n" );
-                        fprintf( fp, "    str      %s, [x2]\n", GenVariableReg( varmap, vals[ t + 5 ].strValue ) );
+                        string vararray = vals[ variableToken ].strValue;
+
+                        if ( IsVariableInReg( varmap, vararray ) )
+                        {
+                            fprintf( fp, "    lsl      w0, %s, 2\n", GenVariableReg( varmap, vals[ t + 1 ].strValue ) );
+                            fprintf( fp, "    add      x2, %s, x0\n", GenVariableReg64( varmap, vararray ) );
+                            fprintf( fp, "    str      %s, [x2]\n", GenVariableReg( varmap, vals[ t + 5 ].strValue ) );
+                        }
+                        else
+                        {
+                            LoadArm64Address( fp, "x2", varmap, vals[ variableToken ].strValue );
+                            fprintf( fp, "    lsl      w0, %s, 2\n", GenVariableReg( varmap, vals[ t + 1 ].strValue ) );
+                            fprintf( fp, "    add      x2, x2, x0\n" );
+                            fprintf( fp, "    str      %s, [x2]\n", GenVariableReg( varmap, vals[ t + 5 ].strValue ) );
+                        }
+
                         break;
                     }
                     else
@@ -4414,6 +4453,9 @@ label_no_array_eq_optimization:
                         }
                         else if ( arm64Mac == g_AssemblyTarget )
                         {
+                            // lots of arguments, so call _printf directly
+
+                            fprintf( fp, "    save_volatile_registers\n" );
                             fprintf( fp, "    adrp     x0, rawTime@PAGE\n" );
                             fprintf( fp, "    add      x0, x0, rawTime@PAGEOFF\n" );
                             fprintf( fp, "    bl       _time\n" );
@@ -4426,7 +4468,8 @@ label_no_array_eq_optimization:
                             fprintf( fp, "    str      x8, [sp]\n" );
                             fprintf( fp, "    adrp     x0, timeString@PAGE\n" );
                             fprintf( fp, "    add      x0, x0, timeString@PAGEOFF\n" );
-                            fprintf( fp, "    bl      _printf\n" );
+                            fprintf( fp, "    bl       _printf\n" );
+                            fprintf( fp, "    restore_volatile_registers\n" );
                         }
 
                         t += vals[ t ].value;
@@ -5735,6 +5778,7 @@ label_no_if_optimization:
 
         fprintf( fp, ".p2align 2\n" );
         fprintf( fp, "call_printf:\n" );
+        fprintf( fp, "    save_volatile_registers\n" );
         fprintf( fp, "    sub      sp, sp, #32\n" );
         fprintf( fp, "    stp      x29, x30, [sp, #16]\n" );
         fprintf( fp, "    add      x29, sp, #16\n" );
@@ -5742,6 +5786,7 @@ label_no_if_optimization:
         fprintf( fp, "    bl       _printf\n" );
         fprintf( fp, "    ldp      x29, x30, [sp, #16]\n" );
         fprintf( fp, "    add      sp, sp, #32\n" );
+        fprintf( fp, "    restore_volatile_registers\n" );
         fprintf( fp, "    ret\n" );
 
         for ( int i = 0; i < g_lohCount; i += 2 )
