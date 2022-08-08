@@ -4688,8 +4688,7 @@ label_no_array_eq_optimization:
                     fprintf( fp, "    inx      h\n" );
                     fprintf( fp, "    mov      a, m\n" );
                     fprintf( fp, "    cmp      d\n" );
-                    fprintf( fp, "    jnz      ln$%zd\n", l + 1 );
-                    fprintf( fp, "    jmp      gosubReturn\n" );
+                    fprintf( fp, "    jz       gosubReturn\n" );
 
                     break;
                 }
