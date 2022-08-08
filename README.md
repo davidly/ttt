@@ -71,7 +71,7 @@ To commpile code and run on an arm64 Mac:
     ./ttt_1dim
     
 The compiler generates code that's in the middle of the pack of most real compilers on both x64 Windows and arm64 Mac. The 8080 code
-generated for CP/M 2.2 systems is about 3x as fast as Turbo Pascal 3.01A and 2x slower than hand-written assembler code (mostly due
+generated for CP/M 2.2 systems is about 3x as fast as Turbo Pascal 3.01A and 3x slower than hand-written assembler code (mostly due
 to using 16-bit integers and lack of global optimizations).
 
 To build BA:
@@ -81,8 +81,8 @@ To build BA:
     On Linux with clang: clang++ -DNDEBUG ba.cxx -o ba -O3
     On Windows with clang: "c:\program files\llvm\bin\clang++.exe" ba.cxx -D_CRT_SECURE_NO_WARNINGS -DNDEBUG -o ba.exe -O3 -Ofast
     On a Mac: mmac.sh or this: clang++ ba.cxx -DNDEBUG -o ba -O3 -std=c++11
-
-![image](https://user-images.githubusercontent.com/1497921/183269948-68c1ed05-707c-42e7-8f87-345885ac3feb.png)
+	
+![image](https://user-images.githubusercontent.com/1497921/183492214-adfd9b4a-06c9-4dd0-8c35-6b3c8f593c18.png)
 
 
 
