@@ -4,13 +4,15 @@
 ; asm tttcpm
 ; load tttcpm
 ; tttcpm
+;
+; Runs in about 2.5s per iteration on CP/M with 8080 at 2.5 Mhz
 
 
 BDOS EQU  5
 WCONF EQU 2
 PRSTR EQU 9
 
-ITERATIONS  equ  1000   ; # of times to run (max 32767)
+ITERATIONS  equ    10   ; # of times to run (max 32767)
 XSCO        equ     9   ; maximum score
 NSCO        equ     2   ; minimum score
 WSCO        equ     6   ; winning score
@@ -66,7 +68,7 @@ org     100H
         sta     BOARD + 4
         call    RUNMM
                                  
-        lhld    ITERS		    ; increment iteration count and loop until done
+        lhld    ITERS               ; increment iteration count and loop until done
         inx     h
         shld    ITERS
         lxi     b, ITERATIONS
@@ -86,7 +88,7 @@ org     100H
         pop     d
         pop     b
 
-        jmp 0			    ; cp/m call to terminate process
+        jmp 0                       ; cp/m call to terminate process
 
   DISONE:                           ; display the character in a
         push    b
@@ -138,10 +140,9 @@ RUNMM:                              ; Run the MINMAX function for a given board
 MINMAX                              ; the recursive scoring function
         mov     a, c                ; save depth, alpha, and beta from c, d, and e
         sta     DEPTH
-        mov     a, d
-        sta     ALPHA
-        mov     a, e
-        sta     BETA
+        mov     l, d
+        mov     h, e
+        shld    ALPHA               ; write alpha and beta
 
 ; debug
         lhld    MOVES
@@ -149,16 +150,16 @@ MINMAX                              ; the recursive scoring function
         shld    MOVES
 ; enddebug
 
-        lda     DEPTH               ; # of pieces played so far == 1 + depth
+        mov     a, c                ; # of pieces played so far == 1 + depth
         cpi     4                   ; DEPTH - 4  (if 4 or fewer pieces played, no possible winner)
         jm      SKIPWIN
 
         call    WINNER              ; look for a winning position
 
-        cpi     0		    ; was there a winner?
+        cpi     0                   ; was there a winner?
         jz      CHKDEPTH
 
-        cpi     XPIECE		    ; see if X won
+        cpi     XPIECE              ; see if X won
         mvi     a, WSCO             ; winning score. avoid branch by always loading
         rz
 
@@ -166,7 +167,7 @@ MINMAX                              ; the recursive scoring function
         ret
 
   CHKDEPTH:
-        lda     DEPTH		    ; check if at the bottom of the recursion
+        lda     DEPTH               ; check if at the bottom of the recursion
         cpi     8
         mvi     a, TSCO             ; tie score. avoid branch by always loading
         rz
@@ -209,21 +210,15 @@ MINMAX                              ; the recursive scoring function
 
         ; save state, recurse, and restore state
 
-        lda     ALPHA
-        mov     d, a
-        lda     BETA
-        mov     e, a
-        push    d
-        lda     I
-        mov     b, a
-        lda     PM
-        mov     c, a
-        push    b
-        lda     V
-        mov     b, a
-        lda     DEPTH
-        mov     c, a
-        push    b
+        lhld    ALPHA               ; alpha in l and beta in h
+        push    h
+        mov     d, l                ; alpha
+        mov     e, h                ; beta
+        lhld    I                   ; I in l and PM in h
+        push    h
+        lhld    V                   ; V in l and DEPTH in h
+        push    h
+        mov     c, h                ; depth
         inr     c
         
         ; D = alpha, E = beta, C = depth, A = return score
@@ -231,28 +226,20 @@ MINMAX                              ; the recursive scoring function
         call    MINMAX
         sta     SC                  ; save the score
 
-        pop     b		    ; restore state after recursion
-        mov     a, c
-        sta     DEPTH
-        mov     a, b
-        sta     V
-        pop     b
-        mov     a, c
-        sta     PM
-        mov     a, b
-        sta     I
-        pop     d
-        mov     a, d
-        sta     ALPHA
-        mov     a, e
-        sta     BETA
+        pop     h                   ; restore state after recursion
+        shld    V                   ; restore V and DEPTH
+        mov     d, h                ; save DEPTH
+        pop     h                   
+        shld    I                   ; restore I and PM
+        pop     h
+        shld    ALPHA               ; restore ALPHA and BETA
 
         pop     b                   ; restore the 0 in the board where the turn was placed
         mvi     a, 0
         stax    b
 
   MMENDD:
-        lda     DEPTH		    ; is the depth odd/even: max/min
+        mov     a, d                ; is the depth odd/even: max/min
         ani     1
         jz      MMSMIN              ; min/max check
 
@@ -260,12 +247,12 @@ MINMAX                              ; the recursive scoring function
         cpi     WSCO                ; V - WSCO. If zero, can't do better.
         rz
 
-        lda     V
-        mov     b, a
         lda     SC
-        cmp     b
-        jm      MMNOMAX
-        jz      MMNOMAX             ; no j <= 0 instruction on 8085
+        mov     b, a
+        lda     V
+        cmp     b                   ; V - SC
+        jp      MMNOMAX             ; jp is >= 0. The comparision is backwards due to no jle or jgz on 8080
+        mov     a, b
         sta     V                   ; update V with the new best score
   MMNOMAX:
         lda     ALPHA
@@ -282,7 +269,7 @@ MINMAX                              ; the recursive scoring function
         jm      MMLEND
         lda     V
         ret                         ; Alpha pruning
-  MMSMIN:			    ; minimize case
+  MMSMIN:                           ; minimize case
         lda     SC
         cpi     LSCO                ; V - LSCO. If zero, can't do worse.
         rz
@@ -304,9 +291,8 @@ MINMAX                              ; the recursive scoring function
         mov     b, a
         lda     ALPHA
         cmp     b                   ; Alpha - Beta
-        jm      MMLEND
-        lda     V
-        ret                         ; Beta pruning
+        lda     V                   ; potentially wasted load, but saves a branch
+        rp                          ; Beta pruning
   MMLEND:
         lda     I
         inr     a
@@ -314,11 +300,10 @@ MINMAX                              ; the recursive scoring function
         cpi     9                   ; a - 9.  Want to loop for 0..8
         jm      MMLOOP
 
-  MMDONE:
         lda     V
         ret
 
-WINNER:  ; returns winner (0, 1, 2) in register a
+WINNER:  ; returns winner ( 0 = TIE, 1 = X, 2 = O ) in register a
         ;  0 1 2
         ;  3 4 5
         ;  6 7 8
@@ -401,7 +386,7 @@ WINNER:  ; returns winner (0, 1, 2) in register a
   L05045:
         lda     BOARD + 2
         cpi     0
-        jz      WINONE
+        rz      
         lxi     h, BOARD + 4
         cmp     m
         jnz     WINONE
@@ -459,7 +444,7 @@ puthl:
         lxi     d, -1               ; DE = quotient. There is no 16-bit subtraction,
   dgtdiv:
         dad     b                   ; so we just add a negative value,
-        inx     d	            
+        inx     d                   
         jc      dgtdiv              ; while that overflows.
         mvi     a, '0'+10           ; The loop runs once too much so we're 10 out
         add     l                   ; The remainder (minus 10) is in L
@@ -474,27 +459,26 @@ puthl:
         mvi     c, PRSTR            ; Prepare to call CP/M and print the string
         pop     d                   ; Put the string pointer from the stack in DE
         lda     negf                ; See if the number was supposed to be negative
-        inr     a	            
+        inr     a                   
         jnz     bdos                ; If not, print the string we have and return
         dcx     d                   ; But if so, we need to add a minus in front
-        mvi     a, '-'	            
-        stax    d	            
+        mvi     a, '-'              
+        stax    d                   
         jmp     bdos                ; And only then print the string. bdos will return to caller
-			            
+                                    
 negf:   db      0                   ; Space for negative flag
         db      '-00000'            
-num:    db      '$'                 ; Space for number
+num:    db      '$'                 ; Space for number. cp/m strings end with a dollar sign
 CRLF:   db      10,13,0
 STRWIN: db      'winner ', 0
 BOARD:  db      0,0,0,0,0,0,0,0,0
-STRHEX: db      0,0,0,0,0,0,0,0,0
-V:      db      0                   ; value in minmax
-I:      db      0                   ; Index in 0..8 loop in MinMax
 SC:     db      0                   ; score in MinMax
-PM:     db      0                   ; piece move -- current move in MinMax
-DEPTH:  db      0                   ; current depth of recursion
+I:      db      0                   ; Index in 0..8 loop in MinMax
+PM:     db      0                   ; piece move -- current move in MinMax. must be after I
+V:      db      0                   ; value in minmax
+DEPTH:  db      0                   ; current depth of recursion. must be after V
 ALPHA:  db      0                   ; Alpha in a/b pruning
-BETA:   db      0                   ; Beta in a/b pruning
+BETA:   db      0                   ; Beta in a/b pruning. must be after ALPHA
 MOVES:  dw      0                   ; Count of moves examined (to validate the app)
 ITERS:  dw      0                   ; iterations of running the app
 
