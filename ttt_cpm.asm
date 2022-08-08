@@ -6,29 +6,24 @@
 ; tttcpm
 
 
-BDOS EQU 5
+BDOS EQU  5
 WCONF EQU 2
+PRSTR EQU 9
 
-XSCO    equ     9       ; maximum score
-NSCO    equ     2       ; minimum score
-WSCO    equ     6       ; winning score
-TSCO    equ     5       ; tie score
-LSCO    equ     4       ; losing score
-XPIECE  equ     1       ; X move piece
-OPIECE  equ     2       ; Y move piece
+ITERATIONS equ  1000    ; # of times to run (max 32767)
+XSCO        equ     9   ; maximum score
+NSCO        equ     2   ; minimum score
+WSCO        equ     6   ; winning score
+TSCO        equ     5   ; tie score
+LSCO        equ     4   ; losing score
+XPIECE      equ     1   ; X move piece
+OPIECE      equ     2   ; Y move piece
 
         org     100H
 
         push    b
         push    d
         push    h
-
-;        mvi     c, WCONF
-;        mvi     e, '$'
-;        call    BDOS
-
-;        mvi     a, 'a'
-;        call    DISONE
 
 AGAIN:
         lhld    0
@@ -71,16 +66,21 @@ AGAIN:
         sta     BOARD + 4
         call    RUNMM
                                  
+        lhld    ITERS
+        inx     h
+        shld    ITERS
+        lxi     b, ITERATIONS
+        mov     a, b
+        cmp     h
+        jnz     AGAIN
+        mov     a, c
+        cmp     l
+        jnz     AGAIN
+
         lhld    MOVES
-        call    DIHEX
+        call    puthl
         lxi     h, CRLF
         call    DISPLY
-
-        lda     ITERS
-        inr     a
-        sta     ITERS
-        cpi     10
-        jnz     AGAIN
 
         pop     h
         pop     d
@@ -90,7 +90,7 @@ AGAIN:
         ret
 
 CRLF:   db      10,13,0
-STRWIN: db      'w', 'i', 'n', 'n', 'e', 'r', ' ', 0
+STRWIN: db      'winner ', 0
 BOARD:  db      0,0,0,0,0,0,0,0,0
 STRHEX: db      0,0,0,0,0,0,0,0,0
 V:      db      0      ; value in minmax
@@ -100,8 +100,8 @@ PM:     db      0      ; piece move -- current move in MinMax
 DEPTH:  db      0      ; current depth of recursion
 ALPHA:  db      0      ; Alpha in a/b pruning
 BETA:   db      0      ; Beta in a/b pruning
-MOVES:  db      0, 0   ; Count of moves examined (to validate the app)
-ITERS:  db      0      ; iterations of running the app
+MOVES:  dw      0      ; Count of moves examined (to validate the app)
+ITERS:  dw      0      ; iterations of running the app
 
 DISONE:                  ; display the character in a
         push    b
@@ -150,16 +150,6 @@ RUNMM:               ; Run the MINMAX function for a given board
 
         ret
 
-INCMC                    ; increment move count
-        push    h
-
-        lhld    MOVES
-        inx     h
-        shld    MOVES
-
-        pop     h
-        ret
-
 MINMAX                   ; the recursive scoring function
         mov     a, c     ; save depth
         sta     DEPTH
@@ -169,7 +159,9 @@ MINMAX                   ; the recursive scoring function
         sta     BETA
 
 ; debug
-        call    INCMC
+        lhld    MOVES
+        inx     h
+        shld    MOVES
 ; enddebug
 
         lda     DEPTH           ; # of pieces played so far == 1 + depth
@@ -178,27 +170,25 @@ MINMAX                   ; the recursive scoring function
 
         call    WINNER         ; look for a winning position
 
-        cpi     XPIECE
-        jnz     MMNOTX
-        mvi     a, WSCO        ; winning score
-        ret
+        cpi     0
+        jz      CHKDEPTH
 
-MMNOTX  cpi     OPIECE
-        jnz     MMNOTO
+        cpi     XPIECE
+        mvi     a, WSCO        ; winning score. avoid branch by always loading
+        rz
+
         mvi     a, LSCO        ; losing score
         ret
 
-MMNOTO  lda     DEPTH
+CHKDEPTH
+        lda     DEPTH
         cpi     8
-        jnz     SKIPWIN
-        mvi     a, TSCO        ; tie score
-        ret
+        mvi     a, TSCO        ; tie score. avoid branch by always loading
+        rz
 
 SKIPWIN
         lda     DEPTH          ; min/max check
-        mov     c, a
-        mvi     a, 1
-        ana     c
+        ani     1
         jz      MMMIN        
 
         mvi     a, NSCO        ; maximizing odd depths
@@ -275,12 +265,14 @@ MMLOOP  mvi     b, 0            ; check if we can write to this board position
 
 MMENDD
         lda     DEPTH
-        mov     c, a
-        mvi     a, 1
-        ana     c
+        ani     1
         jz      MMSMIN           ; min/max check
 
-        lda     V                ; maximize case
+        lda     SC                ; maximize case
+        cpi     WSCO             ; V - WSCO. If zero, can't do better.
+        rz
+
+        lda     V
         mov     b, a
         lda     SC
         cmp     b
@@ -299,14 +291,14 @@ MMNOALP
         mov     b, a
         lda     ALPHA
         cmp     b                ; Alpha - Beta
-        jm      MMXEAR
+        jm      MMLEND
         lda     V
         ret                      ; Alpha pruning
-MMXEAR  lda     V
-        cpi     WSCO             ; V - WSCO. If zero, can't do better.
-        jnz     MMLEND
-        ret
 MMSMIN
+        lda     SC
+        cpi     LSCO             ; V - LSCO. If zero, can't do worse.
+        rz
+
         lda     V
         mov     b, a
         lda     SC
@@ -324,15 +316,10 @@ MMNOBET
         mov     b, a
         lda     ALPHA
         cmp     b                ; Alpha - Beta
-        jm      MMNEAR
+        jm      MMLEND
         lda     V
         ret                      ; Beta pruning
-MMNEAR  lda     V
-        cpi     LSCO             ; V - LSCO. If zero, can't do worse.
-        jnz     MMLEND
-        ret
 MMLEND
-
         lda     I
         inr     a
         sta     I
@@ -358,8 +345,7 @@ L05010
         jnz     L05015
         lxi     h, BOARD + 2
         cmp     m
-        jnz     L05015
-        ret
+        rz
 
 L05015
         lxi     h, BOARD + 3
@@ -367,8 +353,7 @@ L05015
         jnz     L05020
         lxi     h, BOARD + 6
         cmp     m
-        jnz     L05020
-        ret
+        rz
 
 L05020        
         lda     BOARD + 3
@@ -379,8 +364,7 @@ L05020
         jnz     L05025
         lxi     h, BOARD + 5
         cmp     m
-        jnz     L05025
-        ret
+        rz
 
 L05025        
         lda     BOARD + 6
@@ -391,8 +375,7 @@ L05025
         jnz     L05030
         lxi     h, BOARD + 8
         cmp     m
-        jnz     L05030
-        ret
+        rz
 
 L05030
         lda     BOARD + 1
@@ -403,8 +386,7 @@ L05030
         jnz     L05035
         lxi     h, BOARD + 7
         cmp     m
-        jnz     L05035
-        ret
+        rz
 
 L05035
         lda     BOARD + 2
@@ -415,8 +397,7 @@ L05035
         jnz     L05040
         lxi     h, BOARD + 8
         cmp     m
-        jnz     L05040
-        ret
+        rz
 
 L05040
         lda     BOARD
@@ -427,8 +408,7 @@ L05040
         jnz     L05045
         lxi     h, BOARD + 8
         cmp     m
-        jnz     L05045
-        ret
+        rz
 
 L05045
         lda     BOARD + 2
@@ -439,8 +419,7 @@ L05045
         jnz     WINONE
         lxi     h, BOARD + 6
         cmp     m
-        jnz     WINONE
-        ret
+        rz
 
 WINONE
         mvi     a, 0           ; no winning piece
@@ -532,6 +511,51 @@ NIB4
         pop     d
         pop     h
         ret
+
+neg$hl:
+    mov      a, h
+    cma
+    mov      h, a
+    mov      a, l
+    cma
+    mov      l, a
+    inx      h
+    ret
+
+puthl:  mov     a,h     ; Get the sign bit of the integer,
+        ral             ; which is the top bit of the high byte
+        sbb     a       ; A=00 if positive, FF if negative
+        sta     negf    ; Store it as the negative flag
+        cnz     neg$hl  ; And if HL was negative, make it positive
+        lxi     d,num   ; Load pointer to end of number string
+        push    d       ; Onto the stack
+        lxi     b,-10   ; Divide by ten (by trial subtraction)
+digit:  lxi     d,-1    ; DE = quotient. There is no 16-bit subtraction,
+dgtdiv: dad     b       ; so we just add a negative value,
+        inx     d
+        jc      dgtdiv  ; while that overflows.
+        mvi     a,'0'+10        ; The loop runs once too much so we're 10 out
+        add     l       ; The remainder (minus 10) is in L
+        xthl            ; Swap HL with top of stack (i.e., the string pointer)
+        dcx     h       ; Go back one byte
+        mov     m,a     ; And store the digit
+        xthl            ; Put the pointer back on the stack
+        xchg            ; Do all of this again with the quotient
+        mov     a,h     ; If it is zero, we're done
+        ora     l
+        jnz     digit   ; But if not, there are more digits
+        mvi     c, PRSTR  ; Prepare to call CP/M and print the string
+        pop     d       ; Put the string pointer from the stack in DE
+        lda     negf    ; See if the number was supposed to be negative
+        inr     a
+        jnz     bdos    ; If not, print the string we have and return
+        dcx     d       ; But if so, we need to add a minus in front
+        mvi     a,'-'
+        stax    d
+        jmp     bdos    ; And only then print the string
+negf:   db      0       ; Space for negative flag
+        db      '-00000'
+num:    db      '$'     ; Space for number
 
         end
 
