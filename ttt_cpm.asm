@@ -7,6 +7,7 @@
 ;
 ; Runs in about 2.5s per iteration on CP/M with 8080 at 2.5 Mhz
 
+; cp/m specific constants
 
 BDOS EQU  5
 WCONF EQU 2
@@ -28,7 +29,7 @@ org     100H
         push    h
 
   AGAIN:
-        lhld    0
+        lxi     h, 0
         shld    MOVES               ; set to 0 each iteration to avoid overflow
         mvi     a, 0
         sta     V
@@ -39,34 +40,23 @@ org     100H
         sta     ALPHA
         sta     BETA
 
+        mvi     a, 1                
+        sta     BOARD
+        call    RUNMM               ; first of 3 unique board configurations
+        mvi     a, 0 
+        sta     BOARD
+
+        mvi     a, 1
+        sta     BOARD + 1
+        call    RUNMM               ; second
         mvi     a, 0
-        sta     BOARD
         sta     BOARD + 1
-        sta     BOARD + 2
-        sta     BOARD + 3
-        sta     BOARD + 4
-        sta     BOARD + 5
-        sta     BOARD + 6
-        sta     BOARD + 7
-        sta     BOARD + 8
-        sta     MOVES
-        sta     MOVES + 1
 
-        mvi     a, 1                ; First of 3 unique board configurations
-        sta     BOARD
-        call    RUNMM
-
-        mvi     a, 0                ; Second
-        sta     BOARD
-        mvi     a, 1
-        sta     BOARD + 1
-        call    RUNMM
-   
-        mvi     a, 0                ; Third
-        sta     BOARD + 1
         mvi     a, 1
         sta     BOARD + 4
-        call    RUNMM
+        call    RUNMM               ; third
+        mvi     a, 0
+        sta     BOARD + 4
                                  
         lhld    ITERS               ; increment iteration count and loop until done
         inx     h
@@ -80,7 +70,7 @@ org     100H
         jnz     AGAIN
 
         lhld    MOVES
-        call    puthl
+        call    PUTHL
         lxi     h, CRLF
         call    DISPLY
 
@@ -119,36 +109,22 @@ DISDIG:                             ; Argument # 0-9 is in register B
         ret
 
 RUNMM:                              ; Run the MINMAX function for a given board
-                                    ; D = alpha, E = beta, C = depth
-        mvi     d, NSCO
-        mvi     e, XSCO
-        mvi     c, 0
-        
+        mvi     d, NSCO             ; alpha
+        mvi     e, XSCO             ; beta
+        mvi     c, 0                ; depth
         call    MINMAX
-        mov     b,a
-
-; display the winner (whould should always be 5 / TSCO / tie score
-; comment out for now because it works
-;        lxi     h, STRWIN
-;        call    DISPLY
-;        call    DISDIG
-;        lxi     h, CRLF
-;        call    DISPLY
-
         ret
 
-MINMAX                              ; the recursive scoring function
+MINMAX:                             ; the recursive scoring function
         mov     a, c                ; save depth, alpha, and beta from c, d, and e
         sta     DEPTH
         mov     l, d
         mov     h, e
         shld    ALPHA               ; write alpha and beta
 
-; debug
         lhld    MOVES
         inx     h
         shld    MOVES
-; enddebug
 
         mov     a, c                ; # of pieces played so far == 1 + depth
         cpi     4                   ; DEPTH - 4  (if 4 or fewer pieces played, no possible winner)
@@ -420,7 +396,7 @@ DISPLY:                             ; display null-terminated string pointed to 
         pop     h
         ret
 
-neg$hl:                             ; negate hl via twos complement -- complement + 1
+NEGHL:                             ; negate hl via twos complement -- complement + 1
         mov     a, h
         cma
         mov     h, a
@@ -430,22 +406,21 @@ neg$hl:                             ; negate hl via twos complement -- complemen
         inx     h
         ret
 
-; I found puthl on the internet
-puthl:
+PUTHL:
         mov     a, h                ; Get the sign bit of the integer,
         ral                         ; which is the top bit of the high byte
         sbb     a                   ; A=00 if positive, FF if negative
-        sta     negf                ; Store it as the negative flag
-        cnz     neg$hl              ; And if HL was negative, make it positive
-        lxi     d, num              ; Load pointer to end of number string
+        sta     NEGF                ; Store it as the negative flag
+        cnz     NEGHL              ; And if HL was negative, make it positive
+        lxi     d, NUM              ; Load pointer to end of number string
         push    d                   ; Onto the stack
         lxi     b, -10              ; Divide by ten (by trial subtraction)
-  digit:
+  DIGIT:
         lxi     d, -1               ; DE = quotient. There is no 16-bit subtraction,
-  dgtdiv:
+  DGTDIV:
         dad     b                   ; so we just add a negative value,
         inx     d                   
-        jc      dgtdiv              ; while that overflows.
+        jc      DGTDIV              ; while that overflows.
         mvi     a, '0'+10           ; The loop runs once too much so we're 10 out
         add     l                   ; The remainder (minus 10) is in L
         xthl                        ; Swap HL with top of stack (i.e., the string pointer)
@@ -455,10 +430,10 @@ puthl:
         xchg                        ; Do all of this again with the quotient
         mov     a, h                ; If it is zero, we're done
         ora     l
-        jnz     digit               ; But if not, there are more digits
+        jnz     DIGIT               ; But if not, there are more digits
         mvi     c, PRSTR            ; Prepare to call CP/M and print the string
         pop     d                   ; Put the string pointer from the stack in DE
-        lda     negf                ; See if the number was supposed to be negative
+        lda     NEGF                ; See if the number was supposed to be negative
         inr     a                   
         jnz     bdos                ; If not, print the string we have and return
         dcx     d                   ; But if so, we need to add a minus in front
@@ -466,11 +441,11 @@ puthl:
         stax    d                   
         jmp     bdos                ; And only then print the string. bdos will return to caller
                                     
-negf:   db      0                   ; Space for negative flag
+NEGF:   db      0                   ; Space for negative flag
         db      '-00000'            
-num:    db      '$'                 ; Space for number. cp/m strings end with a dollar sign
-CRLF:   db      10,13,0
+NUM:    db      '$'                 ; Space for number. cp/m strings end with a dollar sign
 STRWIN: db      'winner ', 0
+CRLF:   db      10,13,0
 BOARD:  db      0,0,0,0,0,0,0,0,0
 SC:     db      0                   ; score in MinMax
 I:      db      0                   ; Index in 0..8 loop in MinMax
