@@ -1,0 +1,25 @@
+1000 CLEAR 256, 51000
+1005 DEFINT B-Z
+1010 P = -14536
+1020 CLS
+1030 PRINT "load start: ";TIME$
+4000 OPEN "T.DO" FOR INPUT AS 1
+4104 REM Throw away the first 6 bytes; they are file headers (address, length, and 1st instruction)
+4105 A$ = INPUT$( 12, 1 )
+4120 IF EOF( 1 ) THEN GOTO 4500
+4130 L = ASC( INPUT$( 1, 1 ) )
+4140 R = ASC( INPUT$( 1, 1 ) )
+4150 IF L < 60 THEN L = L - 48 ELSE L = L - 87
+4151 IF R < 60 THEN R = R - 48 ELSE R = R - 87
+4170 POKE P, L * 16 + R
+4175 P = P + 1
+4200 GOTO 4120
+4500 CLOSE 1
+4510 PRINT "load end: ";TIME$
+4600 REM CLS
+4610 PRINT "start: ";TIME$
+4620 CALL 51000, 0, 0
+4630 PRINT "end: ";TIME$
+4640 END
+
+
