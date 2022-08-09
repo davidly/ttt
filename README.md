@@ -87,7 +87,7 @@ To run ttt_trs80.asm on a TRS-80. (renamed as ttt.asm)
     In the integrated IDE, create a project for ttt.asm
     Assemble and link it, which copies ttt.co to the emulator, then invoke on the emulator with something like:
     
-    	Clear 256, 50000
+        Clear 256, 50000
         10 print time$
         20 runm "ttt"
         30 print "  ";time$
