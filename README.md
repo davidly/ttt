@@ -95,20 +95,21 @@ To run ttt_trs80.asm on a TRS-80. (renamed as ttt.asm)
     To run on an actual TRS-80:
     
         Hd /d /n ttt.co >t.do   -- this creates a 7-bit ascii file that can be transferred. HD is another repo on my github
-	Use PuTTY or similar app to connect to the serial port and configure for 9600 baud, 8 bits, even parity, 1 stop bit, and xon/xoff enable. 
-	Then exit putty
-	Transfer lt.ba, which translate back to a .co file and run the binary
+        Use PuTTY or similar app to connect to the serial port and configure for 9600 baud, 8 bits, even parity, 1 stop bit, and xon/xoff enable. 
+        Exit putty.
+	
+        Transfer lt.ba, which translate back to a .co file and run the binary:
 	
 	    In basic (only basic can transfer .ba files and only TERMINAL can copy .DO files)
 	    Load "com:88E1E"
 	    On the pc, copy lt.ba com3
-	    save the code to the RAM filesystem as lt.ba
+	    Save the code to the RAM filesystem as lt.ba
 		
-	On the trs-80, go into terminal and configure serial to the same settings as above.
-	Start terminal and press f2 for download. Specify t.do
-	On the pc, copy t.do com3
-	On the trs-80, F8 to exit and say yes to disconnect, then f8 to go back to the root menu
-	Run lt.ba, which loads t.do, converts it to binary in RAM, and executes the app
+        On the trs-80, go into terminal and configure serial to the same settings as above.
+        Start terminal and press f2 for download. Specify t.do
+        On the pc, copy t.do com3
+        On the trs-80, F8 to exit and say yes to disconnect, then f8 to go back to the root menu
+        Run lt.ba, which loads t.do, converts it to binary in RAM, and executes the app
 
 
 ![image](https://user-images.githubusercontent.com/1497921/183562681-0f8222b7-0ca5-4bbe-877e-baf759cafb25.png)
