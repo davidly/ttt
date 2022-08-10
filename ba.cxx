@@ -1,11 +1,12 @@
-// a very basic basic interpreter. and compilers for x64 on Windows and arm64 on Apple Silicon.
+// A very basic BASIC interpreter.
+// Also, compilers for x64 on Windows, arm64 on Apple Silicon, and 8080 on cp/m 2.2.
 // implements a small subset of gw-basic; just enough to run a tic-tac-toe proof of failure app.
 // a few of the many limitations:
 //    -- based on TRS-80 Model 100 gw-basic.
-//    -- only integer variables (4 byte) are supported
+//    -- only integer variables (4 byte) (2 bytes for 8080 compiler) are supported
 //    -- variables can only be two characters long plus a mandatory %
 //    -- string values work in PRINT statements and nowhere else
-//    -- a new token ELAP$ for PRINT that shows elapsed time including milliseconds
+//    -- a new token ELAP$ for PRINT that shows elapsed time including microseconds
 //    -- keywords supported: (see "Operators" below).
 //    -- Not supported: DEF, PLAY, OPEN, INKEY$, DATA, READ, and a very long list of others.
 //    -- only arrays of 1 and 2 dimensions are supported
@@ -64,7 +65,6 @@ vector<LineOfCode> g_linesOfCode;
 #endif
 
 #ifdef __APPLE__
-    // __builtin_readcyclecounter() results in an illegal instruction exception at runtime.
     // On an M1 Mac, this yields much faster/better results than on Windows and Linux x64 machines.
  
     uint64_t __rdtsc( void )
@@ -121,7 +121,7 @@ const char * Operators[] = {
     "COLON", "SEMICOLON", "EXPRESSION", "TIME$", "ELAP$", "TRON", "TROFF",
     "ATOMIC", "INC", "DEC", "NOT", "INVALID" };
 
-const char * OperatorInstruction[] = { 
+const char * OperatorInstructionX64[] = { 
     0, 0, 0, 0, 0, 0,                          // filler
     0, 0, 0, 0, 0,                             // filler
     "imul", "idiv", "add", "sub", "sete", "setne", "setle", "setge", "setl", "setg", "and", "or", "xor", };
@@ -149,19 +149,19 @@ const char * ConditionsNotArm64[] = {
 
 // jump instruction if the condition is true
 
-const char * RelationalInstruction[] = { 
+const char * RelationalInstructionX64[] = { 
     0, 0, 0, 0, 0, 0,                          // filler
     0, 0, 0, 0, 0,                             // filler
     0, 0, 0, 0, "je", "jne", "jle", "jge", "jl", "jg", 0, 0, 0, };
 
 // jump instruction if the condition is false
 
-const char * RelationalNotInstruction[] = { 
+const char * RelationalNotInstructionX64[] = { 
     0, 0, 0, 0, 0, 0,                          // filler
     0, 0, 0, 0, 0,                             // filler
     0, 0, 0, 0, "jne", "je", "jg", "jl", "jge", "jle", 0, 0, 0, };
 
-const char * CMovInstruction[] = { 
+const char * CMovInstructionX64[] = { 
     0, 0, 0, 0, 0, 0,                          // filler
     0, 0, 0, 0, 0,                             // filler
     0, 0, 0, 0, "cmove", "cmovne", "cmovle", "cmovge", "cmovl", "cmovg", 0, 0, 0, };
@@ -2158,7 +2158,7 @@ void GenerateOp( FILE * fp, map<string, Variable> const & varmap, vector<TokenVa
             fprintf( fp, "    cmp      %s, DWORD PTR [%s + %d]\n", GenVariableReg( varmap, vals[ left ].strValue ),
                     GenVariableName( vals[ right ].strValue ), 4 * vals[ rightArray ].value );
 
-            fprintf( fp, "    %-6s   al\n", OperatorInstruction[ op ] );
+            fprintf( fp, "    %-6s   al\n", OperatorInstructionX64[ op ] );
             fprintf( fp, "    movzx    rax, al\n" );
         }
         else if ( arm64Mac == g_AssemblyTarget )
@@ -2198,7 +2198,7 @@ void GenerateOp( FILE * fp, map<string, Variable> const & varmap, vector<TokenVa
             else
                 fprintf( fp, "    cmp      DWORD PTR [%s], %d\n", GenVariableName( varname ), vals[ right ].value );
 
-            fprintf( fp, "    %-6s   al\n", OperatorInstruction[ op ] );
+            fprintf( fp, "    %-6s   al\n", OperatorInstructionX64[ op ] );
             fprintf( fp, "    movzx    rax, al\n" );
         }
         else if ( arm64Mac == g_AssemblyTarget )
@@ -2337,7 +2337,7 @@ void GenerateOp( FILE * fp, map<string, Variable> const & varmap, vector<TokenVa
 
         if ( x64Win == g_AssemblyTarget )
         {
-            fprintf( fp, "    %-6s   al\n", OperatorInstruction[ op ] );
+            fprintf( fp, "    %-6s   al\n", OperatorInstructionX64[ op ] );
             fprintf( fp, "    movzx    rax, al\n" );
         }
         else if ( arm64Mac == g_AssemblyTarget )
@@ -2373,7 +2373,7 @@ void GenerateOp( FILE * fp, map<string, Variable> const & varmap, vector<TokenVa
             if ( Token::CONSTANT == vals[ right ].token )
             {
                 if ( x64Win == g_AssemblyTarget )
-                    fprintf( fp, "    %-6s   eax, %d\n", OperatorInstruction[ op ], vals[ right ].value );
+                    fprintf( fp, "    %-6s   eax, %d\n", OperatorInstructionX64[ op ], vals[ right ].value );
                 else if ( arm64Mac == g_AssemblyTarget )
                 {
                     LoadArm64Constant( fp, "x1", vals[ right ].value );
@@ -2386,14 +2386,14 @@ void GenerateOp( FILE * fp, map<string, Variable> const & varmap, vector<TokenVa
                 if ( IsVariableInReg( varmap, varname ) )
                 {
                     if ( x64Win == g_AssemblyTarget )
-                        fprintf( fp, "    %-6s   eax, %s\n", OperatorInstruction[ op ], GenVariableReg( varmap, varname ) );
+                        fprintf( fp, "    %-6s   eax, %s\n", OperatorInstructionX64[ op ], GenVariableReg( varmap, varname ) );
                     else if ( arm64Mac == g_AssemblyTarget )
                         fprintf( fp, "    %-6s   w0, w0, %s\n", OperatorInstructionArm64[ op ], GenVariableReg( varmap, varname ) );
                 }
                 else
                 {
                     if ( x64Win == g_AssemblyTarget )
-                        fprintf( fp, "    %-6s   eax, DWORD PTR [%s]\n", OperatorInstruction[ op ], GenVariableName( varname ) );
+                        fprintf( fp, "    %-6s   eax, DWORD PTR [%s]\n", OperatorInstructionX64[ op ], GenVariableName( varname ) );
                     else if ( arm64Mac == g_AssemblyTarget )
                     {
                         LoadArm64Address( fp, "x2", varname );
@@ -2405,7 +2405,7 @@ void GenerateOp( FILE * fp, map<string, Variable> const & varmap, vector<TokenVa
             else
             {
                 if ( x64Win == g_AssemblyTarget )
-                    fprintf( fp, "    %-6s   eax, DWORD PTR [%s + %d]\n", OperatorInstruction[ op ], GenVariableName( vals[ right ].strValue ),
+                    fprintf( fp, "    %-6s   eax, DWORD PTR [%s + %d]\n", OperatorInstructionX64[ op ], GenVariableName( vals[ right ].strValue ),
                              4 * vals[ rightArray ].value );
                 else if ( arm64Mac == g_AssemblyTarget )
                 {
@@ -2900,7 +2900,7 @@ void GenerateRelational( FILE * fp, map<string, Variable> const & varmap, int & 
         fprintf( fp, "    mov      rbx, rax\n" );
         fprintf( fp, "    pop      rax\n" );
         fprintf( fp, "    cmp      eax, ebx\n" );
-        fprintf( fp, "    %-6s   al\n", OperatorInstruction[ op ] );
+        fprintf( fp, "    %-6s   al\n", OperatorInstructionX64[ op ] );
         fprintf( fp, "    movzx    rax, al\n" );
     }
     else if ( arm64Mac == g_AssemblyTarget )
@@ -3060,7 +3060,7 @@ void GenerateLogical( FILE * fp, map<string, Variable> const & varmap, int & iTo
     if ( x64Win == g_AssemblyTarget )
     {
         fprintf( fp, "    pop     rbx\n" );
-        fprintf( fp, "    %-6s   rax, rbx\n", OperatorInstruction[ op ] );
+        fprintf( fp, "    %-6s   rax, rbx\n", OperatorInstructionX64[ op ] );
         //fprintf( fp, "    movzx    rax, al\n" );
     }
     else if ( arm64Mac == g_AssemblyTarget )
@@ -3341,7 +3341,7 @@ void GenerateOptimizedExpression( FILE * fp, map<string, Variable> const & varma
             if ( x64Win == g_AssemblyTarget )
             {
                 fprintf( fp, "    cmp      rax, rdx\n" );
-                fprintf( fp, "    %-6s   al\n", OperatorInstruction[ finalOp ] );
+                fprintf( fp, "    %-6s   al\n", OperatorInstructionX64[ finalOp ] );
                 fprintf( fp, "    movzx    rax, al\n" );
             }
             else if ( arm64Mac == g_AssemblyTarget )
@@ -3353,7 +3353,7 @@ void GenerateOptimizedExpression( FILE * fp, map<string, Variable> const & varma
         else
         {
             if ( x64Win == g_AssemblyTarget )
-                fprintf( fp, "    %-6s   rax, rdx\n", OperatorInstruction[ finalOp ] );
+                fprintf( fp, "    %-6s   rax, rdx\n", OperatorInstructionX64[ finalOp ] );
             else if ( arm64Mac == g_AssemblyTarget )
                 fprintf( fp, "    %-6s   w0, w0, w5\n", OperatorInstructionArm64[ finalOp ] );
 
@@ -3417,6 +3417,15 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
 
     if ( x64Win == g_AssemblyTarget )
     {
+        fprintf( fp, "; Build on Windows using a .bat script like this:\n" );
+        fprintf( fp, "; ml64 /nologo %%1.asm /Zd /Zf /Zi /link /OPT:REF /nologo ^\n" );
+        fprintf( fp, ";      /subsystem:console ^\n" );
+        fprintf( fp, ";      /defaultlib:kernel32.lib ^\n" );
+        fprintf( fp, ";      /defaultlib:user32.lib ^\n" );
+        fprintf( fp, ";      /defaultlib:libucrt.lib ^\n" );
+        fprintf( fp, ";      /defaultlib:libcmt.lib ^\n" );
+        fprintf( fp, ";      /entry:mainCRTStartup\n" );
+
         fprintf( fp, "extern printf: PROC\n" );
         fprintf( fp, "extern exit: PROC\n" );
         fprintf( fp, "extern QueryPerformanceCounter: PROC\n" );
@@ -3426,6 +3435,10 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
     }
     else if ( arm64Mac == g_AssemblyTarget )
     {
+        fprintf( fp, "; Build on an Apple Silicon Mac using a shell script like this:\n" );
+        fprintf( fp, ";    as -arch arm64 $1.s -o $1.o\n" );
+        fprintf( fp, ";    ld $1.o -o $1 -syslibroot 'xcrun -sdk macos --show-sdk-path' -e _start -L /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib -lSystem\n" );
+
         fprintf( fp, ".global _start\n" );
         fprintf( fp, ".data\n" );
         fprintf( fp, ".macro save_volatile_registers\n" );
@@ -3443,7 +3456,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
     }
     else if ( i8080CPM == g_AssemblyTarget )
     {
-        fprintf( fp, "; assemble, load, and run using for test.asm:\n" );
+        fprintf( fp, "; assemble, load, and run on 8080/Z80 CP/M 2.2 using the following for test.asm:\n" );
         fprintf( fp, ";   asm test\n" );
         fprintf( fp, ";   load test\n" );
         fprintf( fp, ";   test\n" );
@@ -4727,7 +4740,7 @@ label_no_array_eq_optimization:
                         fprintf( fp, "    cmp      %s, %s\n", GenVariableReg( varmap, vals[ t + 1 ].strValue ),
                                                               GenVariableReg( varmap, vals[ t + 3 ].strValue ) );
 
-                        fprintf( fp, "    %-6s   %s, %s\n", CMovInstruction[ vals[ t + 2 ].token ],
+                        fprintf( fp, "    %-6s   %s, %s\n", CMovInstructionX64[ vals[ t + 2 ].token ],
                                 GenVariableReg( varmap, vals[ t + 5 ].strValue ),
                                 GenVariableReg( varmap, vals[ t + 8 ].strValue ) );
                     }
@@ -4787,12 +4800,12 @@ label_no_array_eq_optimization:
                         fprintf( fp, "    cmp      %s, DWORD PTR [ %s + %d ]\n", GenVariableReg( varmap, vals[ t + 1 ].strValue ),
                                                                                  GenVariableName( vals[ t + 3 ].strValue ),
                                                                                  4 * vals[ t + 6 ].value );
-                        fprintf( fp, "    %-6s   SHORT line_number_%zd\n", RelationalNotInstruction[ vals[ t + 2 ].token ], l + 1 );
+                        fprintf( fp, "    %-6s   SHORT line_number_%zd\n", RelationalNotInstructionX64[ vals[ t + 2 ].token ], l + 1 );
 
                         fprintf( fp, "    cmp      %s, DWORD PTR [ %s + %d ]\n", GenVariableReg( varmap, vals[ t + 9 ].strValue ),
                                                                                  GenVariableName( vals[ t + 11 ].strValue ),
                                                                                  4 * vals[ t + 14 ].value );
-                        fprintf( fp, "    %-6s   label_gosub_return\n", RelationalInstruction[ vals[ t + 10 ].token ] );
+                        fprintf( fp, "    %-6s   label_gosub_return\n", RelationalInstructionX64[ vals[ t + 10 ].token ] );
                     }
                     else if ( arm64Mac == g_AssemblyTarget )
                     {
@@ -5070,9 +5083,9 @@ label_no_array_eq_optimization:
                         fprintf( fp, "    mov      eax, %d\n", vals[ t + 8 ].value );
                         fprintf( fp, "    cmp      %s, %d\n", GenVariableReg( varmap, vals[ t + 1 ].strValue ),
                                                               vals[ t + 3 ].value );
-                        fprintf( fp, "    %-6s   %s, eax\n", CMovInstruction[ vals[ t + 2 ].token ],
+                        fprintf( fp, "    %-6s   %s, eax\n", CMovInstructionX64[ vals[ t + 2 ].token ],
                                                              GenVariableReg( varmap, vals[ t + 5 ].strValue ) );
-                        fprintf( fp, "    %-6s   line_number_%d\n", RelationalInstruction[ vals[ t + 2 ].token ],
+                        fprintf( fp, "    %-6s   line_number_%d\n", RelationalInstructionX64[ vals[ t + 2 ].token ],
                                                                     vals[ t + 9 ].value );
                     }
                     else if ( arm64Mac == g_AssemblyTarget )
@@ -5443,7 +5456,7 @@ label_no_array_eq_optimization:
                     if ( Token::GOTO == vals[ t ].token )
                     {
                         if ( x64Win == g_AssemblyTarget )
-                            fprintf( fp, "    %-6s   line_number_%d\n", RelationalInstruction[ ifOp ], vals[ t ].value );
+                            fprintf( fp, "    %-6s   line_number_%d\n", RelationalInstructionX64[ ifOp ], vals[ t ].value );
                         else if ( arm64Mac == g_AssemblyTarget )
                             fprintf( fp, "    b.%s     line_number_%d\n", ConditionsArm64[ ifOp ], vals[ t ].value );
                         break;
@@ -5451,7 +5464,7 @@ label_no_array_eq_optimization:
                     else if ( Token::RETURN == vals[ t ].token )
                     {
                         if ( x64Win == g_AssemblyTarget )
-                            fprintf( fp, "    %-6s   label_gosub_return\n", RelationalInstruction[ ifOp ] );
+                            fprintf( fp, "    %-6s   label_gosub_return\n", RelationalInstructionX64[ ifOp ] );
                         else if ( arm64Mac == g_AssemblyTarget )
                             fprintf( fp, "    b.%s      label_gosub_return\n", ConditionsArm64[ ifOp ] );
 
@@ -5462,14 +5475,14 @@ label_no_array_eq_optimization:
                         if ( vals[ t - 1 ].value ) // is there an else clause?
                         {
                             if ( x64Win == g_AssemblyTarget )
-                                fprintf( fp, "    %-6s   SHORT label_else_%zd\n", RelationalNotInstruction[ ifOp ], l );
+                                fprintf( fp, "    %-6s   SHORT label_else_%zd\n", RelationalNotInstructionX64[ ifOp ], l );
                             else if ( arm64Mac == g_AssemblyTarget )
                                 fprintf( fp, "    b.%s      label_else_%zd\n", ConditionsNotArm64[ ifOp ], l );
                         }
                         else
                         {
                             if ( x64Win == g_AssemblyTarget )
-                                fprintf( fp, "    %-6s   SHORT line_number_%zd\n", RelationalNotInstruction[ ifOp ], l + 1 );
+                                fprintf( fp, "    %-6s   SHORT line_number_%zd\n", RelationalNotInstructionX64[ ifOp ], l + 1 );
                             else if ( arm64Mac == g_AssemblyTarget )
                                 fprintf( fp, "    b.%s    line_number_%zd\n", ConditionsNotArm64[ ifOp ], l + 1 );
                         }
