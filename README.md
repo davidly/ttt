@@ -3,6 +3,8 @@ tic-tac-toe and its applicability to nuclear war and WOPR
 
 Source code referred to here: https://medium.com/@davidly_33504/tic-tac-toe-and-its-applicability-to-nuclear-war-and-wopr-13be09ec05c9
 
+In short, this repo contains various implementations of code to prove that you can't win at tic-tac-toe if the opponent is competent.
+
 Aside from tic-tac-toe, this code provides examples of how to do things in various languages (go, Python, Lua, Julia, Rust, Visual Basic, Pascal, C#, C++, Swift, x64 and 8080 assembly languages) including concurrency, high resolution timing, pointers to functions, passing arguments by reference and value, basic control flow, atomic increments, etc.
 
 To build:
