@@ -12,6 +12,7 @@ To build:
     - MSVC: cl /nologo ttt.cxx /Ox /Qpar /Ob2 /O2i /EHac /Zi /D_AMD64_ /link ntdll.lib
     - GNU: g++ -DNDEBUG ttt.cxx -o ttt -O3 -fopenmp
     - Lua: lua54 ttt.lua
+    - LuaJit: read instructions in ttt_lj.cxx for how to build and run
     - Julia: julia -q --optimize=3 --check-bounds=no -t auto ttt.jl
     - Python: python3 ttt.py
     - MacOS clang: clang++ -DNDEBUG -Xpreprocessor -fopenmp -lomp -std=c++11 -Wc++11-extensions -I"$(brew --prefix libomp)/include" -L"$(brew --prefix libomp)/lib" ttt.cxx -O3 -o ttt
@@ -110,7 +111,7 @@ To run ttt_trs80.asm on a TRS-80. (renamed as ttt.asm)
         On the pc, copy t.do com3
         On the trs-80, F8 to exit and say yes to disconnect, then f8 to go back to the root menu
         Run lt.ba, which loads t.do, converts it to binary in RAM, and executes the app
+	
+![image](https://user-images.githubusercontent.com/1497921/184162035-2e1a9770-e5c4-437f-ba67-2d2018a9a61d.png)
 
-
-![image](https://user-images.githubusercontent.com/1497921/183562681-0f8222b7-0ca5-4bbe-877e-baf759cafb25.png)
 
