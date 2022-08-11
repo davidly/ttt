@@ -52,8 +52,9 @@ The BA version is faster than Python even when Python is using function pointers
 
 I'm not really proud of BA -- it was a very quickly written hack. But it shows that Python could benefit from some performance work.
 
-I added minimal support in BA to compile BASIC apps to x64 .asm files which can then be assembled into a Windows .exe file. Use the -a flag in BA
-to generate the .asm file, and ma.bat to create the .exe. For example:
+I added minimal support in BA to compile BASIC apps to x64 .asm files which can then be assembled into a Windows .exe file. 
+Afterwards I added codegen for Arm64 and 8080. Use the -a flag in BA to generate the x64 .asm file, and ma.bat to create 
+the .exe. For example:
 
     ba ttt_1dim.bas /x /a
     ma.bat ttt_1dim
@@ -86,6 +87,7 @@ To build BA:
     On a Mac: mmac.sh or this: clang++ ba.cxx -DNDEBUG -o ba -O3 -std=c++11
 
 To run ttt_trs80.asm on a TRS-80. (renamed as ttt.asm)
+
     Use Virtual T in TRS-80 Model 100 emulation mode and speed set to 2.4Mhz
     In the integrated IDE, create a project for ttt.asm
     Assemble and link it, which copies ttt.co to the emulator, then invoke on the emulator with something like:
@@ -99,9 +101,9 @@ To run ttt_trs80.asm on a TRS-80. (renamed as ttt.asm)
     
         Hd /d /n ttt.co >t.do   -- this creates a 7-bit ascii file that can be transferred. HD is another repo on my github
         Use PuTTY or similar app to connect to the serial port and configure for 9600 baud, 8 bits, even parity, 1 stop bit, and xon/xoff enable. 
-        Exit putty.
+        Exit putty so it frees the com port for the command below.
 	
-        Transfer lt.ba, which translate back to a .co file and run the binary:
+        Transfer lt.ba, which translates the assembly code back to a .co file and run the binary:
 	
 	    In basic (only basic can transfer .ba files and only TERMINAL can copy .DO files)
 	    Load "com:88E1E"
