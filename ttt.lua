@@ -151,7 +151,7 @@ end
 move_functions = { pos1func, pos2func, pos3func, pos4func, pos5func, pos6func, pos7func, pos8func, pos9func }
 
 function min_max( board, alpha, beta, depth, move )
-    --evaluated = evaluated + 1
+    evaluated = evaluated + 1
 
     if depth >= 4 then
         -- the function table is about 30% faster
@@ -207,6 +207,8 @@ function run_board( move )
     for i = 1, iterations do
         score = min_max( start_state, score_min, score_max, 0, move )
     end
+
+    return evaluated
 end
 
 function run_app()
@@ -224,4 +226,7 @@ function run_app()
 end
 
 --io.write("lua version ",_VERSION,"!\n")
+
+-- comment run_app() out when using LuaJit (run_board is called from C++ instead)
+
 run_app()
