@@ -6,8 +6,9 @@
 //   3 4 5
 //   6 7 8
 //
+// build using: rustc -O ttt.rs
+//
 
-use std::cmp;
 use std::thread;
 use std::time::Instant;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -232,11 +233,10 @@ fn min_max( b: &mut board::Board, mut alpha: i32, mut beta: i32, depth: i32, mov
         //let p: board::Piece = look_for_winner( & b );
         let p: board::Piece = POS_FUNCS[ mov ]( &b );
 
-        if board::Piece::X == p {
-            return SCORE_WIN;
-        }
-
-        if board::Piece::O == p {
+        if board::Piece::Blank != p {
+            if board::Piece::X == p {
+                return SCORE_WIN;
+            }
             return SCORE_LOSE;
         }
 
@@ -266,36 +266,44 @@ fn min_max( b: &mut board::Board, mut alpha: i32, mut beta: i32, depth: i32, mov
 
             if 0 != ( depth & 1 ) // maximize
             {
-                value = cmp::max( value, score );
+                if WIN_LOSE_PRUNE && SCORE_WIN == score {
+                    return SCORE_WIN;
+                }
+
+                if score > value {
+                    value = score;
+                }
 
                 if AB_PRUNE
                 {
-                    alpha = cmp::max( alpha, value );
+                    if value > alpha {
+                        alpha = value;
+                    }
 
                     if alpha >= beta {
                         return value;
                     }
                 }
-
-                if WIN_LOSE_PRUNE && SCORE_WIN == value {
-                    return value;
-                }
             }
             else
             {
-                value = cmp::min( value, score );
+                if WIN_LOSE_PRUNE && SCORE_LOSE == score {
+                    return SCORE_LOSE;
+                }
+
+                if score < value {
+                    value = score;
+                }
 
                 if AB_PRUNE
                 {
-                    beta = cmp::min( value, beta );
+                    if value < beta {
+                        beta = value;
+                    }
 
                     if beta <= alpha {
                         return value;
                     }
-                }
-
-                if WIN_LOSE_PRUNE && SCORE_LOSE == value {
-                    return SCORE_LOSE;
                 }
             }
         }
