@@ -10,7 +10,7 @@ package main
 
 import (
     "fmt"
-//    "sync/atomic"
+    //"sync/atomic"
     "time"
 )
 
@@ -228,21 +228,20 @@ func minmax( board [9] int, alpha int, beta int, depth int, move int ) int {
     //evaluated++
 
     if depth >= 4 {
-
         // Slightly faster with winner_functions
 
         //p := lookforwinner( board )
         p := winner_functions[ move ]( board )
 
-        if p == PIECE_X {
-            return SCORE_WIN
-        }
+        if ( PIECE_BLANK != p ) {
+            if p == PIECE_X {
+                return SCORE_WIN
+            }
 
-        if p == PIECE_O {
             return SCORE_LOSE
         }
 
-        if depth == 8 {
+        if 8 == depth {
             return SCORE_TIE
         }
     }
@@ -267,18 +266,36 @@ func minmax( board [9] int, alpha int, beta int, depth int, move int ) int {
             board[ i ] = PIECE_BLANK
 
             if maximize {
-                value = max( value, score )
-                alpha = max( alpha, value )
+                if ( SCORE_WIN == score ) {
+                    return SCORE_WIN;
+                }
 
-                if alpha >= beta || SCORE_WIN == value {
-                    return value
+                if ( score > value ) {
+                    value = score;
+                }
+
+                if ( value > alpha ) {
+                    alpha = value;
+                }
+
+                if ( alpha >= beta ) {
+                    return value;
                 }
             } else {
-                value = min( value, score )
-                beta = min( value, beta )
+                if ( SCORE_LOSE == score ) {
+                    return SCORE_LOSE;
+                }
 
-                if beta <= alpha || SCORE_LOSE == value {
-                    return value
+                if ( score < value ) {
+                    value = score;
+                }
+
+                if ( value < beta ) {
+                    beta = value;
+                }
+
+                if ( beta <= alpha ) {
+                    return value;
                 }
             }
         }
@@ -290,11 +307,10 @@ func minmax( board [9] int, alpha int, beta int, depth int, move int ) int {
 func runboard( position int ) int {
     board := [9] int { 0, 0, 0, 0, 0, 0, 0, 0, 0 }
     score := 0
+    board[ position ] = PIECE_X
 
     for l := 0; l < Iterations; l++ {
-        board[ position ] = PIECE_X
         score = minmax( board, SCORE_MIN, SCORE_MAX, 0, position )
-        board[ position ] = PIECE_BLANK
     }
 
     return score
@@ -355,9 +371,10 @@ func main() {
 
     parallelDuration := time.Since( start )
 
-    fmt.Printf( "serial duration in ns %v\n", serialDuration.Nanoseconds() )
+    fmt.Printf( "ran %v iterations\n", Iterations );
+    fmt.Printf( "serial duration in ms %f\n", float64( serialDuration.Nanoseconds() ) / 1000000.0 )
     fmt.Printf( "  serial scores for a, b, c %v %v %v\n", sx, sy, sz )
-    fmt.Printf( "parallel duration in ns %v\n", parallelDuration.Nanoseconds() )
+    fmt.Printf( "parallel duration in ms %f\n", float64( parallelDuration.Nanoseconds() ) / 1000000.0 )
     fmt.Printf( "  parallel scores for x, y, z %v %v %v\n", x, y, z )
     //fmt.Printf( "complete! moves evaluated serial %v, parallel %v\n", serialEvaluated, evaluated )
 }
