@@ -78,6 +78,7 @@ To compile code and run on an arm32 Raspberry PI 3:
 
     ba ttt_1dim.bas /x /3
     gcc -o ttt_1dim ttt_1dim.s -march=armv8-a
+    ./ttt_1dim
         
 The compiler generates code that's in the middle of the pack of most real compilers on both x64 Windows and arm64 Mac. The 8080 code
 generated for CP/M 2.2 systems is about 3x as fast as Turbo Pascal 3.01A and 3x slower than hand-written assembler code (mostly due
