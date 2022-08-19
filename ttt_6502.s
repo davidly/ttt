@@ -4,17 +4,21 @@
 ; Given 10 iterations, that's about 20 seconds.
 ; The moves variable should contain 6493 decimal / 0x195d hex if it's running correctly.
 ;
+; Assemble with sbasm30306\sbasm.py ttt.s
+; sbasm.py can be found here: https://www.sbprojects.net/sbasm/
+;
 ; board layout:
-; 0 1 2
-; 3 4 5
-; 6 7 8
+;   0 1 2
+;   3 4 5
+;   6 7 8
 ;
 
     .cr      6502
     .tf      ttt.h, AP1, 8
     .or      $1000
 
-prchar       .eq     $ffef
+echo         .eq     $ffef
+prbyte       .eq     $ffdc
 exitapp      .eq     $ff1f
 
 max_score    .eq     9              ; maximum score
@@ -29,9 +33,9 @@ ITERATIONS   .eq     10             ; loop this many times
 
 start
     lda      #$0d
-    jsr      prchar
+    jsr      echo
     lda      #$0a
-    jsr      prchar
+    jsr      echo
 
     lda      #0
     sta      iters
@@ -54,8 +58,12 @@ _again
     bne      _again
 
 _done
-    lda      #65
-    jsr      prchar
+    lda      movesHigh              ; display the # of moves examined
+    jsr      prbyte
+    lda      moves
+    jsr      prbyte
+    lda      #36                    ; print a $ to indicate the app is done
+    jsr      echo
     jmp      exitapp
 
 ; a has the offset into board where xpiece will take the first move
@@ -118,25 +126,25 @@ _skip_moves_high
 ;    lda      minmax_arg_depth, x
 ;    clc
 ;    adc      #70                    ; 70 is F
-;    jsr      prchar
+;    jsr      echo
 ;    tsx                             ; put the current stack pointer in X to reference variables
 
 ;    lda      minmax_arg_move, x
 ;    clc
 ;    adc      #80                    ; 80 is P
-;    jsr      prchar                                            
+;    jsr      echo                                            
 ;    tsx                             ; put the current stack pointer in X to reference variables
 ;
 ;    lda      minmax_arg_alpha, x
 ;    clc
 ;    adc      #48
-;    jsr      prchar
+;    jsr      echo
 ;    tsx                             ; put the current stack pointer in X to reference variables
 ;
 ;    lda      minmax_arg_beta, x
 ;    clc
 ;    adc      #48
-;    jsr      prchar
+;    jsr      echo
 ;    tsx                             ; put the current stack pointer in X to reference variables
 ; end debug code
 
@@ -145,18 +153,18 @@ _skip_moves_high
     bmi      _no_winner_check
 
     jsr      winner
-    tsx                                                                         ; restore x with sp in case winner changed it with debugging code
+    tsx                             ; restore x with sp in case winner changed it with debugging code
 
     cmp      #BLANKPIECE            ; did either piece win?
     beq      _no_winner
 
-    cmp      #XPIECE                                            ; if X won, return win
+    cmp      #XPIECE                ; if X won, return win
     bne      _o_winner
     ldy      #win_score
     jmp      _load_y_return
 
 _o_winner
-    ldy      #lose_score                                ; return a losing score since O won.
+    ldy      #lose_score            ; return a losing score since O won.
     jmp      _load_y_return
 
 _no_winner
@@ -168,17 +176,17 @@ _no_winner
 
 _no_winner_check
     lda      minmax_arg_depth, x
-    and      #1                                                 ; is the depth odd or even?
+    and      #1                     ; is the depth odd or even?
     beq      _minimize_setup
 
-    lda      #min_score                                 ; it's odd, so maximize for X's move
+    lda      #min_score             ; it's odd, so maximize for X's move
     sta      minmax_local_value, x
     lda      #XPIECE
     sta      minmax_local_pm, x
     jmp      _loop
 
 _minimize_setup
-    lda      #max_score                                 ; depth is even, so minimize for O's move
+    lda      #max_score             ; depth is even, so minimize for O's move
     sta      minmax_local_value, x
     lda      #OPIECE
     sta      minmax_local_pm, x
@@ -197,7 +205,7 @@ _loop_keep_going
     jmp      _next_i
 
 _position_available
-    lda      minmax_local_pm, x     ; load the current player move (x or 0)
+    lda      minmax_local_pm, x     ; load the current player move ( X or O )
     sta      board, y               ; update the board with the move
 
     tya
@@ -205,7 +213,7 @@ _position_available
     lda      minmax_arg_depth, x
     clc
     adc      #1
-    pha                             ; arg2: the depth (current + 1 )
+    pha                             ; arg2: the depth ( current + 1 )
     lda      minmax_arg_beta, x
     pha                             ; arg3: beta
     lda      minmax_arg_alpha, x
@@ -228,7 +236,7 @@ _position_available
     lda      #BLANKPIECE
     sta      board, y               ; restore blank move to the board
 
-    lda      minmax_arg_depth, x                ; is the depth odd or even (maximize or minimize)?
+    lda      minmax_arg_depth, x    ; is the depth odd or even (maximize or minimize)?
     and      #1
     beq      _minimize_score
 
@@ -298,7 +306,7 @@ _load_y_return
     pla                             ; deallocate score
     pla                             ; deallocate value
     tya                             ; score is in y
-    rts                                                                         ; return to sender
+    rts                             ; return to sender
 
 ; return winning piece in a or 0 if a tie
 
@@ -400,6 +408,4 @@ moves     .db     0
 moveshigh .db     0
 iters     .db     0
 
-hellostr
-    .as     #$0d,#$0a,"hello david lee!!!",#$0
 
