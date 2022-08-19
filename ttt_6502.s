@@ -1,8 +1,10 @@
 ;
 ; Apple 1 / 6502 implementation of proving you can't win at tic-tac-toe.
-; Takes about 2 seconds to run each iteration of 3 unique starting moves.
-; Given 10 iterations, that's about 20 seconds.
+; Takes about 3 seconds to run each iteration of 3 unique starting moves.
+; That's on an Apple 1 replica.
+; Given 10 iterations, that's about 30 seconds.
 ; The moves variable should contain 6493 decimal / 0x195d hex if it's running correctly.
+; On the Pom1 Apple 1 simulator it takes 2 seconds per iteration. Not sure why.
 ;
 ; Assemble with sbasm30306\sbasm.py ttt.s
 ; sbasm.py can be found here: https://www.sbprojects.net/sbasm/
@@ -32,16 +34,16 @@ BLANKPIECE   .eq     0              ; empty piece
 ITERATIONS   .eq     10             ; loop this many times
 
 start
-    lda      #$0d
+    lda      #$0d                   ; every apple 1 app should go to the next line
     jsr      echo
     lda      #$0a
     jsr      echo
 
-    lda      #0
-    sta      iters
+    lda      #ITERATIONS
+    sta      iters                  
 
 _again
-    lda      #0
+    lda      #0                     ; reset moves each iteration or it will overflow
     sta      moves
     sta      movesHigh
 
@@ -52,10 +54,8 @@ _again
     lda      #4                     ; first X move in position 4
     jsr      runmm
 
-    inc      iters
-    lda      iters
-    cmp      #ITERATIONS
-    bne      _again
+    dec      iters
+    bne      _again                 ; loop while not 0
 
 _done
     lda      movesHigh              ; display the # of moves examined
