@@ -256,7 +256,7 @@ _max_keep_going
 _max_ab_prune
     lda      minmax_local_value, x  ; load value
     cmp      minmax_arg_alpha, x    ; compare value with alpha
-    beq      _max_check_beta
+    beq      _max_check_beta        ; 6502 has no <= branch, and swapping args requires another load
     bmi      _max_check_beta
     sta      minmax_arg_alpha, x    ; update alpha with value
 
@@ -275,7 +275,6 @@ _minimize_score
 
 _min_keep_going
     cmp      minmax_local_value, x  ; compare score with value
-    beq      _min_ab_prune
     bpl      _min_ab_prune
     sta      minmax_local_value, x  ; update value with the better score
 
@@ -286,10 +285,9 @@ _min_ab_prune
     sta      minmax_arg_beta, x     ; update beta with value
 
 _min_check_alpha
-    lda      minmax_arg_beta, x     ; load beta
-    cmp      minmax_arg_alpha, x    ; compare beta with alpha
-    beq      _min_prune
-    bpl      _next_i
+    lda      minmax_arg_alpha, x    ; load alpha
+    cmp      minmax_arg_beta, x     ; compare alpha with beta
+    bmi      _next_i                ; 
 _min_prune
     jmp      _load_value_return     ; alpha pruning
 
