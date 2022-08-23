@@ -55,7 +55,7 @@ The BA version is faster than Python even when Python is using function pointers
 I'm not really proud of BA -- it was a very quickly written hack. But it shows that Python could benefit from some performance work.
 
 I added minimal support in BA to compile BASIC apps to x64 .asm files which can then be assembled into a Windows .exe file. 
-Afterwards I added codegen for Arm64 on Macs, Arm32 on Linux, and Intel 8080 on CP/M 2.2. Use the -a flag in BA to generate
+Afterwards I added codegen for Arm64 on Macs, Arm32 on Linux, MOS 6502 on the Apple 1, and Intel 8080 on CP/M 2.2. Use the -a flag in BA to generate
 the x64 .asm file, and ma.bat to create the .exe. For example:
 
     ba ttt_1dim.bas /x /a
@@ -81,10 +81,17 @@ To compile code and run on an arm32 Raspberry PI 3:
     ba ttt_1dim.bas /x /3
     gcc -o ttt_1dim ttt_1dim.s -march=armv8-a
     ./ttt_1dim
+    
+To compile and run on a MOS 6502 Apple 1
+
+    ba foo.bas /x /6
+    sbasm.py foo.s
+    copy foo.h to the Apple 1, then on that machine:
+    1000 r    
         
 The compiler generates code that's in the middle of the pack of most real compilers on both x64 Windows and arm64 Mac. The 8080 code
 generated for CP/M 2.2 systems is about 3x as fast as Turbo Pascal 3.01A and 3x slower than hand-written assembler code (mostly due
-to using 16-bit integers and lack of global optimizations). The arm32 code is unoptimized but working.
+to using 16-bit integers and lack of global optimizations). The arm32 and 6502 code is unoptimized but working.
 
 To build BA:
 
