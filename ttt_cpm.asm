@@ -5,7 +5,7 @@
 ; load tttcpm
 ; tttcpm
 ;
-; Runs in about 2.5s per iteration on CP/M with 8080 at 2.5 Mhz
+; Runs in about 2.6s per iteration on CP/M with a Z80 at 4 Mhz
 
 ; cp/m specific constants
 
