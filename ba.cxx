@@ -2771,6 +2771,13 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
                     fprintf( fp, "    str      x0, [sp, #-16]!\n" ); // save 4 bytes in a 16-byte spot
                 else if ( i8080CPM == g_AssemblyTarget )
                     fprintf( fp, "    push     h\n" );
+                else if ( mos6502Apple1 == g_AssemblyTarget )
+                {
+                    fprintf( fp, "    lda      curOperand+1\n" );
+                    fprintf( fp, "    pha\n" );
+                    fprintf( fp, "    lda      curOperand\n" );
+                    fprintf( fp, "    pha\n" );
+                }
 
                 if ( Token::COMMA != vals[ iToken ].token )
                     RuntimeFail( "expected a 2-dimensional array", g_lineno );
@@ -2829,6 +2836,67 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
                     fprintf( fp, "    inx      h\n" );
                     fprintf( fp, "    mov      d, m\n" );
                     fprintf( fp, "    xchg\n" );
+                }
+                else if ( mos6502Apple1 == g_AssemblyTarget )
+                {
+                    // stash away the most recent expression
+
+                    fprintf( fp, "    lda      curOperand\n" );
+                    fprintf( fp, "    sta      arrayOffset\n" );
+                    fprintf( fp, "    lda      curOperand+1\n" );
+                    fprintf( fp, "    sta      arrayOffset+1\n" );
+
+                    // multiply the first dimension by the size of the [1] dimension
+
+                    fprintf( fp, "    pla\n" );
+                    fprintf( fp, "    sta      curOperand\n" );
+                    fprintf( fp, "    pla\n" );
+                    fprintf( fp, "    sta      curOperand+1\n" );
+                    fprintf( fp, "    lda      #%d\n", pvar->dims[ 1 ] );
+                    fprintf( fp, "    sta      otherOperand\n" );
+                    fprintf( fp, "    lda      /%d\n", pvar->dims[ 1 ] );
+                    fprintf( fp, "    sta      otherOperand+1\n" );
+                    fprintf( fp, "    jsr      imul\n" );
+
+                    // add the two amounts above
+
+                    fprintf( fp, "    lda      curOperand\n" );
+                    fprintf( fp, "    clc\n" );
+                    fprintf( fp, "    adc      arrayOffset\n" );
+                    fprintf( fp, "    sta      arrayOffset\n" );
+                    fprintf( fp, "    lda      curOperand+1\n" );
+                    fprintf( fp, "    adc      arrayOffset+1\n" );
+                    fprintf( fp, "    sta      arrayOffset+1\n" );
+
+                    // double it to get the final array offset
+
+                    fprintf( fp, "    lda      arrayOffset\n" );
+                    fprintf( fp, "    clc\n" );
+                    fprintf( fp, "    adc      arrayOffset\n" );
+                    fprintf( fp, "    sta      arrayOffset\n" );
+                    fprintf( fp, "    lda      arrayOffset+1\n" );
+                    fprintf( fp, "    adc      arrayOffset+1\n" );
+                    fprintf( fp, "    sta      arrayOffset+1\n" );
+
+                    // add the address of the array to the offset
+
+                    fprintf( fp, "    lda      #%s\n", GenVariableName( varname ) );
+                    fprintf( fp, "    clc\n" );
+                    fprintf( fp, "    adc      arrayOffset\n" );
+                    fprintf( fp, "    sta      arrayOffset\n" );
+                    fprintf( fp, "    lda      /%s\n", GenVariableName( varname ) );
+                    fprintf( fp, "    adc      arrayOffset+1\n" );
+                    fprintf( fp, "    sta      arrayOffset+1\n" );
+
+                    // read the value into curOperand
+
+                    fprintf( fp, "    lda      #0\n" );
+                    fprintf( fp, "    tay\n" );
+                    fprintf( fp, "    lda      (arrayOffset), y\n" );
+                    fprintf( fp, "    sta      curOperand\n" );
+                    fprintf( fp, "    iny\n" );
+                    fprintf( fp, "    lda      (arrayOffset), y\n" );
+                    fprintf( fp, "    sta      curOperand+1\n" );
                 }
             }
 
@@ -4640,6 +4708,13 @@ label_no_array_eq_optimization:
                                 fprintf( fp, "    str      x0, [sp, #-16]!\n" );
                             else if ( i8080CPM == g_AssemblyTarget )
                                 fprintf( fp, "    push     h\n" );
+                            else if ( mos6502Apple1 == g_AssemblyTarget )
+                            {
+                                fprintf( fp, "    lda      curOperand+1\n" );
+                                fprintf( fp, "    pha\n" );
+                                fprintf( fp, "    lda      curOperand\n" );
+                                fprintf( fp, "    pha\n" );
+                            }
 
                             GenerateOptimizedExpression( fp, varmap, t, vals );
 
@@ -4671,6 +4746,37 @@ label_no_array_eq_optimization:
                                 fprintf( fp, "    call     imul\n" );
                                 fprintf( fp, "    pop      d\n" );
                                 fprintf( fp, "    dad      d\n" );
+                            }
+                            else if ( mos6502Apple1 == g_AssemblyTarget )
+                            {
+                                // stash away the most recent expression
+            
+                                fprintf( fp, "    lda      curOperand\n" );
+                                fprintf( fp, "    sta      arrayOffset\n" );
+                                fprintf( fp, "    lda      curOperand+1\n" );
+                                fprintf( fp, "    sta      arrayOffset+1\n" );
+            
+                                // multiply the first dimension by the size of the [1] dimension
+            
+                                fprintf( fp, "    pla\n" );
+                                fprintf( fp, "    sta      curOperand\n" );
+                                fprintf( fp, "    pla\n" );
+                                fprintf( fp, "    sta      curOperand+1\n" );
+                                fprintf( fp, "    lda      #%d\n", pvar->dims[ 1 ] );
+                                fprintf( fp, "    sta      otherOperand\n" );
+                                fprintf( fp, "    lda      /%d\n", pvar->dims[ 1 ] );
+                                fprintf( fp, "    sta      otherOperand+1\n" );
+                                fprintf( fp, "    jsr      imul\n" );
+            
+                                // add the two amounts above
+            
+                                fprintf( fp, "    lda      curOperand\n" );
+                                fprintf( fp, "    clc\n" );
+                                fprintf( fp, "    adc      arrayOffset\n" );
+                                fprintf( fp, "    sta      curOperand\n" );
+                                fprintf( fp, "    lda      curOperand+1\n" );
+                                fprintf( fp, "    adc      arrayOffset+1\n" );
+                                fprintf( fp, "    sta      curOperand+1\n" );
                             }
                         }
         
@@ -7020,23 +7126,23 @@ label_no_if_optimization:
         fprintf( fp, "_div_cur_positive:\n" );
         fprintf( fp, "    txa\n" );
         fprintf( fp, "    pha\n" );     // save count of negative arguments
-        fprintf( fp, "    lda      #0               ;Initialize divRem to 0\n" );
+        fprintf( fp, "    lda      #0                ;Initialize divRem to 0\n" );
         fprintf( fp, "    sta      divRem\n" );
         fprintf( fp, "    sta      divRem+1\n" );
-        fprintf( fp, "    ldx      #16              ;There are 16 bits in otherOperand\n" );
+        fprintf( fp, "    ldx      #16               ;There are 16 bits in otherOperand\n" );
         fprintf( fp, "_div_l1:\n" );
         fprintf( fp, "    asl      otherOperand      ;Shift hi bit of otherOperand into divRem\n" );
         fprintf( fp, "    rol      otherOperand+1    ;(vacating the lo bit, which will be used for the quotient)\n" );
         fprintf( fp, "    rol      divRem\n" );
         fprintf( fp, "    rol      divRem+1\n" );
         fprintf( fp, "    lda      divRem\n" );
-        fprintf( fp, "    sec                       ;Trial subtraction\n" );
+        fprintf( fp, "    sec                        ;Trial subtraction\n" );
         fprintf( fp, "    sbc      curOperand\n" );
         fprintf( fp, "    tay\n" );
         fprintf( fp, "    lda      divRem+1\n" );
         fprintf( fp, "    sbc      curOperand+1\n" );
-        fprintf( fp, "    bcc      _div_l2          ;Did subtraction succeed?\n" );
-        fprintf( fp, "    sta      divRem+1         ;If yes, save it\n" );
+        fprintf( fp, "    bcc      _div_l2           ;Did subtraction succeed?\n" );
+        fprintf( fp, "    sta      divRem+1          ;If yes, save it\n" );
         fprintf( fp, "    sty      divRem\n" );
         fprintf( fp, "    inc      otherOperand      ;and record a 1 in the quotient\n" );
         fprintf( fp, "_div_l2:\n" );
@@ -7060,14 +7166,14 @@ label_no_if_optimization:
         // originally from https://llx.com/Neil/a2/mult.html
 
         fprintf( fp, "imul:\n" );
-        fprintf( fp, "    lda      #0               ;Initialize mulResult to 0\n" );
+        fprintf( fp, "    lda      #0                ;Initialize mulResult to 0\n" );
         fprintf( fp, "    sta      mulResult+2\n" );
-        fprintf( fp, "    ldx      #16              ;There are 16 bits in curOperand\n" );
+        fprintf( fp, "    ldx      #16               ;There are 16 bits in curOperand\n" );
         fprintf( fp, "_mul_l1:\n" );
-        fprintf( fp, "    lsr      curOperand+1     ;Get low bit of curOperand\n" );
+        fprintf( fp, "    lsr      curOperand+1      ;Get low bit of curOperand\n" );
         fprintf( fp, "    ror      curOperand\n" );
-        fprintf( fp, "    bcc      _mul_l2          ;0 or 1?\n" );
-        fprintf( fp, "    tay                       ;If 1, add otherOperand (hi byte of mulResult is in A)\n" );
+        fprintf( fp, "    bcc      _mul_l2           ;0 or 1?\n" );
+        fprintf( fp, "    tay                        ;If 1, add otherOperand (hi byte of mulResult is in A)\n" );
         fprintf( fp, "    clc\n" );
         fprintf( fp, "    lda      otherOperand\n" );
         fprintf( fp, "    adc      mulResult+2\n" );
@@ -7075,7 +7181,7 @@ label_no_if_optimization:
         fprintf( fp, "    tya\n" );
         fprintf( fp, "    adc      otherOperand+1\n" );
         fprintf( fp, "_mul_l2:\n" );
-        fprintf( fp, "    ror      a                ;Stairstep shift\n" );
+        fprintf( fp, "    ror      a                 ;Stairstep shift\n" );
         fprintf( fp, "    ror      mulResult+2\n" );
         fprintf( fp, "    ror      mulResult+1\n" );
         fprintf( fp, "    ror      mulResult\n" );
