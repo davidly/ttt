@@ -7332,7 +7332,7 @@ label_no_if_optimization:
         fprintf( fp, "    lda      divRem\n" );
         fprintf( fp, "    clc\n" );
         fprintf( fp, "    adc      #48\n" ); // 48 == '0'
-        fprintf( fp, "    ldy      0\n" );
+        fprintf( fp, "    ldy      #0\n" );
         fprintf( fp, "    sta      (arrayOffset), y\n" );
 
         // store the division result in the tempWord in case we loop again
