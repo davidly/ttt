@@ -3960,6 +3960,10 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "otherOperand  .eq     $34\n" ); // secondary operand. occupies 34 and 35
         fprintf( fp, "arrayOffset   .eq     $36\n" ); // array offset temporary. occupies 36 and 37
         fprintf( fp, "    jmp      start\n" );
+
+        // Define this here, where it won't straddle a 256 byte boundary
+
+        fprintf( fp, "intString      .az    '32768'\n" ); // the menus sign isn't stored in this space
     }
 
     for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
@@ -4246,6 +4250,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "newlineString  .az    #10, #13\n" );
         fprintf( fp, "divRem         .dw    0\n" ); // idiv remainder
         fprintf( fp, "mulResult      .dl    0\n" ); // multiplication result
+        fprintf( fp, "tempWord       .dw    0\n" ); // temporary storage
 
         fprintf( fp, "start\n" );
 
@@ -5408,10 +5413,7 @@ label_no_array_eq_optimization:
                         }
                         else if ( mos6502Apple1 == g_AssemblyTarget )
                         {
-                            fprintf( fp, "    lda      curOperand+1\n" );
-                            fprintf( fp, "    jsr      prbyte\n" );
-                            fprintf( fp, "    lda      curOperand\n" );
-                            fprintf( fp, "    jsr      prbyte\n" );
+                            fprintf( fp, "    jsr      print_int\n" );
                         }
                     }
                 }
@@ -7192,6 +7194,86 @@ label_no_if_optimization:
         fprintf( fp, "    sta      curOperand\n" );
         fprintf( fp, "    lda      mulResult+1\n" );
         fprintf( fp, "    sta      curOperand+1\n" );
+        fprintf( fp, "    rts\n" );
+
+        /////////////////////////////////////////
+
+        /////////////////////////////////////////
+        // print_int in curOperand
+        // extremely simple/slow solution because this almost never happens
+
+        fprintf( fp, "print_int:\n" );
+
+        // check if the integer is negative. If so, negate it then print a '-' 
+
+        fprintf( fp, "    lda      #$80\n" );
+        fprintf( fp, "    and      curOperand+1\n" );
+        fprintf( fp, "    beq      _print_prev_positive\n" );
+        fprintf( fp, "    jsr      negate_curOperand\n" );
+        fprintf( fp, "    lda      #45\n" );
+        fprintf( fp, "    jsr      echo\n" );
+        fprintf( fp, "_print_prev_positive:\n" );
+
+        // save curOperand
+
+        fprintf( fp, "    lda      curOperand\n" );
+        fprintf( fp, "    sta      tempWord\n" );
+        fprintf( fp, "    lda      curOperand+1\n" );
+        fprintf( fp, "    sta      tempWord+1\n" );
+
+        // make arrayOffset point to the null terminating the output string
+
+        fprintf( fp, "    lda      #intString\n" );
+        fprintf( fp, "    clc\n" );
+        fprintf( fp, "    adc      #5\n" );  // point at the null termination, past "32768"
+        fprintf( fp, "    sta      arrayOffset\n" );
+        fprintf( fp, "    lda      /intString\n" );
+        fprintf( fp, "    sta      arrayOffset+1\n" );
+
+        // divide the number by 10
+
+        fprintf( fp, "_print_int_again:\n" );
+        fprintf( fp, "    lda      tempWord\n" );
+        fprintf( fp, "    sta      otherOperand\n" );
+        fprintf( fp, "    lda      tempWord+1\n" );
+        fprintf( fp, "    sta      otherOperand+1\n" );
+        fprintf( fp, "    lda      #10\n" );
+        fprintf( fp, "    sta      curOperand\n" );
+        fprintf( fp, "    lda      #0\n" );
+        fprintf( fp, "    sta      curOperand+1\n" );
+        fprintf( fp, "    jsr      idiv\n" );
+
+        // Use the remainder to create the next character.
+
+        fprintf( fp, "    lda      divRem\n" );
+        fprintf( fp, "    clc\n" );
+        fprintf( fp, "    adc      #48\n" ); // 48 == '0'
+        fprintf( fp, "    ldy      0\n" );
+        fprintf( fp, "    dec      arrayOffset\n" );
+        fprintf( fp, "    sta      (arrayOffset), y\n" );
+
+        // store the division result in the tempWord in case we loop again
+
+        fprintf( fp, "    lda      curOperand\n" );
+        fprintf( fp, "    sta      tempWord\n" );
+        fprintf( fp, "    lda      curOperand+1\n" );
+        fprintf( fp, "    sta      tempWord+1\n" );
+
+        // if the result isn't 0, go back for more
+
+        fprintf( fp, "    lda      #0\n" );
+        fprintf( fp, "    cmp      curOperand\n" );
+        fprintf( fp, "    bne      _print_int_again\n" );
+        fprintf( fp, "    cmp      curOperand+1\n" );
+        fprintf( fp, "    bne      _print_int_again\n" );
+
+        // move the string pointer to printString and print it
+
+        fprintf( fp, "    lda      arrayOffset\n" );
+        fprintf( fp, "    sta      printString\n" );
+        fprintf( fp, "    lda      arrayOffset+1\n" );
+        fprintf( fp, "    sta      printString+1\n" );
+        fprintf( fp, "    jsr      prstr\n" );
         fprintf( fp, "    rts\n" );
 
         /////////////////////////////////////////
