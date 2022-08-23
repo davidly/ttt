@@ -16,6 +16,7 @@ To build:
     - Lua: lua54 ttt.lua
     - LuaJit: read instructions in ttt_lj.cxx for how to build and run
     - 6502 on the Apple 1: sbasm30306\sbasm.py ttt_6502.s
+    	- this generates a .h file that can be transferred to the Apple 1
     - Julia: julia -q --optimize=3 --check-bounds=no -t auto ttt.jl
     - Python: python3 ttt.py
     - MacOS clang: clang++ -DNDEBUG -Xpreprocessor -fopenmp -lomp -std=c++11 -Wc++11-extensions -I"$(brew --prefix libomp)/include" -L"$(brew --prefix libomp)/lib" ttt.cxx -O3 -o ttt
@@ -122,8 +123,6 @@ To run ttt_trs80.asm on a TRS-80. (renamed as ttt.asm)
         On the pc, copy t.do com3
         On the trs-80, F8 to exit and say yes to disconnect, then f8 to go back to the root menu
         Run lt.ba, which loads t.do, converts it to binary in RAM, and executes the app
-	
-![image](https://user-images.githubusercontent.com/1497921/185650849-249e5e06-fd7c-4a9a-82e7-bfedcf58fe3b.png)
 
-
+![image](https://user-images.githubusercontent.com/1497921/185769976-f730ab80-bbb4-48f4-9f8b-693d29139bd3.png)
 
