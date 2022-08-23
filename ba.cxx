@@ -3960,10 +3960,6 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "otherOperand  .eq     $34\n" ); // secondary operand. occupies 34 and 35
         fprintf( fp, "arrayOffset   .eq     $36\n" ); // array offset temporary. occupies 36 and 37
         fprintf( fp, "    jmp      start\n" );
-
-        // Define this here, where it won't straddle a 256 byte boundary
-
-        fprintf( fp, "intString      .az    '32768'\n" ); // the menus sign isn't stored in this space
     }
 
     for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
@@ -4244,6 +4240,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
     }
     else if ( mos6502Apple1 == g_AssemblyTarget )
     {
+        fprintf( fp, "intString      .az    '32768'\n" ); // big enough for 5 digits and no minus sign, plus 0.
         fprintf( fp, "errorString    .az    'internal error', #10, #13\n" );
         fprintf( fp, "startString    .az    #10, #13, 'running basic', #10, #13\n" );
         fprintf( fp, "stopString     .az    'done running basic$', #10, #13\n" );
@@ -7229,6 +7226,9 @@ label_no_if_optimization:
         fprintf( fp, "    sta      arrayOffset\n" );
         fprintf( fp, "    lda      /intString\n" );
         fprintf( fp, "    sta      arrayOffset+1\n" );
+        fprintf( fp, "    bcc      _print_no_carry\n" );
+        fprintf( fp, "    inc      arrayOffset+1\n" );
+        fprintf( fp, "_print_no_carry:\n" );
 
         // divide the number by 10
 
@@ -7243,13 +7243,20 @@ label_no_if_optimization:
         fprintf( fp, "    sta      curOperand+1\n" );
         fprintf( fp, "    jsr      idiv\n" );
 
+        // Move the string pointer back one byte
+
+        fprintf( fp, "    lda      arrayOffset\n" );
+        fprintf( fp, "    bne      _print_no_hidec\n" );
+        fprintf( fp, "    dec      arrayOffset+1\n" );
+        fprintf( fp, "_print_no_hidec:\n" );
+        fprintf( fp, "    dec      arrayOffset\n" );
+
         // Use the remainder to create the next character.
 
         fprintf( fp, "    lda      divRem\n" );
         fprintf( fp, "    clc\n" );
         fprintf( fp, "    adc      #48\n" ); // 48 == '0'
         fprintf( fp, "    ldy      0\n" );
-        fprintf( fp, "    dec      arrayOffset\n" );
         fprintf( fp, "    sta      (arrayOffset), y\n" );
 
         // store the division result in the tempWord in case we loop again
@@ -8110,6 +8117,4 @@ extern int main( int argc, char *argv[] )
     if ( executeCode )
         InterpretCode( varmap );
 } //main
-
-
 
