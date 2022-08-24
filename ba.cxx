@@ -2740,8 +2740,7 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
                     fprintf( fp, "    lda      /%s\n", GenVariableName( varname ) );
                     fprintf( fp, "    adc      curOperand+1\n" );
                     fprintf( fp, "    sta      curOperand+1\n" );
-                    fprintf( fp, "    lda      #0\n" );
-                    fprintf( fp, "    tay\n" );
+                    fprintf( fp, "    ldy      #0\n" );
                     fprintf( fp, "    lda      (curOperand), y\n" );
                     fprintf( fp, "    tax\n" );
                     fprintf( fp, "    iny\n" );
@@ -2890,8 +2889,7 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
 
                     // read the value into curOperand
 
-                    fprintf( fp, "    lda      #0\n" );
-                    fprintf( fp, "    tay\n" );
+                    fprintf( fp, "    ldy      #0\n" );
                     fprintf( fp, "    lda      (arrayOffset), y\n" );
                     fprintf( fp, "    sta      curOperand\n" );
                     fprintf( fp, "    iny\n" );
@@ -3142,7 +3140,7 @@ void GenerateExpression( FILE * fp, map<string, Variable> const & varmap, int & 
             fprintf( fp, "    mov      x0, 0\n" );
         else if ( i8080CPM == g_AssemblyTarget )
             fprintf( fp, "    lxi      h, 0\n" );
-        else if ( mos6502Apple1 == g_AssemblyTarget );
+        else if ( mos6502Apple1 == g_AssemblyTarget )
         {
             fprintf( fp, "    lda      #0\n" );
             fprintf( fp, "    sta      curOperand\n" );
@@ -3584,7 +3582,7 @@ void GenerateOptimizedExpression( FILE * fp, map<string, Variable> const & varma
                 iToken, TokenStr( vals[ iToken ].token ), vals[ iToken ].value );
 
     if ( i8080CPM == g_AssemblyTarget || arm32Linux == g_AssemblyTarget ||
-         mos6502Apple1 == g_AssemblyTarget || !g_ExpressionOptimization )
+         !g_ExpressionOptimization )
         goto label_no_expression_optimization;
 
     if ( 2 == tokenCount )
@@ -3595,6 +3593,13 @@ void GenerateOptimizedExpression( FILE * fp, map<string, Variable> const & varma
                 fprintf( fp, "    mov      eax, %d\n", vals[ iToken + 1 ].value );
             else if ( arm64Mac == g_AssemblyTarget )
                 LoadArm64Constant( fp, "x0", vals[ iToken + 1 ].value );
+            else if ( mos6502Apple1 == g_AssemblyTarget )
+            {
+                fprintf( fp, "    lda      #%d\n", vals[ iToken + 1 ].value );
+                fprintf( fp, "    sta      curOperand\n" );
+                fprintf( fp, "    lda      /%d\n", vals[ iToken + 1 ].value );
+                fprintf( fp, "    sta      curOperand+1\n" );
+            }
         }
         else if ( Token::VARIABLE == vals[ iToken + 1 ].token )
         {
@@ -3617,6 +3622,13 @@ void GenerateOptimizedExpression( FILE * fp, map<string, Variable> const & varma
                     fprintf( fp, "    ldr      w0, [x1]\n" );
                 }
             }
+            else if ( mos6502Apple1 == g_AssemblyTarget )
+            {
+                fprintf( fp, "    lda      %s\n", GenVariableName( varname ) );
+                fprintf( fp, "    sta      curOperand\n" );
+                fprintf( fp, "    lda      %s+1\n", GenVariableName( varname ) );
+                fprintf( fp, "    sta      curOperand+1\n" );
+            }
         }
 
         iToken += tokenCount;
@@ -3625,6 +3637,7 @@ void GenerateOptimizedExpression( FILE * fp, map<string, Variable> const & varma
               Token::VARIABLE == vals[ iToken + 1 ].token &&
               Token::OPENPAREN == vals[ iToken + 2 ].token )
     {
+        // sa%( st% ) or sa%( 10 )
         // 0 EXPRESSION, value 6, strValue ''
         // 1 VARIABLE, value 0, strValue 'sa%'
         // 2 OPENPAREN, value 0, strValue ''
@@ -3657,6 +3670,22 @@ void GenerateOptimizedExpression( FILE * fp, map<string, Variable> const & varma
                     fprintf( fp, "    ldr      w0, [x1]\n" );
                 }
             }
+            else if ( mos6502Apple1 == g_AssemblyTarget )
+            {
+                fprintf( fp, "    lda      #%d\n", 2 * vals[ iToken + 4 ].value );
+                fprintf( fp, "    clc\n" );
+                fprintf( fp, "    adc      #%s\n", GenVariableName( varname ) );
+                fprintf( fp, "    sta      arrayOffset\n" );
+                fprintf( fp, "    lda      /%s\n", GenVariableName( varname ) );
+                fprintf( fp, "    adc      /%d\n", 2 * vals[ iToken + 4 ].value );
+                fprintf( fp, "    sta      arrayOffset+1\n" );
+                fprintf( fp, "    ldy      #0\n" );
+                fprintf( fp, "    lda      (arrayOffset), y\n" );
+                fprintf( fp, "    sta      curOperand\n" );
+                fprintf( fp, "    iny\n" );
+                fprintf( fp, "    lda      (arrayOffset), y\n" );
+                fprintf( fp, "    sta      curOperand+1\n" );
+            }
         }
         else
         {
@@ -3678,11 +3707,33 @@ void GenerateOptimizedExpression( FILE * fp, map<string, Variable> const & varma
                 fprintf( fp, "    add      x1, x1, x0\n" );
                 fprintf( fp, "    ldr      w0, [x1]\n" );
             }
+            else if ( mos6502Apple1 == g_AssemblyTarget )
+            {
+                fprintf( fp, "    asl      curOperand\n" );   // shift left into carry
+                fprintf( fp, "    rol      curOperand+1\n" ); // shift left from carry
+                fprintf( fp, "    lda      #%s\n", GenVariableName( varname ) );
+                fprintf( fp, "    clc\n" );
+                fprintf( fp, "    adc      curOperand\n" );
+                fprintf( fp, "    sta      curOperand\n" );
+                fprintf( fp, "    lda      /%s\n", GenVariableName( varname ) );
+                fprintf( fp, "    adc      curOperand+1\n" );
+                fprintf( fp, "    sta      curOperand+1\n" );
+
+                fprintf( fp, "    ldy      #0\n" );
+                fprintf( fp, "    lda      (curOperand), y\n" );
+                fprintf( fp, "    tax\n" );
+                fprintf( fp, "    iny\n" );
+                fprintf( fp, "    lda      (curOperand), y\n" );
+                fprintf( fp, "    sta      curOperand+1\n" );
+                fprintf( fp, "    txa\n" );
+                fprintf( fp, "    sta      curOperand\n" );
+            }
         }
 
         iToken += tokenCount;
     }
-    else if ( 4 == tokenCount )
+    else if ( mos6502Apple1 != g_AssemblyTarget &&
+              4 == tokenCount )
     {
         assert( isTokenSimpleValue( vals[ iToken + 1 ].token ) );
         assert( isTokenOperator( vals[ iToken + 2 ].token ) );
@@ -3721,7 +3772,8 @@ void GenerateOptimizedExpression( FILE * fp, map<string, Variable> const & varma
 
         iToken += tokenCount;
     }
-    else if ( 16 == tokenCount &&
+    else if ( mos6502Apple1 != g_AssemblyTarget &&
+              16 == tokenCount &&
               Token::VARIABLE == vals[ iToken + 1 ].token &&
               Token::OPENPAREN == vals[ iToken + 4 ].token &&
               Token::CONSTANT == vals[ iToken + 6 ].token &&
@@ -4352,28 +4404,27 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
     
                     assert( Token::EXPRESSION == vals[ t ].token );
 
-                    if ( i8080CPM == g_AssemblyTarget || arm32Linux == g_AssemblyTarget ||
-                         mos6502Apple1 == g_AssemblyTarget || !g_ExpressionOptimization )
+                    if ( i8080CPM == g_AssemblyTarget || arm32Linux == g_AssemblyTarget || !g_ExpressionOptimization )
                         goto label_no_eq_optimization;
 
-                    if ( Token::CONSTANT == vals[ t + 1 ].token && ( 2 == vals[ t ].value ) )
+                    if ( Token::CONSTANT == vals[ t + 1 ].token &&
+                         2 == vals[ t ].value  )
                     {
                         // e.g.: x% = 3
                         // note: testing for 0 and generating xor resulted in slower generated code. Not sure why.
 
                         string & varname = vals[ variableToken ].strValue;
+                        int val = vals[ t + 1 ].value;
 
                         if ( x64Win == g_AssemblyTarget )
                         {
                             if ( IsVariableInReg( varmap, varname ) )
-                                fprintf( fp, "    mov      %s, %d\n", GenVariableReg( varmap, varname ), vals[ t + 1 ].value );
+                                fprintf( fp, "    mov      %s, %d\n", GenVariableReg( varmap, varname ), val );
                             else
-                                fprintf( fp, "    mov      DWORD PTR [%s], %d\n", GenVariableName( varname ), vals[ t + 1 ].value );
+                                fprintf( fp, "    mov      DWORD PTR [%s], %d\n", GenVariableName( varname ), val );
                         }
                         else if ( arm64Mac == g_AssemblyTarget )
                         {
-                            int val = vals[ t + 1 ].value;
-
                             if ( IsVariableInReg( varmap, varname ) )
                             {
                                 LoadArm64Constant( fp, GenVariableReg( varmap, varname ), val );
@@ -4384,6 +4435,13 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                                 LoadArm64Address( fp, "x1", varname );
                                 fprintf( fp, "    str      w0, [x1]\n" );
                             }
+                        }
+                        else if ( mos6502Apple1 == g_AssemblyTarget )
+                        {
+                            fprintf( fp, "    lda      #%d\n", val );
+                            fprintf( fp, "    sta      %s\n", GenVariableName( varname ) );
+                            fprintf( fp, "    lda      /%d\n", val );
+                            fprintf( fp, "    sta      %s+1\n", GenVariableName( varname ) );
                         }
 
                         t += vals[ t ].value;
@@ -4397,6 +4455,19 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                         if ( x64Win == g_AssemblyTarget || arm64Mac == g_AssemblyTarget )
                             fprintf( fp, "    mov      %s, %s\n", GenVariableReg( varmap, vals[ variableToken ].strValue ),
                                                                   GenVariableReg( varmap, vals[ t + 1 ].strValue ) );
+
+                        t += vals[ t ].value;
+                    }
+                    else if ( mos6502Apple1 == g_AssemblyTarget &&
+                              Token::VARIABLE == vals[ t + 1 ].token &&
+                              2 == vals[ t ].value )
+                             
+                    {
+                        fprintf( fp, "    lda      %s\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                        fprintf( fp, "    sta      %s\n", GenVariableName( vals[ variableToken ].strValue ) );
+                        fprintf( fp, "    lda      %s+1\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                        fprintf( fp, "    sta      %s+1\n", GenVariableName( vals[ variableToken ].strValue ) );
+
                         t += vals[ t ].value;
                     }
                     else if ( 6 == vals[ t ].value &&
@@ -4439,8 +4510,6 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                         {
                             string & vararray = vals[ t + 1 ].strValue;
                             string & varname = vals[ variableToken ].strValue;
-
-                            //LoadArm64Address( fp, "x1", varmap, vals[ t + 1 ].strValue );
 
                             if ( Token::CONSTANT == vals[ t + 4 ].token )
                             {
@@ -4497,6 +4566,73 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                                     fprintf( fp, "    ldr      %s, [x1]\n", GenVariableReg( varmap, varname ) );
                                 }
                             }
+                        }
+
+                        t += vals[ t ].value;
+                    }
+                    else if ( mos6502Apple1 == g_AssemblyTarget &&
+                              6 == vals[ t ].value &&
+                              Token::VARIABLE == vals[ t + 1 ].token &&
+                              Token::OPENPAREN == vals[ t + 2 ].token &&
+                              isTokenSimpleValue( vals[ t + 4 ].token ) )
+                    {
+                        // e.g.: p% = sp%( st% ) 
+                        //       p% = sp%( 4 )
+
+                        // line 4290 has 8 tokens  ====>> 4290 p% = sp%(st%)
+                        // token   0 VARIABLE, value 0, strValue 'p%'
+                        // token   1 EQ, value 0, strValue ''
+                        // token   2 EXPRESSION, value 6, strValue ''
+                        // token   3 VARIABLE, value 0, strValue 'sp%'
+                        // token   4 OPENPAREN, value 0, strValue ''
+                        // token   5 EXPRESSION, value 2, strValue ''
+                        // token   6 VARIABLE, value 0, strValue 'st%'
+                        // token   7 CLOSEPAREN, value 0, strValue ''
+
+                        string & vararray = vals[ t + 1 ].strValue;
+                        string & varname = vals[ variableToken ].strValue;
+
+                        if ( Token::CONSTANT == vals[ t + 4 ].token )
+                        {
+                            fprintf( fp, "    lda      #%d\n", 2 * vals[ t + 4 ].value );
+                            fprintf( fp, "    clc\n" );
+                            fprintf( fp, "    adc      #%s\n", GenVariableName( vararray ) );
+                            fprintf( fp, "    sta      arrayOffset\n" );
+                            fprintf( fp, "    lda      /%s\n", GenVariableName( vararray ) );
+                            fprintf( fp, "    adc      /%d\n", 2 * vals[ t + 4 ].value );
+                            fprintf( fp, "    sta      arrayOffset+1\n" );
+                            fprintf( fp, "    ldy      #0\n" );
+                            fprintf( fp, "    lda      (arrayOffset), y\n" );
+                            fprintf( fp, "    sta      %s\n", GenVariableName( varname ) );
+                            fprintf( fp, "    iny\n" );
+                            fprintf( fp, "    lda      (arrayOffset), y\n" );
+                            fprintf( fp, "    sta      %s+1\n", GenVariableName( varname ) );
+                        }
+                        else
+                        {
+                            fprintf( fp, "    lda      %s\n", GenVariableName( vals[ t + 4 ].strValue ) );
+                            fprintf( fp, "    sta      curOperand\n" );
+                            fprintf( fp, "    lda      %s+1\n", GenVariableName( vals[ t + 4 ].strValue ) );
+                            fprintf( fp, "    sta      curOperand+1\n" );
+
+                            fprintf( fp, "    asl      curOperand\n" );   // shift left into carry
+                            fprintf( fp, "    rol      curOperand+1\n" ); // shift left from carry
+                            fprintf( fp, "    lda      #%s\n", GenVariableName( vararray ) );
+                            fprintf( fp, "    clc\n" );
+                            fprintf( fp, "    adc      curOperand\n" );
+                            fprintf( fp, "    sta      curOperand\n" );
+                            fprintf( fp, "    lda      /%s\n", GenVariableName( vararray ) );
+                            fprintf( fp, "    adc      curOperand+1\n" );
+                            fprintf( fp, "    sta      curOperand+1\n" );
+            
+                            fprintf( fp, "    ldy      #0\n" );
+                            fprintf( fp, "    lda      (curOperand), y\n" );
+                            fprintf( fp, "    tax\n" );
+                            fprintf( fp, "    iny\n" );
+                            fprintf( fp, "    lda      (curOperand), y\n" );
+                            fprintf( fp, "    sta      %s+1\n", GenVariableName( varname ) );
+                            fprintf( fp, "    txa\n" );
+                            fprintf( fp, "    sta      %s\n", GenVariableName( varname ) );
                         }
 
                         t += vals[ t ].value;
@@ -4624,6 +4760,39 @@ label_no_eq_optimization:
                         }
                         break;
                     }
+                    else if ( mos6502Apple1 == g_AssemblyTarget &&
+                              8 == vals.size() &&
+                              Token::CONSTANT == vals[ t + 1 ].token &&
+                              Token::EQ == vals[ t + 3 ].token &&
+                              Token::CONSTANT == vals[ t + 5 ].token &&
+                              vals[ t + 1 ].value < 64 )
+                    {
+                        // line 73 has 8 tokens  ====>> 73 b%(4) = 0
+                        //   0 VARIABLE, value 0, strValue 'b%'
+                        //   1 OPENPAREN, value 0, strValue ''
+                        //   2 EXPRESSION, value 2, strValue ''
+                        //   3 CONSTANT, value 4, strValue ''
+                        //   4 CLOSEPAREN, value 0, strValue ''
+                        //   5 EQ, value 0, strValue ''
+                        //   6 EXPRESSION, value 2, strValue ''
+                        //   7 CONSTANT, value 0, strValue ''
+
+                        fprintf( fp, "    lda      #%d\n", 2 * vals[ t + 1 ].value );
+                        fprintf( fp, "    clc\n" );
+                        fprintf( fp, "    adc      #%s\n", GenVariableName( vals[ variableToken ].strValue ) );
+                        fprintf( fp, "    sta      arrayOffset\n" );
+                        fprintf( fp, "    lda      /%s\n", GenVariableName( vals[ variableToken ].strValue ) );
+                        fprintf( fp, "    adc      #0\n" );
+                        fprintf( fp, "    sta      arrayOffset+1\n" );
+                        fprintf( fp, "    lda      #%d\n", vals[ t + 5 ].value );
+                        fprintf( fp, "    ldy      #0\n" );
+                        fprintf( fp, "    sta      (arrayOffset), y\n" );
+                        fprintf( fp, "    iny\n" );
+                        fprintf( fp, "    lda      /%d\n", vals[ t + 5 ].value );
+                        fprintf( fp, "    sta      (arrayOffset), y\n" );
+
+                        break;
+                    }
                     else if ( arm64Mac == g_AssemblyTarget &&
                               8 == vals.size() &&
                               Token::VARIABLE == vals[ t + 1 ].token &&
@@ -4685,6 +4854,48 @@ label_no_eq_optimization:
                             fprintf( fp, "    add      x2, x2, x0\n" );
                             fprintf( fp, "    str      %s, [x2]\n", GenVariableReg( varmap, vals[ t + 5 ].strValue ) );
                         }
+
+                        break;
+                    }
+                    else if ( mos6502Apple1 == g_AssemblyTarget &&
+                              8 == vals.size() &&
+                              Token::VARIABLE == vals[ t + 1 ].token &&
+                              Token::VARIABLE == vals[ t + 5 ].token )
+                    {
+                        // line 4230 has 8 tokens  ====>> 4230 sv%(st%) = v%
+                        //   0 VARIABLE, value 0, strValue 'sv%'
+                        //   1 OPENPAREN, value 0, strValue ''
+                        //   2 EXPRESSION, value 2, strValue ''
+                        //   3 VARIABLE, value 0, strValue 'st%'
+                        //   4 CLOSEPAREN, value 0, strValue ''
+                        //   5 EQ, value 0, strValue ''
+                        //   6 EXPRESSION, value 2, strValue ''
+                        //   7 VARIABLE, value 0, strValue 'v%'
+
+                        string vararray = vals[ variableToken ].strValue;
+
+                        fprintf( fp, "    lda      %s\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                        fprintf( fp, "    sta      arrayOffset\n" );
+                        fprintf( fp, "    lda      %s+1\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                        fprintf( fp, "    sta      arrayOffset+1\n" );
+                        fprintf( fp, "    asl      arrayOffset\n" );
+                        fprintf( fp, "    rol      arrayOffset+1\n" );
+
+                        fprintf( fp, "    lda      #%s\n", GenVariableName( vararray ) );
+                        fprintf( fp, "    clc\n" );
+                        fprintf( fp, "    adc      arrayOffset\n" );
+                        fprintf( fp, "    sta      arrayOffset\n" );
+
+                        fprintf( fp, "    lda      /%s\n", GenVariableName( vararray ) );
+                        fprintf( fp, "    adc      arrayOffset+1\n" );
+                        fprintf( fp, "    sta      arrayOffset+1\n" );
+
+                        fprintf( fp, "    lda      %s\n", GenVariableName( vals[ t + 5 ].strValue ) );
+                        fprintf( fp, "    ldy      #0\n" );
+                        fprintf( fp, "    sta      (arrayOffset), y\n" );
+                        fprintf( fp, "    lda      %s+1\n", GenVariableName( vals[ t + 5 ].strValue ) );
+                        fprintf( fp, "    iny\n" );
+                        fprintf( fp, "    sta      (arrayOffset), y\n" );
 
                         break;
                     }
@@ -4851,8 +5062,7 @@ label_no_array_eq_optimization:
                             }
                             else if ( mos6502Apple1 == g_AssemblyTarget )
                             {
-                                fprintf( fp, "    lda      #0\n" );
-                                fprintf( fp, "    tay\n" );
+                                fprintf( fp, "    ldy      #0\n" );
                                 fprintf( fp, "    lda      #%d\n", vals[ t + 1 ].value );
                                 fprintf( fp, "    sta      (arrayOffset), y\n" );
                                 fprintf( fp, "    iny\n" );
@@ -4918,8 +5128,7 @@ label_no_array_eq_optimization:
                             }
                             else if ( mos6502Apple1 == g_AssemblyTarget )
                             {
-                                fprintf( fp, "    lda      #0\n" );
-                                fprintf( fp, "    tay\n" );
+                                fprintf( fp, "    ldy      #0\n" );
                                 fprintf( fp, "    lda      curOperand\n" );
                                 fprintf( fp, "    sta      (arrayOffset), y\n" );
                                 fprintf( fp, "    iny\n" );
@@ -5669,8 +5878,7 @@ label_no_array_eq_optimization:
                     fprintf( fp, "    sta      arrayOffset\n" );
                     fprintf( fp, "    lda      /%s\n", GenVariableName( vals[ t + 3 ].strValue ) );
                     fprintf( fp, "    sta      arrayOffset+1\n" );
-                    fprintf( fp, "    lda      #%d\n", 2 * vals[ t + 6 ].value );
-                    fprintf( fp, "    tay\n" );
+                    fprintf( fp, "    ldy      #%d\n", 2 * vals[ t + 6 ].value );
                     fprintf( fp, "    lda      %s\n", GenVariableName( vals[ t + 1 ].strValue ) );
                     fprintf( fp, "    cmp      (arrayOffset),y\n" );
                     fprintf( fp, "    bne      line_number_%zd\n", l + 1 );
@@ -5678,8 +5886,7 @@ label_no_array_eq_optimization:
                     fprintf( fp, "    lda      %s+1\n", GenVariableName( vals[ t + 1 ].strValue ) );
                     fprintf( fp, "    cmp      (arrayOffset),y\n" );
                     fprintf( fp, "    bne      line_number_%zd\n", l + 1 );
-                    fprintf( fp, "    lda      #%d\n", 2 * vals[ t + 14 ].value );
-                    fprintf( fp, "    tay\n" );
+                    fprintf( fp, "    ldy      #%d\n", 2 * vals[ t + 14 ].value );
                     fprintf( fp, "    lda      %s\n", GenVariableName( vals[ t + 1 ].strValue ) );
                     fprintf( fp, "    cmp      (arrayOffset),y\n" );
                     fprintf( fp, "    bne      line_number_%zd\n", l + 1 );
@@ -7295,9 +7502,9 @@ label_no_if_optimization:
         fprintf( fp, "    sbc      otherOperand\n" );
         fprintf( fp, "    sta      otherOperand\n" );
         fprintf( fp, "    inc      otherOperand\n" );
-        fprintf( fp, "    bne      _negate_prev_done\n" );
+        fprintf( fp, "    bne      _negate_other_done\n" );
         fprintf( fp, "    inc      otherOperand+1\n" );
-        fprintf( fp, "_negate_prev_done:\n" );
+        fprintf( fp, "_negate_other_done:\n" );
         fprintf( fp, "    rts\n" );
 
         fprintf( fp, "negate_curOperand:\n" );
