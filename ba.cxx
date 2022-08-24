@@ -5948,7 +5948,6 @@ label_no_array_eq_optimization:
                     // token  13 EXPRESSION, value 2, strValue ''
                     // token  14 CONSTANT, value 9, strValue ''
 
-
                     fprintf( fp, "    lda      %s\n", GenVariableName( vals[ t + 1 ].strValue ) );
                     fprintf( fp, "    ani      %d\n", vals[ t + 3 ].value );
                     fprintf( fp, "    jz       uniq%d\n", s_uniqueLabel );
@@ -5960,6 +5959,60 @@ label_no_array_eq_optimization:
                     s_uniqueLabel++;
                     fprintf( fp, "  uniq%d:\n", s_uniqueLabel );
                     fprintf( fp, "    shld     %s\n", GenVariableName( vals[ t + 10 ].strValue ) );
+
+                    s_uniqueLabel++;
+
+                    break;
+                }
+                else if ( mos6502Apple1 == g_AssemblyTarget &&
+                          15 == vals.size() &&
+                          4 == vals[ t ].value &&
+                          Token::VARIABLE == vals[ t + 1 ].token &&
+                          Token::AND == vals[ t + 2 ].token  &&
+                          Token::CONSTANT == vals[ t + 3 ].token &&
+                          1 == vals[ t + 3 ].value &&
+                          Token::THEN == vals[ t + 4 ].token &&
+                          Token::VARIABLE == vals[ t + 5 ].token &&
+                          Token::EQ == vals[ t + 6 ].token &&
+                          2 == vals[ t + 7 ].value &&
+                          Token::CONSTANT == vals[ t + 8 ].token &&
+                          Token::ELSE == vals[ t + 9 ].token &&
+                          Token::VARIABLE == vals[ t + 10 ].token &&
+                          Token::EQ == vals[ t + 11 ].token &&
+                          2 == vals[ t + 12 ].value &&
+                          !vals[ t + 5 ].strValue.compare( vals[ t + 10 ].strValue ) &&
+                          Token::CONSTANT == vals[ t + 13 ].token )
+                {
+                    // line 4150 has 15 tokens  ====>> 4150 if st% and 1 then v% = 2 else v% = 9
+                    // token   0 IF, value 0, strValue ''
+                    // token   1 EXPRESSION, value 4, strValue ''
+                    // token   2 VARIABLE, value 0, strValue 'st%'
+                    // token   3 AND, value 0, strValue ''
+                    // token   4 CONSTANT, value 1, strValue ''
+                    // token   5 THEN, value 5, strValue ''
+                    // token   6 VARIABLE, value 0, strValue 'v%'
+                    // token   7 EQ, value 0, strValue ''
+                    // token   8 EXPRESSION, value 2, strValue ''
+                    // token   9 CONSTANT, value 2, strValue ''
+                    // token  10 ELSE, value 0, strValue ''
+                    // token  11 VARIABLE, value 0, strValue 'v%'
+                    // token  12 EQ, value 0, strValue ''
+                    // token  13 EXPRESSION, value 2, strValue ''
+                    // token  14 CONSTANT, value 9, strValue ''
+
+                    fprintf( fp, "    lda      %s\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                    fprintf( fp, "    and      #%d\n", vals[ t + 3 ].value );
+                    fprintf( fp, "    beq      _uniq_%d\n", s_uniqueLabel );
+                    fprintf( fp, "    lda      #%d\n", vals[ t + 8 ].value );
+                    fprintf( fp, "    jmp      _uniq_%d\n", s_uniqueLabel + 1 );
+
+                    fprintf( fp, "_uniq_%d:\n", s_uniqueLabel );
+                    fprintf( fp, "    lda      #%d\n", vals[ t + 13 ].value );
+                    s_uniqueLabel++;
+                    fprintf( fp, "_uniq_%d:\n", s_uniqueLabel );
+                    fprintf( fp, "    sta      %s\n", GenVariableName( vals[ t + 10 ].strValue ) );
+                    fprintf( fp, "    lda      #0\n" );
+                    fprintf( fp, "    sta      %s+1\n", GenVariableName( vals[ t + 10 ].strValue ) );
 
                     s_uniqueLabel++;
 
@@ -6200,6 +6253,35 @@ label_no_array_eq_optimization:
 
                     break;
                 }
+                else if ( mos6502Apple1 == g_AssemblyTarget &&
+                          7 == vals.size() &&
+                          Token::VARIABLE == vals[ t + 1 ].token &&
+                          Token::AND == vals[ t + 2 ].token &&
+                          Token::CONSTANT == vals[ t + 3 ].token &&
+                          vals[ t + 3 ].value < 256 &&  // arm64 requires small values 
+                          vals[ t + 3 ].value >= 0 &&
+                          Token::THEN == vals[ t + 4 ].token &&
+                          0 == vals[ t + 4 ].value &&
+                          Token::GOTO == vals[ t + 5 ].token )
+                {
+                    // line 4330 has 7 tokens  ====>> 4330 if st% and 1 goto 4340
+                    //    0 IF, value 0, strValue ''
+                    //    1 EXPRESSION, value 4, strValue ''
+                    //    2 VARIABLE, value 0, strValue 'st%'
+                    //    3 AND, value 0, strValue ''
+                    //    4 CONSTANT, value 1, strValue ''
+                    //    5 THEN, value 0, strValue ''
+                    //    6 GOTO, value 4340, strValue ''
+
+                    fprintf( fp, "    lda      %s\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                    fprintf( fp, "    and      #1\n" );
+                    fprintf( fp, "    beq      _uniq_%d\n", s_uniqueLabel );
+                    fprintf( fp, "    jmp      line_number_%d\n", vals[ t + 5 ].value );
+                    fprintf( fp, "_uniq_%d:\n", s_uniqueLabel );
+                    s_uniqueLabel++;
+
+                    break;
+                }
                 else if ( arm64Mac == g_AssemblyTarget &&
                           6 == vals.size() &&
                           3 == vals[ t ].value &&
@@ -6246,6 +6328,33 @@ label_no_array_eq_optimization:
 
                     break;
                 }
+                else if ( mos6502Apple1 == g_AssemblyTarget &&
+                          6 == vals.size() &&
+                          3 == vals[ t ].value &&
+                          Token::NOT == vals[ t + 1 ].token &&
+                          Token::VARIABLE == vals[ t + 2 ].token &&
+                          Token::THEN == vals[ t + 3 ].token &&
+                          0 == vals[ t + 3 ].value &&
+                          Token::GOTO == vals[ t + 4 ].token )
+                {
+                    // line 2110 has 6 tokens  ====>> 2110 if 0 = wi% goto 2200
+                    //  0 IF, value 0, strValue ''
+                    //  1 EXPRESSION, value 3, strValue ''
+                    //  2 NOT, value 0, strValue ''
+                    //  3 VARIABLE, value 0, strValue 'wi%'
+                    //  4 THEN, value 0, strValue ''
+                    //  5 GOTO, value 33, strValue ''
+
+                    fprintf( fp, "    lda      %s\n", GenVariableName( vals[ t + 2 ].strValue ) );
+                    fprintf( fp, "    bne      _uniq_%d\n", s_uniqueLabel );
+                    fprintf( fp, "    lda      %s+1\n", GenVariableName( vals[ t + 2 ].strValue ) );
+                    fprintf( fp, "    bne      _uniq_%d\n", s_uniqueLabel );
+                    fprintf( fp, "    jmp      line_number_%d\n", vals[ t + 4 ].value );
+                    fprintf( fp, "_uniq_%d:\n", s_uniqueLabel );
+                    s_uniqueLabel++;
+
+                    break;
+                }
                 else if ( i8080CPM == g_AssemblyTarget &&
                           6 == vals.size() &&
                           3 == vals[ t ].value &&
@@ -6268,6 +6377,33 @@ label_no_array_eq_optimization:
                     fprintf( fp, "    ora      l\n" );
                     fprintf( fp, "    jz       gosubReturn\n" );
 
+                    break;
+                }
+                else if ( mos6502Apple1 == g_AssemblyTarget &&
+                          6 == vals.size() &&
+                          3 == vals[ t ].value &&
+                          Token::NOT == vals[ t + 1 ].token &&
+                          Token::VARIABLE == vals[ t + 2 ].token &&
+                          Token::THEN == vals[ t + 3 ].token &&
+                          0 == vals[ t + 3 ].value &&
+                          Token::RETURN == vals[ t + 4 ].token )
+                {
+                    // line 2110 has 6 tokens  ===>>> 4530 if st% = 0 then return
+                    //  0 IF, value 0, strValue ''
+                    //  1 EXPRESSION, value 3, strValue ''
+                    //  2 NOT, value 0, strValue ''
+                    //  3 VARIABLE, value 0, strValue 'wi%'
+                    //  4 THEN, value 0, strValue ''
+                    //  5 GOTO, value 33, strValue ''
+
+                    fprintf( fp, "    lda      %s\n", GenVariableName( vals[ t + 2 ].strValue ) );
+                    fprintf( fp, "    bne      _uniq_%d\n", s_uniqueLabel );
+                    fprintf( fp, "    lda      %s+1\n", GenVariableName( vals[ t + 2 ].strValue ) );
+                    fprintf( fp, "    bne      _uniq_%d\n", s_uniqueLabel );
+                    fprintf( fp, "    jmp      label_gosub_return\n" );
+                    fprintf( fp, "_uniq_%d:\n", s_uniqueLabel );
+
+                    s_uniqueLabel++;
                     break;
                 }
                 else if ( arm64Mac == g_AssemblyTarget &&
