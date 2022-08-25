@@ -5,6 +5,7 @@
 // a few of the many limitations:
 //    -- based on TRS-80 Model 100 gw-basic. Equivalent to MBasic on CP/M.
 //    -- only integer variables (4 byte) (2 bytes for 8080 and 6502 compilers) are supported
+//    -- for loop start and end values must be constants
 //    -- variables can only be two characters long plus a mandatory %
 //    -- string values work in PRINT statements and nowhere else
 //    -- a new token ELAP$ for PRINT that shows elapsed time including microseconds
@@ -49,7 +50,7 @@ struct LineOfCode;
 vector<LineOfCode> g_linesOfCode;
 #define g_lineno ( g_linesOfCode[ g_pc ].lineNumber )
 
-//#define ENABLE_EXECUTION_TIME
+//#define ENABLE_INTERPRETER_EXECUTION_TIME
 
 #ifdef DEBUG
     const bool RangeCheckArrays = true;
@@ -349,7 +350,7 @@ struct LineOfCode
     LineOfCode( int line, const char * code ) : 
         lineNumber( line ), firstToken( Token::INVALID ), sourceCode( code ), goTarget( false )
 
-    #ifdef ENABLE_EXECUTION_TIME
+    #ifdef ENABLE_INTERPRETER_EXECUTION_TIME
         , timesExecuted( 0 ), duration( 0 )
     #endif
 
@@ -366,7 +367,7 @@ struct LineOfCode
     int lineNumber;                    // line number in BASIC
     bool goTarget;                     // true if a goto/gosub points at this line.
 
-    #ifdef ENABLE_EXECUTION_TIME
+    #ifdef ENABLE_INTERPRETER_EXECUTION_TIME
         uint64_t timesExecuted;       // # of times this line is executed
         uint64_t duration;            // execution time so far on this line of code
     #endif
@@ -2741,13 +2742,12 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
                     fprintf( fp, "    adc      curOperand+1\n" );
                     fprintf( fp, "    sta      curOperand+1\n" );
                     fprintf( fp, "    ldy      #0\n" );
-                    fprintf( fp, "    lda      (curOperand), y\n" );
+                    fprintf( fp, "    lda      (curOperand), y\n" ); // there is no ldx (zp), y instruction
                     fprintf( fp, "    tax\n" );
                     fprintf( fp, "    iny\n" );
                     fprintf( fp, "    lda      (curOperand), y\n" );
                     fprintf( fp, "    sta      curOperand+1\n" );
-                    fprintf( fp, "    txa\n" );
-                    fprintf( fp, "    sta      curOperand\n" );
+                    fprintf( fp, "    stx      curOperand\n" );
                 }
             }
             else if ( 2 == vals[ iToken ].dimensions )
@@ -3725,8 +3725,7 @@ void GenerateOptimizedExpression( FILE * fp, map<string, Variable> const & varma
                 fprintf( fp, "    iny\n" );
                 fprintf( fp, "    lda      (curOperand), y\n" );
                 fprintf( fp, "    sta      curOperand+1\n" );
-                fprintf( fp, "    txa\n" );
-                fprintf( fp, "    sta      curOperand\n" );
+                fprintf( fp, "    stx      curOperand\n" );
             }
         }
 
@@ -4631,8 +4630,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                             fprintf( fp, "    iny\n" );
                             fprintf( fp, "    lda      (curOperand), y\n" );
                             fprintf( fp, "    sta      %s+1\n", GenVariableName( varname ) );
-                            fprintf( fp, "    txa\n" );
-                            fprintf( fp, "    sta      %s\n", GenVariableName( varname ) );
+                            fprintf( fp, "    stx      %s\n", GenVariableName( varname ) );
                         }
 
                         t += vals[ t ].value;
@@ -5643,16 +5641,13 @@ label_no_array_eq_optimization:
                 }
                 else if ( i8080CPM == g_AssemblyTarget )
                 {
-                     fprintf( fp, "    mvi      c, PRSTR\n" );
-                     fprintf( fp, "    lxi      d, newlineString\n" );
-                     fprintf( fp, "    call     BDOS\n" );
+                    fprintf( fp, "    mvi      c, PRSTR\n" );
+                    fprintf( fp, "    lxi      d, newlineString\n" );
+                    fprintf( fp, "    call     BDOS\n" );
                 }
                 else if ( mos6502Apple1 == g_AssemblyTarget )
                 {
-                     fprintf( fp, "    lda      #$0d\n" );
-                     fprintf( fp, "    jsr      echo\n" );
-                     fprintf( fp, "    lda      #$0a\n" );
-                     fprintf( fp, "    jsr      echo\n" );
+                    fprintf( fp, "    jsr      prcrlf\n" ); 
                 }
 
                 if ( t == vals.size() )
@@ -7477,13 +7472,24 @@ label_no_if_optimization:
         /////////////////////////////////////////
 
         /////////////////////////////////////////
+        // prints a carriage return and line feed
+
+        fprintf( fp, "prcrlf:\n" );
+        fprintf( fp, "    lda      #$0d\n" );
+        fprintf( fp, "    jsr      echo\n" );
+        fprintf( fp, "    lda      #$0a\n" );
+        fprintf( fp, "    jsr      echo\n" );
+        fprintf( fp, "    rts\n" );
+
+        /////////////////////////////////////////
+
+        /////////////////////////////////////////
         // prints a null-terminated ascii string pointed to by printString
 
         fprintf( fp, "prstr:\n" );
         fprintf( fp, "    ldy      #0\n" );
         fprintf( fp, "_prstr_next:\n" );
         fprintf( fp, "    lda      (printString), y\n" );
-        fprintf( fp, "    cmp      #0\n" );
         fprintf( fp, "    beq      _prstr_done\n" );
         fprintf( fp, "    jsr      echo\n" );
         fprintf( fp, "    iny\n" );
@@ -7958,7 +7964,7 @@ void InterpretCode( map<string, Variable> & varmap )
     bool basicTracing = false;
     g_pc = 0;  // program counter
 
-    #ifdef ENABLE_EXECUTION_TIME
+    #ifdef ENABLE_INTERPRETER_EXECUTION_TIME
         int pcPrevious = 0;
         g_linesOfCode[ 0 ].timesExecuted--; // avoid off by 1 on first iteration of loop
         uint64_t timePrevious = __rdtsc();
@@ -7974,7 +7980,7 @@ void InterpretCode( map<string, Variable> & varmap )
         // As a result, about half of the times shown in the report are just overhead of tracking the data.
         // Look for relative differences when determining where to optimize.
 
-        #ifdef ENABLE_EXECUTION_TIME
+        #ifdef ENABLE_INTERPRETER_EXECUTION_TIME
             if ( showExecutionTime )
             {
                 // __rdtsc makes the app run 2x slower.
@@ -7987,7 +7993,7 @@ void InterpretCode( map<string, Variable> & varmap )
                 timePrevious = timeNow;
                 pcPrevious = g_pc;
             }
-        #endif //ENABLE_EXECUTION_TIME
+        #endif //ENABLE_INTERPRETER_EXECUTION_TIME
 
         vector<TokenValue> const & vals = g_linesOfCode[ g_pc ].tokenValues;
         Token token = g_linesOfCode[ g_pc ].firstToken;
@@ -8284,7 +8290,7 @@ void InterpretCode( map<string, Variable> & varmap )
             }
             else if ( Token::END == token )
             {
-                #ifdef ENABLE_EXECUTION_TIME
+                #ifdef ENABLE_INTERPRETER_EXECUTION_TIME
                     if ( showExecutionTime )
                     {
                         uint64_t timeNow = __rdtsc();
@@ -8359,7 +8365,7 @@ void InterpretCode( map<string, Variable> & varmap )
 
     label_exit_execution:
 
-    #ifdef ENABLE_EXECUTION_TIME
+    #ifdef ENABLE_INTERPRETER_EXECUTION_TIME
         if ( showExecutionTime )
         {
             static char acTimes[ 100 ];
@@ -8387,7 +8393,7 @@ void InterpretCode( map<string, Variable> & varmap )
                 printf( "\n" );
             }
         }
-    #endif //ENABLE_EXECUTION_TIME
+    #endif //ENABLE_INTERPRETER_EXECUTION_TIME
 
     printf( "exiting the basic interpreter\n" );
 } //InterpretCode
