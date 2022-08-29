@@ -69,9 +69,6 @@
 2540 wi% = 0
 2550 return
 
-3000 print b%(0);b%(1);b%(2);b%(3);b%(4);b%(5);b%(6);b%(7);b%(8)
-3005 return
-
 4000 rem minmax function to find score of a board position
 4010 rem recursion is simulated with gotos
 4030 st% = 0
@@ -102,7 +99,7 @@
 4325 al% = sa%(st%)
 4326 be% = sb%(st%)
 4328 b%(p%) = 0
-4330 if st% and 1 goto 4340
+4330 if st% and 1 then goto 4340
 4331 if re% = 4 then goto 4530
 4332 if re% < v% then v% = re%
 4334 if v% < be% then be% = v%

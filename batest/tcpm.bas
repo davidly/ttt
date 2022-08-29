@@ -32,58 +32,35 @@
 
 300 a% = 10
 302 for b% = 9 to 11
-304 eq% = a% = b%
-306 ne% = a% <> b%
-308 le% = a% <= b%
-310 ge% = a% >= b%
-312 lt% = a% < b%
-314 gt% = a% > b%
-316 print "  eq "; eq%; ", ne "; ne%; ", le "; le%; ", ge "; ge%; ", lt "; lt%; ", gt "; gt%; ", a "; a%; ", b "; b%
+303 gosub 2000
 318 next b%
 
 320 a% = -10
 322 for b% = 9 to 11
-324 eq% = a% = b%
-326 ne% = a% <> b%
-328 le% = a% <= b%
-330 ge% = a% >= b%
-332 lt% = a% < b%
-334 gt% = a% > b%
-336 print "  eq "; eq%; ", ne "; ne%; ", le "; le%; ", ge "; ge%; ", lt "; lt%; ", gt "; gt%; ", a "; a%; ", b "; b%
+323 gosub 2000
 338 next b%
 
 340 a% = -10
 342 for b% = -11 to -9
-344 eq% = a% = b%
-346 ne% = a% <> b%
-348 le% = a% <= b%
-350 ge% = a% >= b%
-352 lt% = a% < b%
-354 gt% = a% > b%
-356 print "  eq "; eq%; ", ne "; ne%; ", le "; le%; ", ge "; ge%; ", lt "; lt%; ", gt "; gt%; ", a "; a%; ", b "; b%
+350 gosub 2000
 358 next b%
 
 360 a% = 10
 362 for b% = -11 to -9
-364 eq% = a% = b%
-366 ne% = a% <> b%
-368 le% = a% <= b%
-370 ge% = a% >= b%
-372 lt% = a% < b%
-374 gt% = a% > b%
-376 print "  eq "; eq%; ", ne "; ne%; ", le "; le%; ", ge "; ge%; ", lt "; lt%; ", gt "; gt%; ", a "; a%; ", b "; b%
+364 gosub 2000
 378 next b%
+
+380 a% = -20000
+381 b% = -19000
+382 for c% = 9 to 11
+383 gosub 2000
+385 b% = b% - 1000
+387 next c%
 
 400 a% = 20000
 405 b% = 19000
 410 for c% = 9 to 11
-420 eq% = a% = b%
-430 ne% = a% <> b%
-440 le% = a% <= b%
-450 ge% = a% >= b%
-460 lt% = a% < b%
-470 gt% = a% > b%
-480 print "  eq "; eq%; ", ne "; ne%; ", le "; le%; ", ge "; ge%; ", lt "; lt%; ", gt "; gt%; ", a "; a%; ", b "; b%
+420 gosub 2000
 485 b% = b% + 1000
 490 next c%
 
@@ -142,7 +119,17 @@
 1103 if 0 = x% then print "x is 0" else print "bugbug 1103"
 1104 if x% = 0 then print "x is 0" else print "bugbug 1104"
 
+1105 goto 50000
 
+2000 eq% = a% = b%
+2010 ne% = a% <> b%
+2020 le% = a% <= b%
+2030 ge% = a% >= b%
+2040 lt% = a% < b%
+2050 gt% = a% > b%
+2060 print "eq "; eq%; " ne "; ne%; " le "; le%; " ge "; ge%; " lt "; lt%; " gt "; gt%
+2070 rem print "a "; a%; " b "; b%
+2080 return
 
 50000 end
 
