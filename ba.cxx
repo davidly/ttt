@@ -3187,6 +3187,163 @@ void GenerateExpression( FILE * fp, map<string, Variable> const & varmap, int & 
     }
 } //GenerateExpression
 
+template <class T>void Swap( T & a, T & b )
+{
+    T temp = a;
+    a = b;
+    b = temp;
+} //Swap
+
+void Generate6502Relation( FILE * fp, const char * lhs, const char * rhs, Token op, const char * truename, int truenumber )
+{
+    if ( Token::GE == op || Token::GT == op )
+    {
+        Swap( lhs, rhs );
+    
+        if ( Token::GE == op )
+            op = Token::LE;
+        else
+            op = Token::LT;
+    }
+    
+    // now only EQ, NE, LE, or LT
+
+    static int gen6502Relation = 0;
+
+    if ( Token::EQ == op )
+    {
+        fprintf( fp, "    lda      %s+1\n", lhs );
+        fprintf( fp, "    cmp      %s+1\n", rhs );
+        fprintf( fp, "    bne      _false_relation_%d\n", gen6502Relation );
+        fprintf( fp, "    lda      %s\n", lhs );
+        fprintf( fp, "    cmp      %s\n", rhs );
+        fprintf( fp, "    beq      %s%d\n", truename, truenumber );
+    }
+    else if ( Token::NE == op )
+    {
+        fprintf( fp, "    lda      %s+1\n", lhs );
+        fprintf( fp, "    cmp      %s+1\n", rhs );
+        fprintf( fp, "    bne      %s%d\n", truename, truenumber );
+        fprintf( fp, "    lda      %s\n", lhs );
+        fprintf( fp, "    cmp      %s\n", rhs );
+        fprintf( fp, "    bne      %s%d\n", truename, truenumber );
+    }
+    else if ( Token::LT == op || Token::LE == op )
+    {
+        fprintf( fp, "    sec\n" );
+        fprintf( fp, "    lda      %s+1\n", lhs );
+        fprintf( fp, "    sbc      %s+1\n", rhs );
+
+        if ( Token::LE == op )
+            fprintf( fp, "    beq      _label3_%d\n", gen6502Relation );
+
+        fprintf( fp, "    bvc      _label1_%d\n", gen6502Relation );
+        fprintf( fp, "    eor      #$80\n" );
+
+        fprintf( fp, "_label1_%d:\n", gen6502Relation );
+        fprintf( fp, "    bmi      %s%d\n", truename, truenumber );
+        fprintf( fp, "    bvc      _label2_%d\n", gen6502Relation );
+        fprintf( fp, "    eor      #$80\n" );
+
+        fprintf( fp, "_label2_%d:\n", gen6502Relation );
+        fprintf( fp, "    bne      _false_relation_%d\n", gen6502Relation );
+
+        fprintf( fp, "_label3_%d:\n", gen6502Relation );
+        fprintf( fp, "    lda      %s\n", lhs );
+        fprintf( fp, "    sbc      %s\n", rhs );
+
+        if ( Token::LE == op )
+            fprintf( fp, "    beq      %s%d\n", truename, truenumber );
+
+        fprintf( fp, "    bcc      %s%d\n", truename, truenumber );
+    }
+    else
+    {
+        assert( false && "unrecognized relational token\n" );
+    }
+
+    fprintf( fp, "_false_relation_%d\n", gen6502Relation );    
+
+    gen6502Relation++;
+} //Generate6502Relation
+
+void Generate8080Relation( FILE * fp, Token op, const char * truename, int truenumber )
+{
+    // ( de = lhs ) op ( hl = rhs )
+
+    if ( Token::GE == op || Token::GT == op )
+    {
+        fprintf( fp, "    xchg\n" );  // swap de and hl
+    
+        if ( Token::GE == op )
+            op = Token::LE;
+        else
+            op = Token::LT;
+    }
+    
+    // now only EQ, NE, LE, or LT
+
+    static int gen8080Relation = 0;
+
+    fprintf( fp, "    mov      a, d\n" );
+
+    if ( Token::EQ == op )
+    {
+        fprintf( fp, "    cmp      h\n" );
+        fprintf( fp, "    jnz      fRE%d\n", gen8080Relation );
+        fprintf( fp, "    mov      a, e\n" );
+        fprintf( fp, "    cmp      l\n" );
+        fprintf( fp, "    jz       %s%d\n", truename, truenumber );
+    }
+    else if ( Token::NE == op )
+    {
+        fprintf( fp, "    cmp      h\n" );
+        fprintf( fp, "    jnz      %s%d\n", truename, truenumber );
+        fprintf( fp, "    mov      a, e\n" );
+        fprintf( fp, "    cmp      l\n" );
+        fprintf( fp, "    jnz      %s%d\n", truename, truenumber );
+    }
+    else if ( Token::LT == op || Token::LE == op )
+    {
+        if ( Token::LE == op )
+        {
+            // check for equality
+
+            fprintf( fp, "    cmp      h\n" );
+            fprintf( fp, "    jnz      ltRE%d\n", gen8080Relation );
+            fprintf( fp, "    mov      a, e\n" );
+            fprintf( fp, "    cmp      l\n" );
+            fprintf( fp, "    jz       %s%d\n", truename, truenumber );
+        }
+
+        fprintf( fp, "  ltRE%d:\n", gen8080Relation ); // check for less than
+
+        fprintf( fp, "    xra      h\n" );
+        fprintf( fp, "    jp       ssRE%d\n", gen8080Relation );
+
+        fprintf( fp, "    xra      d\n" );
+        fprintf( fp, "    jm       fRE%d\n", gen8080Relation );
+        fprintf( fp, "    jmp      %s%d\n", truename, truenumber );
+
+        fprintf( fp, "  ssRE%d:\n", gen8080Relation ); // same sign
+
+        fprintf( fp, "    mov      a, e\n" );
+        fprintf( fp, "    sub      l\n" );
+        fprintf( fp, "    mov      a, d\n" );
+        fprintf( fp, "    sbb      h\n" );
+
+        fprintf( fp, "    jc       %s%d\n", truename, truenumber );
+    }
+    else
+    {
+        assert( false && "unrecognized relational token\n" );
+    }
+
+    fprintf( fp, "  fRE%d:\n", gen8080Relation );    // false -- fall through
+
+    gen8080Relation++;
+} //Generate8080Relation
+
 void GenerateRelational( FILE * fp, map<string, Variable> const & varmap, int & iToken, int beyond, vector<TokenValue> const & vals )
 {
     assert( iToken < beyond );
@@ -3226,87 +3383,16 @@ void GenerateRelational( FILE * fp, map<string, Variable> const & varmap, int & 
     {
         static int s_labelVal = 0;
 
-        // "EQ", "NE", "LE", "GE", "LT", "GT"
-        // d == lhs, h = rhs
-
         fprintf( fp, "    pop      d\n" );
-        fprintf( fp, "    mov      a, d\n" );
-        fprintf( fp, "    cmp      h\n" );
 
-        if ( Token::EQ == op )
-        {
-            fprintf( fp, "    jnz      fRE%d\n", s_labelVal );
-            fprintf( fp, "    mov      a, e\n" );
-            fprintf( fp, "    cmp      l\n" );
-            fprintf( fp, "    jnz      fRE%d\n", s_labelVal );
-        }
-        else if ( Token::NE == op )
-        {
-            fprintf( fp, "    jnz      tRE%d\n", s_labelVal );
-            fprintf( fp, "    mov      a, e\n" );
-            fprintf( fp, "    cmp      l\n" );
-            fprintf( fp, "    jz       fRE%d\n", s_labelVal );
-        }
-        else if ( Token::LE == op )
-        {
-            fprintf( fp, "    jz       leRE%d\n", s_labelVal );
-            fprintf( fp, "    jm       tRE%d\n", s_labelVal );
-            fprintf( fp, "    jmp      fRE%d\n", s_labelVal );
-
-            fprintf( fp, "  leRE%d:\n", s_labelVal );
-
-            fprintf( fp, "    mov      a, e\n" );
-            fprintf( fp, "    cmp      l\n" );
-            fprintf( fp, "    jz       tRE%d\n", s_labelVal );
-            fprintf( fp, "    jm       tRE%d\n", s_labelVal );
-            fprintf( fp, "    jmp      fRE%d\n", s_labelVal );
-        }
-        else if ( Token::GE == op )
-        {
-            fprintf( fp, "    jm       fRE%d\n", s_labelVal );
-            fprintf( fp, "    jz       geRE%d\n", s_labelVal );
-            fprintf( fp, "    jp       tRE%d\n", s_labelVal );
-
-            fprintf( fp, "  geRE%d:\n", s_labelVal );
-
-            fprintf( fp, "    mov      a, e\n" );
-            fprintf( fp, "    cmp      l\n" );
-            fprintf( fp, "    jm       fRE%d\n", s_labelVal );
-        }
-        else if ( Token::LT == op )
-        {
-            fprintf( fp, "    jz       ltRE%d\n", s_labelVal );
-            fprintf( fp, "    jm       tRE%d\n", s_labelVal );
-            fprintf( fp, "    jmp      fRE%d\n", s_labelVal );
-
-            fprintf( fp, "  ltRE%d:\n", s_labelVal );
-
-            fprintf( fp, "    mov      a, e\n" );
-            fprintf( fp, "    cmp      l\n" );
-            fprintf( fp, "    jp       fRE%d\n", s_labelVal );
-        }
-        else if ( Token::GT == op )
-        {
-            fprintf( fp, "    jm       fRE%d\n", s_labelVal );
-            fprintf( fp, "    jz       gtRE%d\n", s_labelVal );
-            fprintf( fp, "    jmp      tRE%d\n", s_labelVal );
-
-            fprintf( fp, "  gtRE%d:\n", s_labelVal );
-
-            fprintf( fp, "    mov      a, e\n" );
-            fprintf( fp, "    cmp      l\n" );
-            fprintf( fp, "    jm       fRE%d\n", s_labelVal );
-            fprintf( fp, "    jz       fRE%d\n", s_labelVal );
-        }
-
-        fprintf( fp, "  tRE%d:\n", s_labelVal );
-        fprintf( fp, "    lxi      h, 1\n" );
+        Generate8080Relation( fp, op, "tRE", s_labelVal );
+        fprintf( fp, "    lxi      h, 0\n" );           // false
         fprintf( fp, "    jmp      dRE%d\n", s_labelVal );
 
-        fprintf( fp, "  fRE%d:\n", s_labelVal );
-        fprintf( fp, "    lxi      h, 0\n" );
-        
-        fprintf( fp, "  dRE%d:\n", s_labelVal );
+        fprintf( fp, "  tRE%d:\n", s_labelVal );        // t = true
+        fprintf( fp, "    lxi      h, 1\n" );
+
+        fprintf( fp, "  dRE%d:\n", s_labelVal );        // d = done
 
         s_labelVal++;
     }
@@ -3318,86 +3404,16 @@ void GenerateRelational( FILE * fp, map<string, Variable> const & varmap, int & 
         // stack == lhs, curOperand = rhs
 
         fprintf( fp, "    pla\n" );
-        fprintf( fp, "    tay\n" );
+        fprintf( fp, "    sta      otherOperand\n" );
         fprintf( fp, "    pla\n" );
-        fprintf( fp, "    cmp      curOperand+1\n" );
+        fprintf( fp, "    sta      otherOperand+1\n" );
+        fprintf( fp, "    ldy      #1\n" );      // default is true
 
-        if ( Token::EQ == op )
-        {
-            fprintf( fp, "    bne      _false_RE_%d\n", s_labelVal );
-            fprintf( fp, "    tya\n" );
-            fprintf( fp, "    cmp      curOperand\n" );
-            fprintf( fp, "    bne      _false_RE_%d\n", s_labelVal );
-        }
-        else if ( Token::NE == op )
-        {
-            fprintf( fp, "    bne      _true_RE_%d\n", s_labelVal );
-            fprintf( fp, "    tya\n" );
-            fprintf( fp, "    cmp      curOperand\n" );
-            fprintf( fp, "    beq      _false_RE_%d\n", s_labelVal );
-        }
-        else if ( Token::LE == op )
-        {
-            fprintf( fp, "    beq      _le_RE_%d\n", s_labelVal );
-            fprintf( fp, "    bmi      _true_RE_%d\n", s_labelVal );
-            fprintf( fp, "    jmp      _false_RE_%d\n", s_labelVal );
+        Generate6502Relation( fp, "otherOperand", "curOperand", op, "_relational_true_", s_labelVal );
+        fprintf( fp, "    ldy      #0\n" );      // relation is false
 
-            fprintf( fp, "_le_RE_%d:\n", s_labelVal );
-
-            fprintf( fp, "    tya\n" );
-            fprintf( fp, "    cmp      curOperand\n" );
-            fprintf( fp, "    beq      _true_RE_%d\n", s_labelVal );
-            fprintf( fp, "    bmi      _true_RE_%d\n", s_labelVal );
-            fprintf( fp, "    jmp      _false_RE_%d\n", s_labelVal );
-        }
-        else if ( Token::GE == op )
-        {
-            fprintf( fp, "    bmi      _false_RE_%d\n", s_labelVal );
-            fprintf( fp, "    beq      _ge_RE_%d\n", s_labelVal );
-            fprintf( fp, "    bpl      _true_RE_%d\n", s_labelVal );
-
-            fprintf( fp, "_ge_RE_%d:\n", s_labelVal );
-
-            fprintf( fp, "    tya\n" );
-            fprintf( fp, "    cmp      curOperand\n" );
-            fprintf( fp, "    bmi      _false_RE_%d\n", s_labelVal );
-        }
-        else if ( Token::LT == op )
-        {
-            fprintf( fp, "    beq      _lt_RE_%d\n", s_labelVal );
-            fprintf( fp, "    bmi      _true_RE_%d\n", s_labelVal );
-            fprintf( fp, "    jmp      _false_RE_%d\n", s_labelVal );
-
-            fprintf( fp, "_lt_RE_%d:\n", s_labelVal );
-
-            fprintf( fp, "    tya\n" );
-            fprintf( fp, "    cmp      curOperand\n" );
-            fprintf( fp, "    bmi      _true_RE_%d\n", s_labelVal );
-            fprintf( fp, "    jmp      _false_RE_%d\n", s_labelVal );
-        }
-        else if ( Token::GT == op )
-        {
-            fprintf( fp, "    bmi      _false_RE_%d\n", s_labelVal );
-            fprintf( fp, "    beq      _gt_RE_%d\n", s_labelVal );
-            fprintf( fp, "    jmp      _true_RE_%d\n", s_labelVal );
-
-            fprintf( fp, "_gt_RE_%d:\n", s_labelVal );
-
-            fprintf( fp, "    tya\n" );
-            fprintf( fp, "    cmp      curOperand\n" );
-            fprintf( fp, "    bmi      _false_RE_%d\n", s_labelVal );
-            fprintf( fp, "    beq      _false_RE_%d\n", s_labelVal );
-        }
-
-        fprintf( fp, "_true_RE_%d:\n", s_labelVal );
-        fprintf( fp, "    lda      #1\n" );
-        fprintf( fp, "    jmp      _done_RE_%d\n", s_labelVal );
-
-        fprintf( fp, "_false_RE_%d:\n", s_labelVal );
-        fprintf( fp, "    lda      #0\n" );
-        
-        fprintf( fp, "_done_RE_%d:\n", s_labelVal );
-        fprintf( fp, "    sta      curOperand\n" );
+        fprintf( fp, "_relational_true_%d:\n", s_labelVal );
+        fprintf( fp, "    sty      curOperand\n" );
         fprintf( fp, "    lda      #0\n" );
         fprintf( fp, "    sta      curOperand+1\n" );
 
@@ -3909,6 +3925,20 @@ string mos6502Escape( string & str )
     return result;
 } //mos6502Escape
 
+const char * RemoveExclamations( const char * pc )
+{
+    // cp/m comments begin with ';' but end with an exclamation mark. Remove them.
+
+    static char line[ 300 ];
+    strcpy( line, pc );
+
+    for ( char * p = line; *p; p++ )
+        if ( '!' == *p )
+            *p = '.';
+
+    return line;
+} //RemoveExclamations
+
 void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool useRegistersInASM )
 {
     CFile fileOut( fopen( outputfile, "w" ) );
@@ -4050,11 +4080,11 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                 }
                 else if ( mos6502Apple1 == g_AssemblyTarget )
                 {
-                    // The assembler has no way to implicitly fill bytes with 0.
-                    // So fill with random numbers and zeromem() later.
+                    // n.b. don't generate 6502 arrays here; put them at the end so they can be deleted
+                    // from transfers via a serial port to actualy Apple 1 machines.
 
-                    fprintf( fp, "%s:\n", GenVariableName( vals[ 0 ].strValue ) ); 
-                    fprintf( fp, "    .rf %d\n", cdwords * 2 ); 
+                    //fprintf( fp, "%s:\n", GenVariableName( vals[ 0 ].strValue ) ); 
+                    //fprintf( fp, "    .rf %d\n", cdwords * 2 ); 
                 }
             }
         }
@@ -4379,7 +4409,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
             fprintf( fp, ".p2align 2\n" ); // arm64 branch targets must be 4-byte aligned
 
         if ( i8080CPM == g_AssemblyTarget )
-            fprintf( fp, "  ln$%zd:   ; ===>>> %s\n", l, loc.sourceCode.c_str() );
+            fprintf( fp, "  ln$%zd:   ; ===>>> %s\n", l, RemoveExclamations( loc.sourceCode.c_str() ) );
         else if ( mos6502Apple1 == g_AssemblyTarget )
             fprintf( fp, "line_number_%zd   ; ===>>> %s\n", l, loc.sourceCode.c_str() );
         else if ( arm32Linux == g_AssemblyTarget )
@@ -5743,8 +5773,7 @@ label_no_array_eq_optimization:
                     }
                     else
                     {
-                        fprintf( fp, "    lda      #0\n" );
-                        fprintf( fp, "    cmp      %s\n", GenVariableName( varname ) );
+                        fprintf( fp, "    lda      %s\n", GenVariableName( varname ) );
                         fprintf( fp, "    bne      _dec_no_high_%zd\n", l );
                         fprintf( fp, "    dec      %s+1\n", GenVariableName( varname ) );
                         fprintf( fp, "_dec_no_high_%zd\n", l );
@@ -5942,6 +5971,49 @@ label_no_array_eq_optimization:
                                                                       GenVariableReg( varmap, vals[ t + 5 ].strValue ),
                                                                       ConditionsArm[ vals[ t + 2 ].token ] );
                     }
+                    break;
+                }
+                else if ( mos6502Apple1 == g_AssemblyTarget &&
+                          10 == vals.size() &&
+                          4 == vals[ t ].value &&
+                          Token::VARIABLE == vals[ t + 1 ].token &&
+                          isOperatorRelational( vals[ t + 2 ].token ) &&
+                          Token::VARIABLE == vals[ t + 3 ].token &&
+                          Token::THEN == vals[ t + 4 ].token &&
+                          0 == vals[ t + 4 ].value &&
+                          Token::VARIABLE == vals[ t + 5 ].token &&
+                          Token::EQ == vals[ t + 6 ].token &&
+                          Token::EXPRESSION == vals[ t + 7 ].token &&
+                          2 == vals[ t + 7 ].value &&
+                          Token::VARIABLE == vals[ t + 8 ].token )
+                {
+                    // line 4342 has 10 tokens  ====>> 4342 if v% > al% then al% = v%
+                    //   0 IF, value 0, strValue ''
+                    //   1 EXPRESSION, value 4, strValue ''
+                    //   2 VARIABLE, value 0, strValue 'v%'
+                    //   3 GT, value 0, strValue ''
+                    //   4 VARIABLE, value 0, strValue 'al%'
+                    //   5 THEN, value 0, strValue ''
+                    //   6 VARIABLE, value 0, strValue 'al%'
+                    //   7 EQ, value 0, strValue ''
+                    //   8 EXPRESSION, value 2, strValue ''
+                    //   9 VARIABLE, value 0, strValue 'v%'
+
+                    Token op = vals[ t + 2 ].token;
+                    string & lhs = vals[ t + 1 ].strValue;
+                    string & rhs = vals[ t + 3 ].strValue;
+
+                    char aclhs[ 100 ];
+                    strcpy( aclhs, GenVariableName( lhs ) );
+
+                    Generate6502Relation( fp, aclhs, GenVariableName( rhs ), op, "_if_true_", (int) l );
+                    fprintf( fp, "    jmp      line_number_%zd\n", l + 1 );
+                    fprintf( fp, "_if_true_%zd:\n", l );
+
+                    fprintf( fp, "    lda      %s\n", GenVariableName( vals[ t + 8 ].strValue ) );
+                    fprintf( fp, "    sta      %s\n", GenVariableName( vals[ t + 5 ].strValue ) );
+                    fprintf( fp, "    lda      %s+1\n", GenVariableName( vals[ t + 8 ].strValue ) );
+                    fprintf( fp, "    sta      %s+1\n", GenVariableName( vals[ t + 5 ].strValue ) );
                     break;
                 }
                 else if ( i8080CPM != g_AssemblyTarget &&
@@ -6819,6 +6891,50 @@ label_no_array_eq_optimization:
                                 fprintf( fp, "    b.%s    line_number_%zd\n", ConditionsNotArm[ ifOp ], l + 1 );
                         }
                     }
+                }
+                else if ( mos6502Apple1 == g_AssemblyTarget &&
+                          4 == vals[ t ].value &&
+                          0 == vals[ t + 4 ].value &&
+                          Token::VARIABLE == vals[ t + 1 ].token &&
+                          ( Token::CONSTANT == vals[ t + 3 ].token || Token::VARIABLE == vals[ t + 3 ].token ) &&
+                          isOperatorRelational( vals[ t + 2 ].token ) &&
+                          Token::GOTO == vals[ t + 5 ].token )
+
+                {
+                    // line 4505 has 7 tokens  ====>> 4505 if p% < 9 then goto 4180
+                    //    0 IF, value 0, strValue ''
+                    //    1 EXPRESSION, value 4, strValue ''
+                    //    2 VARIABLE, value 0, strValue 'p%'
+                    //    3 LT, value 0, strValue ''
+                    //    4 CONSTANT, value 9, strValue ''
+                    //    5 THEN, value 0, strValue ''
+                    //    6 GOTO, value 4180, strValue ''
+
+                    Token op = vals[ t + 2 ].token;
+                    string & lhs = vals[ t + 1 ].strValue;
+
+                    char aclhs[ 100 ];
+                    strcpy( aclhs, GenVariableName( lhs ) );
+
+                    if ( Token::VARIABLE == vals[ t + 3 ].token )
+                    {
+                        string & rhs = vals[ t + 3 ].strValue;
+                        Generate6502Relation( fp, aclhs, GenVariableName( rhs ), op, "_if_true_", (int) l );
+                    }
+                    else
+                    {
+                        fprintf( fp, "    lda      #%d\n", vals[ t + 3 ].value );
+                        fprintf( fp, "    sta      curOperand\n" );
+                        fprintf( fp, "    lda      /%d\n", vals[ t + 3 ].value );
+                        fprintf( fp, "    sta      curOperand+1\n" );
+                        Generate6502Relation( fp, aclhs, "curOperand", op, "_if_true_", (int) l );
+                    }
+
+                    fprintf( fp, "    jmp      line_number_%zd\n", l + 1 );
+                    fprintf( fp, "_if_true_%zd:\n", l );
+                    fprintf( fp, "    jmp      line_number_%d\n", vals[ t + 5 ].value );
+
+                    break;
                 }
                 else if ( i8080CPM != g_AssemblyTarget &&
                           mos6502Apple1 != g_AssemblyTarget &&
@@ -7709,6 +7825,41 @@ label_no_if_optimization:
         fprintf( fp, "    rts\n" );
 
         /////////////////////////////////////////
+
+        // Put arrays at the end of 6502 images so they can be discarded and not transferred
+
+        for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
+        {
+            LineOfCode & loc = g_linesOfCode[ l ];
+            vector<TokenValue> & vals = loc.tokenValues;
+    
+            if ( Token::DIM == vals[ 0 ].token )
+            {
+                int cdwords = vals[ 0 ].dims[ 0 ];
+                if ( 2 == vals[ 0 ].dimensions )
+                    cdwords *= vals[ 0 ].dims[ 1 ];
+    
+                Variable * pvar = FindVariable( varmap, vals[ 0 ].strValue );
+    
+                // If an array is declared but never referenced later (and so not in varmap), ignore it
+    
+                if ( 0 != pvar )
+                {
+                    pvar->dimensions = vals[ 0 ].dimensions;
+                    pvar->dims[ 0 ] = vals[ 0 ].dims[ 0 ];
+                    pvar->dims[ 1 ] = vals[ 0 ].dims[ 1 ];
+    
+                    // if ( mos6502Apple1 == g_AssemblyTarget )
+                    {
+                        // The assembler has no way to implicitly fill bytes with 0.
+                        // So fill with random numbers and zeromem() later.
+    
+                        fprintf( fp, "%s:\n", GenVariableName( vals[ 0 ].strValue ) ); 
+                        fprintf( fp, "    .rf %d\n", cdwords * 2 ); 
+                    }
+                }
+            }
+        }
     }
 
     printf( "created assembler file %s\n", outputfile );
