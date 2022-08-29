@@ -2648,7 +2648,7 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
                 if ( x64Win == g_AssemblyTarget )
                 {
                     if ( IsVariableInReg( varmap, varname ) )
-                        fprintf( fp, "    mov      eax, %s\n", GenVariableReg( varmap, varname ) );
+                        fprintf( fp, "    movsxd   rax, %s\n", GenVariableReg( varmap, varname ) );
                     else
                         fprintf( fp, "    movsxd   rax, DWORD PTR [%s]\n", GenVariableName( varname ) );
                 }
