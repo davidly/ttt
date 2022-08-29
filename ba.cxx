@@ -3318,6 +3318,7 @@ void Generate8080Relation( FILE * fp, Token op, const char * truename, int truen
 
         fprintf( fp, "  ltRE%d:\n", gen8080Relation ); // check for less than
 
+        fprintf( fp, "    mov      a, d\n" );
         fprintf( fp, "    xra      h\n" );
         fprintf( fp, "    jp       ssRE%d\n", gen8080Relation );
 
@@ -5284,35 +5285,19 @@ label_no_array_eq_optimization:
                 }
                 else if ( i8080CPM == g_AssemblyTarget )
                 {
-                    // load 1 + the target due to no good 8080 instruction for jump if > 0
-
-                    fprintf( fp, "    lxi      d, %d\n", 1 + vals[ t + 4 ].value );
-
-                    fprintf( fp, "    mov      a, h\n" );
-                    fprintf( fp, "    cmp      d\n" );
-                    fprintf( fp, "    jz       flb$%zd\n", l );  // flb = for lower byte
-                    fprintf( fp, "    jp       af$%zd\n", l );
-                    fprintf( fp, "    jm       fc$%zd\n", l ); // fc == for code
-
-                    fprintf( fp, "  flb$%zd:\n", l );
-                    fprintf( fp, "    mov      a, l\n" );
-                    fprintf( fp, "    cmp      e\n" );
-                    fprintf( fp, "    jp       af$%zd\n", l ); // af == after for
-
-                    fprintf( fp, "  fc$%zd:\n", l );
+                    fprintf( fp, "    lxi      d, %d\n", vals[ t + 4 ].value );
+                    Generate8080Relation( fp, Token::GE, "fc$", (int) l );
+                    fprintf( fp, "    jmp      af$%zd\n", l ); // af == after for
+                    fprintf( fp, "  fc$%zd:\n", l );  // fc == for code
                 }
                 else if ( mos6502Apple1 == g_AssemblyTarget )
                 {
-                    fprintf( fp, "    lda      /%d\n", vals[ t + 4 ].value );
-                    fprintf( fp, "    cmp      %s+1\n", GenVariableName( varname ) );
-                    fprintf( fp, "    beq      _for_test_low_%zd\n", l );
-                    fprintf( fp, "    bpl      _for_continue_%zd\n", l );
-                    fprintf( fp, "    jmp      after_for_loop_%zd\n", l );
-
-                    fprintf( fp, "_for_test_low_%zd\n", l );
                     fprintf( fp, "    lda      #%d\n", vals[ t + 4 ].value );
-                    fprintf( fp, "    cmp      %s\n", GenVariableName( varname ) );
-                    fprintf( fp, "    bpl      _for_continue_%zd\n", l );
+                    fprintf( fp, "    sta      curOperand\n" );
+                    fprintf( fp, "    lda      /%d\n", vals[ t + 4 ].value );
+                    fprintf( fp, "    sta      curOperand+1\n" );
+
+                    Generate6502Relation( fp, GenVariableName( varname ), "curOperand", Token::LE, "_for_continue_", (int) l );
                     fprintf( fp, "    jmp      after_for_loop_%zd\n", l );
                     fprintf( fp, "_for_continue_%zd:\n", l );
                 }
