@@ -733,12 +733,14 @@ const char * ParseExpression( vector<TokenValue> & lineTokens, const char * plin
     lineTokens.push_back( expToken );
     size_t exp = lineTokens.size() - 1;
     bool isNegative = false;
+    Token prevToken = Token::INVALID;
 
     do
     {
         int tokenLen = 0;
         pline = pastWhite( pline );
         Token token = readToken( pline, tokenLen );
+        Token firstToken = token;
         TokenValue tokenValue( token );
         tokenCount++;
         bool resetFirst = false;
@@ -757,6 +759,10 @@ const char * ParseExpression( vector<TokenValue> & lineTokens, const char * plin
                 tokenCount--;
                 isNegative = false;
             }
+
+            if ( Token::CONSTANT == prevToken )
+                Fail( "consecutive constants are a syntax error", fileLine, pline - line, line );
+
             lineTokens.push_back( tokenValue );
             pline += tokenLen;
         }
@@ -769,10 +775,13 @@ const char * ParseExpression( vector<TokenValue> & lineTokens, const char * plin
                 isNegative = false;
             }
 
+            if ( Token::VARIABLE == prevToken )
+                Fail( "consecutive variables are a syntax error", fileLine, pline - line, line );
+
             tokenValue.strValue.insert( 0, pline, tokenLen );
 
             if ( '%' != tokenValue.strValue[ tokenValue.strValue.length() - 1 ] )
-                Fail( "integer variables must end with a % symbol", fileLine, 0, line );
+                Fail( "integer variables must end with a % symbol", fileLine, pline - line, line );
 
             makelower( tokenValue.strValue );
             lineTokens.push_back( tokenValue );
@@ -813,7 +822,7 @@ const char * ParseExpression( vector<TokenValue> & lineTokens, const char * plin
                 }
 
                 if ( Token::CLOSEPAREN != token )
-                    Fail( "close parenthesis expected", fileLine, 0, line );
+                    Fail( "close parenthesis expected", fileLine, pline - line, line );
 
                 tokenCount++;
 
@@ -835,6 +844,12 @@ const char * ParseExpression( vector<TokenValue> & lineTokens, const char * plin
         }
         else if ( isTokenOperator( token ) )
         {
+            if ( isTokenOperator( prevToken ) )
+            {
+                printf( "previous token %s, current token %s\n", Tokens[ prevToken ], Tokens[ token ] );
+                Fail( "consecutive operators are a syntax error", fileLine, pline - line, line );
+            }
+
             lineTokens.push_back( tokenValue );
             pline += tokenLen;
             resetFirst = true;
@@ -886,6 +901,7 @@ const char * ParseExpression( vector<TokenValue> & lineTokens, const char * plin
         pline = pastWhite( pline );
 
         first = resetFirst;
+        prevToken = firstToken;
     } while( true );
 
     if ( 0 != parens )
