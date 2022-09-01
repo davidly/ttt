@@ -2152,6 +2152,13 @@ void LoadArm32Label( FILE * fp, const char * reg, const char * labelname )
     fprintf( fp, "    movt     %s, #:upper16:%s\n", reg, labelname );
 } //LoadArm32Label
 
+void LoadArm32LineNumber( FILE * fp, const char * reg, int linenumber )
+{
+    char aclabel[ 100 ];
+    sprintf( aclabel, "line_number_%d\n", linenumber );
+    LoadArm32Label( fp, reg, aclabel );
+} //LoadArm32LineNumber
+
 void LoadArm32Address( FILE * fp, const char * reg, string const & varname )
 {
     LoadArm32Label( fp, reg, GenVariableName( varname ) );
@@ -5203,7 +5210,7 @@ label_no_array_eq_optimization:
                 else if ( arm32Linux == g_AssemblyTarget )
                 {
                     if ( IsVariableInReg( varmap, varname ) )
-                        fprintf( fp, "    mov      %s, #%d\n", GenVariableReg( varmap, varname ), vals[ t + 2 ].value );
+                        LoadArm32Constant( fp, GenVariableReg( varmap, varname ), vals[ t + 2 ].value );
                     else
                     {
                         LoadArm32Address( fp, "r0", varname );
@@ -5402,7 +5409,7 @@ label_no_array_eq_optimization:
                     fprintf( fp, "    call     line_number_%d\n", vals[ t ].value );
                 else if ( arm32Linux == g_AssemblyTarget )
                 {
-                    fprintf( fp, "    ldr      r0, =line_number_%d\n", vals[ t ].value );
+                    LoadArm32LineNumber( fp, "r0", vals[ t ].value );
                     fprintf( fp, "    bl       label_gosub\n" );
                 }
                 else if ( arm64Mac == g_AssemblyTarget )
