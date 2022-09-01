@@ -3196,6 +3196,8 @@ template <class T>void Swap( T & a, T & b )
 
 void Generate6502Relation( FILE * fp, const char * lhs, const char * rhs, Token op, const char * truename, int truenumber )
 {
+    assert( isOperatorRelational( op ) );
+
     if ( Token::GE == op || Token::GT == op )
     {
         Swap( lhs, rhs );
@@ -3212,20 +3214,20 @@ void Generate6502Relation( FILE * fp, const char * lhs, const char * rhs, Token 
 
     if ( Token::EQ == op )
     {
-        fprintf( fp, "    lda      %s+1\n", lhs );
-        fprintf( fp, "    cmp      %s+1\n", rhs );
-        fprintf( fp, "    bne      _false_relation_%d\n", gen6502Relation );
         fprintf( fp, "    lda      %s\n", lhs );
         fprintf( fp, "    cmp      %s\n", rhs );
+        fprintf( fp, "    bne      _false_relation_%d\n", gen6502Relation );
+        fprintf( fp, "    lda      %s+1\n", lhs );
+        fprintf( fp, "    cmp      %s+1\n", rhs );
         fprintf( fp, "    beq      %s%d\n", truename, truenumber );
     }
     else if ( Token::NE == op )
     {
-        fprintf( fp, "    lda      %s+1\n", lhs );
-        fprintf( fp, "    cmp      %s+1\n", rhs );
-        fprintf( fp, "    bne      %s%d\n", truename, truenumber );
         fprintf( fp, "    lda      %s\n", lhs );
         fprintf( fp, "    cmp      %s\n", rhs );
+        fprintf( fp, "    bne      %s%d\n", truename, truenumber );
+        fprintf( fp, "    lda      %s+1\n", lhs );
+        fprintf( fp, "    cmp      %s+1\n", rhs );
         fprintf( fp, "    bne      %s%d\n", truename, truenumber );
     }
     else if ( Token::LT == op || Token::LE == op )
@@ -3262,14 +3264,17 @@ void Generate6502Relation( FILE * fp, const char * lhs, const char * rhs, Token 
         assert( false && "unrecognized relational token\n" );
     }
 
-    fprintf( fp, "_false_relation_%d\n", gen6502Relation );    
+    fprintf( fp, "_false_relation_%d:\n", gen6502Relation );    
 
     gen6502Relation++;
 } //Generate6502Relation
 
 void Generate8080Relation( FILE * fp, Token op, const char * truename, int truenumber )
 {
-    // ( de = lhs ) op ( hl = rhs )
+    assert( isOperatorRelational( op ) );
+
+    // ( de == lhs ) op ( hl == rhs )
+    // de and hl are not guaranteed to survive
 
     if ( Token::GE == op || Token::GT == op )
     {
@@ -3285,22 +3290,22 @@ void Generate8080Relation( FILE * fp, Token op, const char * truename, int truen
 
     static int gen8080Relation = 0;
 
-    fprintf( fp, "    mov      a, d\n" );
-
     if ( Token::EQ == op )
     {
-        fprintf( fp, "    cmp      h\n" );
-        fprintf( fp, "    jnz      fRE%d\n", gen8080Relation );
         fprintf( fp, "    mov      a, e\n" );
         fprintf( fp, "    cmp      l\n" );
+        fprintf( fp, "    jnz      fRE%d\n", gen8080Relation );
+        fprintf( fp, "    mov      a, d\n" );
+        fprintf( fp, "    cmp      h\n" );
         fprintf( fp, "    jz       %s%d\n", truename, truenumber );
     }
     else if ( Token::NE == op )
     {
-        fprintf( fp, "    cmp      h\n" );
-        fprintf( fp, "    jnz      %s%d\n", truename, truenumber );
         fprintf( fp, "    mov      a, e\n" );
         fprintf( fp, "    cmp      l\n" );
+        fprintf( fp, "    jnz      %s%d\n", truename, truenumber );
+        fprintf( fp, "    mov      a, d\n" );
+        fprintf( fp, "    cmp      h\n" );
         fprintf( fp, "    jnz      %s%d\n", truename, truenumber );
     }
     else if ( Token::LT == op || Token::LE == op )
@@ -3309,14 +3314,17 @@ void Generate8080Relation( FILE * fp, Token op, const char * truename, int truen
         {
             // check for equality
 
-            fprintf( fp, "    cmp      h\n" );
-            fprintf( fp, "    jnz      ltRE%d\n", gen8080Relation );
             fprintf( fp, "    mov      a, e\n" );
             fprintf( fp, "    cmp      l\n" );
+            fprintf( fp, "    jnz      ltRE%d\n", gen8080Relation );
+            fprintf( fp, "    mov      a, d\n" );
+            fprintf( fp, "    cmp      h\n" );
             fprintf( fp, "    jz       %s%d\n", truename, truenumber );
         }
 
         fprintf( fp, "  ltRE%d:\n", gen8080Relation ); // check for less than
+
+        // are the high bits the same and so the same signs?
 
         fprintf( fp, "    mov      a, d\n" );
         fprintf( fp, "    xra      h\n" );
@@ -3520,10 +3528,10 @@ void GenerateLogical( FILE * fp, map<string, Variable> const & varmap, int & iTo
     {
         fprintf( fp, "    pla\n" );
         fprintf( fp, "    %-6s   curOperand\n", OperatorInstruction6502[ op ] );
-        fprintf( fp, "    sta      curOperand\n", OperatorInstruction6502[ op ] );
+        fprintf( fp, "    sta      curOperand\n" );
         fprintf( fp, "    pla\n" );
         fprintf( fp, "    %-6s   curOperand+1\n", OperatorInstruction6502[ op ] );
-        fprintf( fp, "    sta      curOperand+1\n", OperatorInstruction6502[ op ] );
+        fprintf( fp, "    sta      curOperand+1\n" );
     }
 } //GenerateLogical
 
@@ -5296,7 +5304,6 @@ label_no_array_eq_optimization:
                     fprintf( fp, "    sta      curOperand\n" );
                     fprintf( fp, "    lda      /%d\n", vals[ t + 4 ].value );
                     fprintf( fp, "    sta      curOperand+1\n" );
-
                     Generate6502Relation( fp, GenVariableName( varname ), "curOperand", Token::LE, "_for_continue_", (int) l );
                     fprintf( fp, "    jmp      after_for_loop_%zd\n", l );
                     fprintf( fp, "_for_continue_%zd:\n", l );
