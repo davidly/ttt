@@ -6806,7 +6806,7 @@ label_no_array_eq_optimization:
                                 else
                                 {
                                     LoadArm64Address( fp, "x2", varname );
-                                    fprintf( fp, "    ldr      x0, [x2]\n" );
+                                    fprintf( fp, "    ldr      w0, [x2]\n" );
                                 }
                             }
                         }
@@ -6818,7 +6818,7 @@ label_no_array_eq_optimization:
                             else
                             {
                                 LoadArm64Constant( fp, "x1", vals[ 4 ].value );
-                                fprintf( fp, "    cmp      x0, x1\n" );
+                                fprintf( fp, "    cmp      w0, w1\n" );
                             }
                         }
                         else
@@ -6839,7 +6839,7 @@ label_no_array_eq_optimization:
                                 {
                                     LoadArm64Address( fp, "x2", varname );
                                     fprintf( fp, "    ldr      w1, [x2]\n" );
-                                    fprintf( fp, "    cmp      x0, x1\n" );
+                                    fprintf( fp, "    cmp      w0, w1\n" );
                                 }
                             }
                         }
