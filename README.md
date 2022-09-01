@@ -131,7 +131,12 @@ To run ttt_trs80.asm on a TRS-80. (renamed as ttt.asm)
         On the trs-80, F8 to exit and say yes to disconnect, then f8 to go back to the root menu
         Run lt.ba, which loads t.do, converts it to binary in RAM, and executes the app
 
-![image](https://user-images.githubusercontent.com/1497921/187554837-91922cf9-a615-4620-a2dc-457b57eeaa7b.png)
+	The Apple 1 released in 1976 is 24x faster than WOPR. The 8085 released in 1976 is 18x faster. The Z80-A released in 1977 is 28x faster.
+	All times are in milliseconds (except where noted) for one iteration of solving for all 3 unique starting moves.
+	Times in parenthesis () are for when not using function tables, so performance is comparable to BASIC.
+	
+![image](https://user-images.githubusercontent.com/1497921/187959777-1fba0266-d126-4f40-aef1-42d2da05c782.png)
+
 
 
 
