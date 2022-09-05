@@ -2151,13 +2151,36 @@ bool fitsIn8Bits( int x )
 
 int g_lohCount = 0;
 
-void LoadArm64Address( FILE * fp, const char * reg, string const & varname )
+void LoadArm64Label( FILE * fp, const char * reg, const char * labelname )
 {
     fprintf( fp, "Lloh%d:\n", g_lohCount++ );
-    fprintf( fp, "    adrp     %s, %s@PAGE\n", reg, GenVariableName( varname ) );
+    fprintf( fp, "    adrp     %s, %s@PAGE\n", reg, labelname );
     fprintf( fp, "Lloh%d:\n", g_lohCount++ );
-    fprintf( fp, "    add      %s, %s, %s@PAGEOFF\n", reg, reg, GenVariableName( varname ) );
+    fprintf( fp, "    add      %s, %s, %s@PAGEOFF\n", reg, reg, labelname );
+} //LoadArm64Label
+
+void LoadArm64Address( FILE * fp, const char * reg, string const & varname )
+{
+    LoadArm64Label( fp, reg, GenVariableName( varname ) );
 } //LoadArm64Address
+
+void LoadArm64Address( FILE * fp, const char * reg, map<string, Variable> const varmap, string const & varname )
+{
+    if ( IsVariableInReg( varmap, varname ) )
+        fprintf( fp, "    mov      %s, %s\n", reg, GenVariableReg64( varmap, varname ) );
+    else
+        LoadArm64Address( fp, reg, varname );
+} //LoadArm64Address
+
+void LoadArm64Constant( FILE * fp, const char * reg, int i )
+{
+    // mov is 1 instruction. The assembler will create multiple instructions for ldr as required
+
+    if ( 0 == ( i & 0xffffff00 ) )
+        fprintf( fp, "    mov      %s, %d\n", reg, i );
+    else
+        fprintf( fp, "    ldr      %s, =%#x\n", reg, i );
+} //LoadArm64Constant
 
 void LoadArm32Label( FILE * fp, const char * reg, const char * labelname )
 {
@@ -2188,14 +2211,6 @@ void LoadArm32Address( FILE * fp, const char * reg, map<string, Variable> const 
         LoadArm32Address( fp, reg, varname );
 } //LoadArm32Address
 
-void LoadArm64Address( FILE * fp, const char * reg, map<string, Variable> const varmap, string const & varname )
-{
-    if ( IsVariableInReg( varmap, varname ) )
-        fprintf( fp, "    mov      %s, %s\n", reg, GenVariableReg64( varmap, varname ) );
-    else
-        LoadArm64Address( fp, reg, varname );
-} //LoadArm64Address
-
 void LoadArm32Constant( FILE * fp, const char * reg, int i )
 {
     // mov is 1 instruction. 
@@ -2210,16 +2225,6 @@ void LoadArm32Constant( FILE * fp, const char * reg, int i )
         fprintf( fp, "    movt     %s, #:upper16:%d\n", reg, i );
     }
 } //LoadArm32Constant
-
-void LoadArm64Constant( FILE * fp, const char * reg, int i )
-{
-    // mov is 1 instruction. The assembler will create multiple instructions for ldr as required
-
-    if ( 0 == ( i & 0xffffff00 ) )
-        fprintf( fp, "    mov      %s, %d\n", reg, i );
-    else
-        fprintf( fp, "    ldr      %s, =%#x\n", reg, i );
-} //LoadArm64Constant
 
 void GenerateOp( FILE * fp, map<string, Variable> const & varmap, vector<TokenValue> const & vals,
                  int left, int right, Token op, int leftArray = 0, int rightArray = 0 )
@@ -4302,14 +4307,12 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "    stp      x29, x30, [sp, #16]\n" );
         fprintf( fp, "    add      x29, sp, #16\n" );
 
-        fprintf( fp, "    adrp     x0, startString@PAGE\n" );
-        fprintf( fp, "    add      x0, x0, startString@PAGEOFF\n" );
+        LoadArm64Label( fp, "x0", "startString" );
         fprintf( fp, "    bl       call_printf\n" );
 
-        fprintf( fp, "    adrp     x3, startTicks@PAGE\n" );
-        fprintf( fp, "    add      x3, x3, startTicks@PAGEOFF\n" );
+        LoadArm64Label( fp, "x1", "startTicks" );
         fprintf( fp, "    mrs      x0, cntvct_el0\n" );
-        fprintf( fp, "    str      x0, [x3]\n" );
+        fprintf( fp, "    str      x0, [x1]\n" );
     }
     else if ( i8080CPM == g_AssemblyTarget )
     {
@@ -5503,8 +5506,7 @@ label_no_array_eq_optimization:
                         }
                         else if ( arm64Mac == g_AssemblyTarget )
                         {
-                            fprintf( fp, "    adrp     x0, strString@PAGE\n" );
-                            fprintf( fp, "    add      x0, x0, strString@PAGEOFF\n" );
+                            LoadArm64Label( fp, "x0", "strString" );
                             fprintf( fp, "    adrp     x1, str_%zd_%d@PAGE\n", l, t + 1 );
                             fprintf( fp, "    add      x1, x1, str_%zd_%d@PAGEOFF\n", l, t + 1 );
                             fprintf( fp, "    bl       call_printf\n" );
@@ -5565,18 +5567,15 @@ label_no_array_eq_optimization:
                             // lots of arguments, so call _printf directly
 
                             fprintf( fp, "    save_volatile_registers\n" );
-                            fprintf( fp, "    adrp     x0, rawTime@PAGE\n" );
-                            fprintf( fp, "    add      x0, x0, rawTime@PAGEOFF\n" );
+                            LoadArm64Label( fp, "x0", "rawTime" );
                             fprintf( fp, "    bl       _time\n" );
-                            fprintf( fp, "    adrp     x0, rawTime@PAGE\n" );
-                            fprintf( fp, "    add      x0, x0, rawTime@PAGEOFF\n" );
+                            LoadArm64Label( fp, "x0", "rawTime" );
                             fprintf( fp, "    bl       _localtime\n" );
                             fprintf( fp, "    ldp      w9, w8, [ x0, #4 ]\n" );
                             fprintf( fp, "    ldr      w10, [x0]\n" );
                             fprintf( fp, "    stp      x9, x10, [ sp, #8 ]\n" );
                             fprintf( fp, "    str      x8, [sp]\n" );
-                            fprintf( fp, "    adrp     x0, timeString@PAGE\n" );
-                            fprintf( fp, "    add      x0, x0, timeString@PAGEOFF\n" );
+                            LoadArm64Label( fp, "x0", "timeString" );
                             fprintf( fp, "    bl       _printf\n" );
                             fprintf( fp, "    restore_volatile_registers\n" );
                         }
@@ -5614,8 +5613,7 @@ label_no_array_eq_optimization:
                         }
                         else if ( arm64Mac == g_AssemblyTarget )
                         {
-                            fprintf( fp, "    adrp     x3, startTicks@PAGE\n" );
-                            fprintf( fp, "    add      x3, x3, startTicks@PAGEOFF\n" );
+                            LoadArm64Label( fp, "x3", "startTicks" );
                             fprintf( fp, "    ldr      x0, [x3]\n" );
                             fprintf( fp, "    mrs      x1, cntvct_el0\n" ); //current time
                             fprintf( fp, "    sub      x1, x1, x0\n" ); // elapsed time
@@ -5625,8 +5623,7 @@ label_no_array_eq_optimization:
                             fprintf( fp, "    mrs      x2, cntfrq_el0\n" ); // frequency
                             fprintf( fp, "    udiv     x1, x1, x2\n" );
                             
-                            fprintf( fp, "    adrp     x0, elapString@PAGE\n" );
-                            fprintf( fp, "    add      x0, x0, elapString@PAGEOFF\n" );
+                            LoadArm64Label( fp, "x0", "elapString" );
                             fprintf( fp, "    bl       call_printf\n" );
                         }
 
@@ -5653,8 +5650,7 @@ label_no_array_eq_optimization:
                         else if ( arm64Mac == g_AssemblyTarget )
                         {
                             fprintf( fp, "    mov      x1, x0\n" );
-                            fprintf( fp, "    adrp     x0, intString@PAGE\n" );
-                            fprintf( fp, "    add      x0, x0, intString@PAGEOFF\n" );
+                            LoadArm64Label( fp, "x0", "intString" );
                             fprintf( fp, "    bl       call_printf\n" );
                         }
                         else if ( i8080CPM == g_AssemblyTarget )
@@ -5680,8 +5676,7 @@ label_no_array_eq_optimization:
                 }
                 else if ( arm64Mac == g_AssemblyTarget )
                 {
-                    fprintf( fp, "    adrp     x0, newlineString@PAGE\n" );
-                    fprintf( fp, "    add      x0, x0, newlineString@PAGEOFF\n" );
+                    LoadArm64Label( fp, "x0", "newlineString" );
                     fprintf( fp, "    bl       call_printf\n" );
                 }
                 else if ( i8080CPM == g_AssemblyTarget )
@@ -7316,15 +7311,13 @@ label_no_if_optimization:
 
         fprintf( fp, ".p2align 2\n" );
         fprintf( fp, "error_exit:\n" );
-        fprintf( fp, "    adrp     x0, errorString@PAGE\n" );
-        fprintf( fp, "    add      x0, x0, errorString@PAGEOFF\n" );
+        LoadArm64Label( fp, "x0", "errorString" );
         fprintf( fp, "    bl       call_printf\n" ); 
         fprintf( fp, "    b        leave_execution\n" );
 
         fprintf( fp, ".p2align 2\n" );
         fprintf( fp, "end_execution:\n" );
-        fprintf( fp, "    adrp     x0, stopString@PAGE\n" );
-        fprintf( fp, "    add      x0, x0, stopString@PAGEOFF\n" );
+        LoadArm64Label( fp, "x0", "stopString" );
         fprintf( fp, "    bl       call_printf\n" ); 
         fprintf( fp, "    b        leave_execution\n" );
         
