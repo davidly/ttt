@@ -27,6 +27,9 @@ score_offset   equ  2
 value_offset   equ  0
 
 ; arguments to minmax relative to bp/sp
+; space between locals and arguments:
+;   2 or 4 bytes for return pc if minmax is NEAR or FAR (it's NEAR here)
+;   2 bytes to save BP
 
 alpha_offset   equ  12
 beta_offset    equ  14
@@ -35,7 +38,7 @@ move_offset    equ  18
 
 CODE SEGMENT PUBLIC 'CODE'
 ORG 100h
-startup PROC FAR
+startup PROC NEAR
 again:
         mov      [moves], 0
 
@@ -65,7 +68,7 @@ again:
         int      21h
 startup ENDP
 
-runmm PROC FAR
+runmm PROC NEAR
         ; make the first move
         mov       di, ax
         push      di
@@ -92,7 +95,8 @@ runmm PROC FAR
         ret
 runmm ENDP
 
-minmax PROC FAR
+minmax PROC NEAR
+        push     bp
         sub      sp, 8              ; allocate space for local variables
         xor      ax, ax
         mov      bp, sp             ; set bp to the stack location
@@ -162,7 +166,6 @@ minmax PROC FAR
 
         call     minmax
         add      sp, 8              ; cleanup stack for arguments
-        mov      bp, sp
 
         mov      [ bp + score_offset ], ax
         mov      si, [ bp + i_offset ]
@@ -222,10 +225,11 @@ minmax PROC FAR
         mov      ax, [ bp + value_offset ]
   _just_return_ax:
         add      sp, 8              ; cleanup stack for locals
+        pop      bp
         ret
 minmax ENDP
 
-winner PROC FAR
+winner PROC NEAR
         xor      ax, ax
         lea      si, [offset board]
         mov      al, [ si ]
@@ -314,7 +318,7 @@ winner ENDP
 
 ; print the integer in ax
 
-printint PROC FAR
+printint PROC NEAR
         xor cx, cx
         xor dx, dx
         cmp ax, 0
@@ -345,14 +349,14 @@ printint PROC FAR
         ret
 printint ENDP
 
-printcrlf PROC FAR
+printcrlf PROC NEAR
         mov      ah, dos_write_string
         mov      dx, offset crlfmsg
         int      21h
         ret
 printcrlf ENDP
 
-printcommasp PROC FAR
+printcommasp PROC NEAR
         mov      ah, dos_write_string
         mov      dx, offset commaspmsg
         int      21h
