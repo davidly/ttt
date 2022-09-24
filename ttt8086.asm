@@ -98,8 +98,9 @@ runmm ENDP
 minmax PROC NEAR
         push     bp
         sub      sp, 8              ; allocate space for local variables
-        xor      ax, ax
         mov      bp, sp             ; set bp to the stack location
+
+        xor      ax, ax
         mov      [ bp + i_offset ], ax
 
         inc      WORD PTR [ moves ]
@@ -319,33 +320,42 @@ winner ENDP
 ; print the integer in ax
 
 printint PROC NEAR
-        xor cx, cx
-        xor dx, dx
-        cmp ax, 0
-        je przero
-  prlabel1:
-        cmp ax, 0
-        je prprint1     
-        mov bx, 10       
-        div bx                 
-        push dx             
-        inc cx             
-        xor dx, dx
-        jmp prlabel1
-  prprint1:
-        cmp cx, 0
-        je prexit
-        pop dx
-        add dx, 48
-        mov ah, dos_write_char
-        int 21h
-        dec cx
-        jmp prprint1
-  przero:
-        mov dx, '0'
-        mov ah, dos_write_char
-        int 21h
-  prexit:
+        test     ah, 80h
+        jz       _prpositive
+        neg      ax                 ; just one instruction for complement + 1
+        push     ax
+        mov      dx, '-'
+        mov      ah, dos_write_char
+        int      21h
+        pop      ax
+  _prpositive:
+        xor      cx, cx
+        xor      dx, dx
+        cmp      ax, 0
+        je       _przero
+  _prlabel1:
+        cmp      ax, 0
+        je       _prprint1     
+        mov      bx, 10       
+        div      bx                 
+        push     dx             
+        inc      cx             
+        xor      dx, dx
+        jmp      _prlabel1
+  _prprint1:
+        cmp      cx, 0
+        je       _prexit
+        pop      dx
+        add      dx, 48
+        mov      ah, dos_write_char
+        int      21h
+        dec      cx
+        jmp      _prprint1
+  _przero:
+        mov      dx, '0'
+        mov      ah, dos_write_char
+        int      21h
+  _prexit:
         ret
 printint ENDP
 
