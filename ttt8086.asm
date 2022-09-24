@@ -8,8 +8,6 @@ dos_write_char     equ   2h
 dos_get_systemtime equ   1ah
 dos_exit           equ   4ch
 
-; these variables are all 1-byte, but 8086 requires push/pop be 2 bytes at a time
-
 iterations  equ   100   ; # of times to run (max 32767)
 max_score   equ     9   ; maximum score
 min_score   equ     2   ; minimum score
@@ -20,6 +18,7 @@ x_piece     equ     1
 o_piece     equ     2 
 blank_piece equ     0
 
+; these variables are all 1-byte, but 8086 requires push/pop be 2 bytes at a time
 ; local variables in minmax relative to bp/sp
 
 pm_offset      equ  6
@@ -27,7 +26,7 @@ i_offset       equ  4
 score_offset   equ  2
 value_offset   equ  0
 
-; arguments to minmax relate to bp/sp
+; arguments to minmax relative to bp/sp
 
 alpha_offset   equ  12
 beta_offset    equ  14
@@ -40,12 +39,12 @@ startup PROC FAR
 again:
         mov      [moves], 0
 
+        ; run for the 3 unique first moves
+
         mov      ax, 0
         call     runmm
-
         mov      ax, 1
         call     runmm
-
         mov      ax, 4
         call     runmm
 
@@ -67,6 +66,7 @@ again:
 startup ENDP
 
 runmm PROC FAR
+        ; make the first move
         mov       di, ax
         push      di
         lea       si, [ offset board + di ]
@@ -81,11 +81,9 @@ runmm PROC FAR
         push      ax                ; alpha
 
         call      minmax
+        add       sp, 8
 
-        pop       ax
-        pop       ax
-        pop       ax
-        pop       ax
+        ; restore the board at the first move position
 
         pop       di
         lea       si, [ offset board + di ]
@@ -95,12 +93,10 @@ runmm PROC FAR
 runmm ENDP
 
 minmax PROC FAR
+        sub      sp, 8              ; allocate space for local variables
         xor      ax, ax
-        push     ax                 ; allocate space for PlayerMove
-        push     ax                 ; allocate space for I
-        push     ax                 ; allocate space for Score
-        push     ax                 ; allocate space for value
         mov      bp, sp             ; set bp to the stack location
+        mov      [ bp + i_offset ], ax
 
         inc      WORD PTR [ moves ]
 
@@ -109,11 +105,10 @@ minmax PROC FAR
         jl       _no_winner_check
 
         call     winner
-
-        cmp      ax, blank_piece
+        cmp      al, blank_piece
         je       _no_winner
 
-        cmp      ax, x_piece
+        cmp      al, x_piece
         jne      _o_winner
         mov      ax, win_score
         jmp      _just_return_ax
@@ -147,11 +142,10 @@ minmax PROC FAR
         mov      [ bp + pm_offset ], ax
 
   _loop:
-        mov      ax, [ bp + i_offset ]
-        cmp      ax, 9
+        mov      si, [ bp + i_offset ]
+        cmp      si, 9
         je       _load_value_return
 
-        mov      si, ax
         mov      al, BYTE PTR [ offset board + si ]
         cmp      al, 0
         jne      _next_i
@@ -163,19 +157,13 @@ minmax PROC FAR
         mov      ax, [ bp + depth_offset ]
         inc      ax
         push     ax
-        mov      ax, [ bp + beta_offset ]
-        push     ax
-        mov      ax, [ bp + alpha_offset ]
-        push     ax
+        push     [ bp + beta_offset ]
+        push     [ bp + alpha_offset ]
 
         call     minmax
-
-        pop      bx
-        pop      bx
-        pop      bx
-        pop      bx
-
+        add      sp, 8              ; cleanup stack for arguments
         mov      bp, sp
+
         mov      [ bp + score_offset ], ax
         mov      si, [ bp + i_offset ]
         xor      ax, ax
@@ -233,10 +221,7 @@ minmax PROC FAR
   _load_value_return:
         mov      ax, [ bp + value_offset ]
   _just_return_ax:
-        pop      bx
-        pop      bx
-        pop      bx
-        pop      bx
+        add      sp, 8              ; cleanup stack for locals
         ret
 minmax ENDP
 
@@ -325,7 +310,6 @@ winner PROC FAR
         xor     ax, ax
   _win_return:
         ret
-
 winner ENDP
 
 ; print the integer in ax
@@ -376,7 +360,6 @@ printcommasp PROC FAR
 printcommasp ENDP
 
 crlfmsg    db      13,10,'$'
-STRWIN     db      'winner ','$'
 timemsg    db      'seconds: ','$'
 movesmsg   db      'moves: ','$'
 commaspmsg db      ', ','$'
