@@ -4884,15 +4884,15 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
 
                         if ( Token::CONSTANT == vals[ t + 4 ].token )
                         {
-                            fprintf( fp, "    mov      si, %d\n", 2 * vals[ t + 4 ].value );
+                            fprintf( fp, "    mov      ax, [ %s + %d ]\n", GenVariableName( vararray ), 2 * vals[ t + 4 ].value );
                         }
                         else
                         {
                             fprintf( fp, "    mov      si, [ %s ]\n", GenVariableName( vals[ t + 4 ].strValue ) );
                             fprintf( fp, "    shl      si, 1\n" );
+                            fprintf( fp, "    mov      ax, [ offset %s + si ]\n", GenVariableName( vararray ) );
                         }
 
-                        fprintf( fp, "    mov      ax, [ offset %s + si ]\n", GenVariableName( vararray ) );
                         fprintf( fp, "    mov      WORD PTR [ %s ], ax\n", GenVariableName( varname ) );
 
                         t += vals[ t ].value;
@@ -6283,13 +6283,11 @@ label_no_array_eq_optimization:
 
                     fprintf( fp, "    mov      bx, [ %s ]\n", GenVariableName( vals[ t + 1 ].strValue ) );
 
-                    fprintf( fp, "    mov      si, %d\n", 2 * vals[ t + 6 ].value );
-                    fprintf( fp, "    mov      ax, [ offset %s + si ]\n", GenVariableName( vals[ t + 3 ].strValue ) );
+                    fprintf( fp, "    mov      ax, [ %s + %d ]\n", GenVariableName( vals[ t + 3 ].strValue ), 2 * vals[ t + 6 ].value );
                     fprintf( fp, "    cmp      ax, bx\n" );
                     fprintf( fp, "    jne      line_number_%zd\n", l + 1 );
 
-                    fprintf( fp, "    mov      si, %d\n", 2 * vals[ t + 14 ].value );
-                    fprintf( fp, "    mov      ax, [ offset %s + si ]\n", GenVariableName( vals[ t + 3 ].strValue ) );
+                    fprintf( fp, "    mov      ax, [ %s + %d ]\n", GenVariableName( vals[ t + 3 ].strValue ), 2 * vals[ t + 14 ].value );
                     fprintf( fp, "    cmp      ax, bx\n" );
                     fprintf( fp, "    je       label_gosub_return\n" );
 
@@ -8518,18 +8516,19 @@ label_no_if_optimization:
         fprintf( fp, "    sbb      ax, bx\n" );
         fprintf( fp, "    mov      word ptr [ result + 2 ], ax\n" );
 
-        // multiply by 100 (to retain precision for the upcoming divide)
+        // 1193180 / 65536 = 18.20648193...
+        // multiply by 10000 (to retain precision for the upcoming divide)
 
         fprintf( fp, "    mov      dx, word ptr [ result + 2 ]\n" );
         fprintf( fp, "    mov      ax, word ptr [ result ]\n" );
-        fprintf( fp, "    mov      bx, 100\n" );
+        fprintf( fp, "    mov      bx, 10000\n" );
         fprintf( fp, "    mul      bx\n" );
 
-        // divide by 182. After the divide, the result must fit in 16 bits, which means
+        // divide by 18206. After the divide, the result must fit in 16 bits, which means
         // a maximum of 3276 seconds (printint is signed!), or about 54 minutes.
         // elapsed times beyond that aren't supported.
 
-        fprintf( fp, "    mov      bx, 182\n" );
+        fprintf( fp, "    mov      bx, 18206\n" );
         fprintf( fp, "    div      bx\n" );
 
         // it's now in tenths of a second. divide by 10 to get it back to seconds
@@ -8537,7 +8536,6 @@ label_no_if_optimization:
         fprintf( fp, "    xor      dx, dx\n" );
         fprintf( fp, "    mov      bx, 10\n" );
         fprintf( fp, "    div      bx\n" );
-
         fprintf( fp, "    push     dx\n" ); // this is the remainder (tenths of a second)
 
         // print the seconds, a period, and the remainder which is tenths of a second.
