@@ -4538,13 +4538,21 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
     else if ( i8086DOS == g_AssemblyTarget )
     {
         fprintf( fp, "crlfmsg        db      13,10,'$'\n" );
-        fprintf( fp, "elapString     db      'seconds: ','$'\n" );
+        fprintf( fp, "elapString     db      ' seconds','$'\n" );
         fprintf( fp, "startString    db      'running basic',13,10,'$'\n" );
         fprintf( fp, "stopString     db      'done running basic',13,10,'$'\n" );
         fprintf( fp, "errorString    db      'internal error',13,10,'$'\n" );
+        fprintf( fp, "starttime      dd      0\n" );
+        fprintf( fp, "scratchpad     dd      0\n" );
+        fprintf( fp, "result         dd      0\n" );
         fprintf( fp, "\n" );
 
         fprintf( fp, "startup PROC NEAR\n" );
+        fprintf( fp, "    xor      ax, ax\n" );
+        fprintf( fp, "    int      1ah\n" );
+        fprintf( fp, "    mov      WORD PTR [ starttime ], dx\n" ); // low word
+        fprintf( fp, "    mov      WORD PTR [ starttime + 2 ], cx\n" ); // high word
+
         fprintf( fp, "    mov      ah, dos_write_string\n" );
         fprintf( fp, "    mov      dx, offset startString\n" );
         fprintf( fp, "    int      21h\n" );
@@ -5805,6 +5813,7 @@ label_no_array_eq_optimization:
                     else if ( Token::TIME == vals[ t + 1 ].token )
                     {
                         // HH:MM:SS
+                        // HH:MM:SS:mm (on DOS because why not?)
 
                         if ( x64Win == g_AssemblyTarget )
                         {
@@ -5853,11 +5862,17 @@ label_no_array_eq_optimization:
                             fprintf( fp, "    bl       _printf\n" );
                             fprintf( fp, "    restore_volatile_registers\n" );
                         }
+                        else if ( i8086DOS == g_AssemblyTarget )
+                        {
+                            fprintf( fp, "    call     printtime\n" );
+                        }
 
                         t += vals[ t ].value;
                     }
                     else if ( Token::ELAP == vals[ t + 1 ].token )
                     {
+                        // show elapsed time in milliseconds on platforms where it's possible
+
                         if ( x64Win == g_AssemblyTarget )
                         {
                             fprintf( fp, "    lea      rcx, [currentTicks]\n" );
@@ -5899,6 +5914,13 @@ label_no_array_eq_optimization:
                             
                             LoadArm64Label( fp, "x0", "elapString" );
                             fprintf( fp, "    bl       call_printf\n" );
+                        }
+                        else if ( i8086DOS == g_AssemblyTarget )
+                        {
+                            fprintf( fp, "    call     printelap\n" );
+                            fprintf( fp, "    mov      ah, dos_write_string\n" );
+                            fprintf( fp, "    mov      dx, offset elapString\n" );
+                            fprintf( fp, "    int      21h\n" );
                         }
 
                         t += vals[ t ].value;
@@ -6583,7 +6605,6 @@ label_no_array_eq_optimization:
                           Token::VARIABLE == vals[ t + 1 ].token &&
                           Token::AND == vals[ t + 2 ].token  &&
                           Token::CONSTANT == vals[ t + 3 ].token &&
-                          1 == vals[ t + 3 ].value &&
                           Token::THEN == vals[ t + 4 ].token &&
                           Token::VARIABLE == vals[ t + 5 ].token &&
                           Token::EQ == vals[ t + 6 ].token &&
@@ -6635,7 +6656,6 @@ label_no_array_eq_optimization:
                           Token::VARIABLE == vals[ t + 1 ].token &&
                           Token::AND == vals[ t + 2 ].token  &&
                           Token::CONSTANT == vals[ t + 3 ].token &&
-                          1 == vals[ t + 3 ].value &&
                           Token::THEN == vals[ t + 4 ].token &&
                           Token::VARIABLE == vals[ t + 5 ].token &&
                           Token::EQ == vals[ t + 6 ].token &&
@@ -6689,7 +6709,6 @@ label_no_array_eq_optimization:
                           Token::VARIABLE == vals[ t + 1 ].token &&
                           Token::AND == vals[ t + 2 ].token  &&
                           Token::CONSTANT == vals[ t + 3 ].token &&
-                          1 == vals[ t + 3 ].value &&
                           Token::THEN == vals[ t + 4 ].token &&
                           Token::VARIABLE == vals[ t + 5 ].token &&
                           Token::EQ == vals[ t + 6 ].token &&
@@ -6719,7 +6738,7 @@ label_no_array_eq_optimization:
                     // token  13 EXPRESSION, value 2, strValue ''
                     // token  14 CONSTANT, value 9, strValue ''
 
-                    fprintf( fp, "    test     [ %s ], 1\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                    fprintf( fp, "    test     [ %s ], %d\n", GenVariableName( vals[ t + 1 ].strValue ), vals[ t + 3 ].value );
                     fprintf( fp, "    jz       uniq_%d\n", s_uniqueLabel );
                     fprintf( fp, "    mov      bx, %d\n", vals[ t + 8 ].value );
                     fprintf( fp, "    jmp      uniq_%d\n", s_uniqueLabel + 1 );
@@ -8479,6 +8498,114 @@ label_no_if_optimization:
 
         fprintf( fp, "startup ENDP\n" );
 
+        //////////////////
+
+        fprintf( fp, "printelap PROC NEAR\n" );
+        fprintf( fp, "    xor      ax, ax\n" );
+        fprintf( fp, "    int      1ah\n" );        // "ticks" in cx:dx, with 18.2 ticks per second. 
+        fprintf( fp, "    mov      WORD PTR [ scratchpad ], dx\n" ); // low word
+        fprintf( fp, "    mov      WORD PTR [ scratchpad + 2 ], cx\n" ); // high word
+
+        // subtract the current tick count from the app start tickcount
+
+        fprintf( fp, "    mov      dl, 0\n" );
+        fprintf( fp, "    mov      ax, WORD PTR [ scratchpad ]\n" );
+        fprintf( fp, "    mov      bx, WORD PTR [ starttime ]\n" );
+        fprintf( fp, "    sub      ax, bx\n" );
+        fprintf( fp, "    mov      word ptr [ result ], ax\n" );
+        fprintf( fp, "    mov      ax, WORD PTR [ scratchpad + 2 ]\n" );
+        fprintf( fp, "    mov      bx, WORD PTR [ starttime + 2 ]\n" );
+        fprintf( fp, "    sbb      ax, bx\n" );
+        fprintf( fp, "    mov      word ptr [ result + 2 ], ax\n" );
+
+        // multiply by 100 (to retain precision for the upcoming divide)
+
+        fprintf( fp, "    mov      dx, word ptr [ result + 2 ]\n" );
+        fprintf( fp, "    mov      ax, word ptr [ result ]\n" );
+        fprintf( fp, "    mov      bx, 100\n" );
+        fprintf( fp, "    mul      bx\n" );
+
+        // divide by 182. After the divide, the result must fit in 16 bits, which means
+        // a maximum of 3276 seconds (printint is signed!), or about 54 minutes.
+        // elapsed times beyond that aren't supported.
+
+        fprintf( fp, "    mov      bx, 182\n" );
+        fprintf( fp, "    div      bx\n" );
+
+        // it's now in tenths of a second. divide by 10 to get it back to seconds
+
+        fprintf( fp, "    xor      dx, dx\n" );
+        fprintf( fp, "    mov      bx, 10\n" );
+        fprintf( fp, "    div      bx\n" );
+
+        fprintf( fp, "    push     dx\n" ); // this is the remainder (tenths of a second)
+
+        // print the seconds, a period, and the remainder which is tenths of a second.
+        // given 18.2 ticks per second, it's more like 1/5 of a second resolution
+
+        fprintf( fp, "    call     printint\n" );
+        fprintf( fp, "    call     prperiod\n" );
+        fprintf( fp, "    pop      ax\n" );
+        fprintf( fp, "    call     printint\n" );
+
+        fprintf( fp, "    ret\n" );
+        fprintf( fp, "printelap ENDP\n" );
+
+        //////////////////
+
+        fprintf( fp, "printtime PROC NEAR\n" );
+        fprintf( fp, "    mov      ah, 2ch\n" );
+        fprintf( fp, "    int      21h\n" );
+
+        fprintf( fp, "    push     dx\n" );
+        fprintf( fp, "    push     cx\n" );
+        fprintf( fp, "    xor      ax, ax\n" );
+        fprintf( fp, "    mov      al, ch\n" );
+        fprintf( fp, "    call     print2digits\n" );
+        fprintf( fp, "    call     prcolon\n" );
+
+        fprintf( fp, "    pop      cx\n" );
+        fprintf( fp, "    xor      ax, ax\n" );
+        fprintf( fp, "    mov      al, cl\n" );
+        fprintf( fp, "    call     print2digits\n" );
+        fprintf( fp, "    call     prcolon\n" );
+
+        fprintf( fp, "    pop      dx\n" );
+        fprintf( fp, "    push     dx\n" );
+        fprintf( fp, "    xor      ax, ax\n" );
+        fprintf( fp, "    mov      al, dh\n" );
+        fprintf( fp, "    call     print2digits\n" );
+        fprintf( fp, "    call     prcolon\n" );
+
+        fprintf( fp, "    pop      dx\n" );
+        fprintf( fp, "    xor      ax, ax\n" );
+        fprintf( fp, "    mov      al, dl\n" );
+        fprintf( fp, "    call     print2digits\n" );
+        fprintf( fp, "    ret\n" );
+        fprintf( fp, "printtime ENDP\n" );
+
+        /////////////////////////
+
+        fprintf( fp, "; print 2-digit number in ax with a potential leading zero\n" );
+        fprintf( fp, "\n" );
+        fprintf( fp, "print2digits PROC NEAR\n" );
+        fprintf( fp, "    push     ax\n" );
+        fprintf( fp, "    cmp      ax, 9\n" );
+        fprintf( fp, "    jg       _pr_noleadingzero\n" );
+        fprintf( fp, "    call     przero\n" );
+        fprintf( fp, "  _pr_noleadingzero:\n" );
+        fprintf( fp, "    pop      ax\n" );
+        fprintf( fp, "    cmp      ax, 99\n" );
+        fprintf( fp, "    jle      _pr_ok\n" );
+        fprintf( fp, "    xor      ax, ax\n" );
+        fprintf( fp, "  _pr_ok:\n" );
+        fprintf( fp, "    call     printint\n" );
+        fprintf( fp, "    ret\n" );
+        fprintf( fp, "print2digits ENDP\n" );
+        fprintf( fp, "\n" );
+
+        ///////////////////////////////
+
         fprintf( fp, "; print the integer in ax\n" );
         fprintf( fp, "\n" );
         fprintf( fp, "printint PROC NEAR\n" );
@@ -8494,7 +8621,7 @@ label_no_if_optimization:
         fprintf( fp, "     xor      cx, cx\n" );
         fprintf( fp, "     xor      dx, dx\n" );
         fprintf( fp, "     cmp      ax, 0\n" );
-        fprintf( fp, "     je       _przero\n" );
+        fprintf( fp, "     je       _pr_just_zero\n" );
         fprintf( fp, "  _prlabel1:\n" );
         fprintf( fp, "     cmp      ax, 0\n" );
         fprintf( fp, "     je       _prprint1     \n" );
@@ -8513,14 +8640,30 @@ label_no_if_optimization:
         fprintf( fp, "     int      21h\n" );
         fprintf( fp, "     dec      cx\n" );
         fprintf( fp, "     jmp      _prprint1\n" );
-        fprintf( fp, "  _przero:\n" );
-        fprintf( fp, "     mov      dx, '0'\n" );
-        fprintf( fp, "     mov      ah, dos_write_char\n" );
-        fprintf( fp, "     int      21h\n" );
+        fprintf( fp, "  _pr_just_zero:\n" );
+        fprintf( fp, "     call     przero\n" );
         fprintf( fp, "  _prexit:\n" );
         fprintf( fp, "     ret\n" );
         fprintf( fp, "printint ENDP\n" );
         fprintf( fp, "\n" );
+        fprintf( fp, "prcolon PROC NEAR\n" );
+        fprintf( fp, "     mov      dx, ':'\n" );
+        fprintf( fp, "     mov      ah, dos_write_char\n" );
+        fprintf( fp, "     int      21h\n" );
+        fprintf( fp, "     ret\n" );
+        fprintf( fp, "prcolon ENDP\n" );
+        fprintf( fp, "prperiod PROC NEAR\n" );
+        fprintf( fp, "     mov      dx, '.'\n" );
+        fprintf( fp, "     mov      ah, dos_write_char\n" );
+        fprintf( fp, "     int      21h\n" );
+        fprintf( fp, "     ret\n" );
+        fprintf( fp, "prperiod ENDP\n" );
+        fprintf( fp, "przero PROC NEAR\n" );
+        fprintf( fp, "     mov      dx, '0'\n" );
+        fprintf( fp, "     mov      ah, dos_write_char\n" );
+        fprintf( fp, "     int      21h\n" );
+        fprintf( fp, "     ret\n" );
+        fprintf( fp, "przero ENDP\n" );
         fprintf( fp, "printcrlf PROC NEAR\n" );
         fprintf( fp, "     mov      ah, dos_write_string\n" );
         fprintf( fp, "     mov      dx, offset crlfmsg\n" );
@@ -9361,4 +9504,6 @@ extern int main( int argc, char *argv[] )
     if ( executeCode )
         InterpretCode( varmap );
 } //main
+
+
 
