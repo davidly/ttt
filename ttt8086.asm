@@ -39,6 +39,10 @@ move_offset    equ  18
 CODE SEGMENT PUBLIC 'CODE'
 ORG 100h
 startup PROC NEAR
+        xor      ax, ax
+        int      1ah
+        mov      WORD PTR [ starttime ], dx
+        mov      WORD PTR [ starttime + 2 ], cx
 again:
         mov      [moves], 0
 
@@ -54,6 +58,11 @@ again:
         inc      WORD PTR [ iters ]
         cmp      [ iters ], iterations
         jne      again
+
+        call     printelap
+        mov      ah, dos_write_string
+        mov      dx, offset secondsmsg
+        int      21h
 
         mov      ah, dos_write_string
         mov      dx, offset movesmsg
@@ -373,13 +382,54 @@ printcommasp PROC NEAR
         ret
 printcommasp ENDP
 
+prperiod PROC NEAR
+     mov      dx, '.'
+     mov      ah, dos_write_char
+     int      21h
+     ret
+prperiod ENDP
+
+printelap PROC NEAR
+    xor      ax, ax
+    int      1ah
+    mov      WORD PTR [ scratchpad ], dx
+    mov      WORD PTR [ scratchpad + 2 ], cx
+    mov      dl, 0
+    mov      ax, WORD PTR [ scratchpad ]
+    mov      bx, WORD PTR [ starttime ]
+    sub      ax, bx
+    mov      word ptr [ result ], ax
+    mov      ax, WORD PTR [ scratchpad + 2 ]
+    mov      bx, WORD PTR [ starttime + 2 ]
+    sbb      ax, bx
+    mov      word ptr [ result + 2 ], ax
+    mov      dx, word ptr [ result + 2 ]
+    mov      ax, word ptr [ result ]
+    mov      bx, 10000
+    mul      bx
+    mov      bx, 18206
+    div      bx
+    xor      dx, dx
+    mov      bx, 10
+    div      bx
+    push     dx
+    call     printint
+    call     prperiod
+    pop      ax
+    call     printint
+    ret
+printelap ENDP
+
 crlfmsg    db      13,10,'$'
-timemsg    db      'seconds: ','$'
+secondsmsg db      ' seconds',13,10,'$'
 movesmsg   db      'moves: ','$'
 commaspmsg db      ', ','$'
 board      db      0,0,0,0,0,0,0,0,0
 moves      dw      0        ; Count of moves examined 
 iters      dw      0        ; iterations of running the app
+scratchpad dd      0
+starttime  dd      0
+result     dd      0
 
 CODE ENDS
 
