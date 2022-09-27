@@ -2,11 +2,10 @@
 ; as -arch arm64 $1.s -o $1.o
 ; ld $1.o -o $1 -syslibroot 'xcrun -sdk macos --show-sdk-path' -e _start -L /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib -lSystem
 ;
-; what's specific to MacOS? The arguments to printf. I think everything else is generic arm64.
 
 .global _start
 
-.set iterations, 10000
+.set iterations, 100000
 .set minimum_score, 2
 .set maximum_score, 9
 .set win_score, 6
@@ -26,43 +25,30 @@
     board4: .byte 0,0,0,0,1,0,0,0,0
 
   .p2align 3
-    startTicks:      .quad 0
+    priorTicks:      .quad 0
     moveCount:       .quad 0
+    pthread1:        .quad 0
+    pthread4:        .quad 0
+    threadattr1:     .quad 0
+    threadattr4:     .quad 0
     elapString:      .asciz "%lld microseconds (-6)\n"
     movecountString: .asciz "%d moves\n"
-    startString:     .asciz "start\n"
-    stopString:      .asciz "stop\n"
-
+ 
 .text
 .p2align 2 
 _start:
-    ; remember the caller's stack frame and return address (though we never use it due to the exit())
-    
+    ; remember the caller's stack frame and return address
     sub      sp, sp, #32
     stp      x29, x30, [sp, #16]
     add      x29, sp, #16
 
-    ; keep this parked in x20 for fast access
-
-    adrp     x20, _winner_functions@PAGE
-    add      x20, x20, _winner_functions@PAGEOFF
-
-    ; show that we're starting execution
-
-    adrp     x0, startString@PAGE
-    add      x0, x0, startString@PAGEOFF
-    bl       call_printf
-
     ; remember the starting tickcount
-   
-    adrp     x1, startTicks@PAGE
-    add      x1, x1, startTicks@PAGEOFF
+    adrp     x1, priorTicks@PAGE
+    add      x1, x1, priorTicks@PAGEOFF
     mrs      x0, cntvct_el0
     str      x0, [x1]
 
-    ; generate the 3 solutions
-
-  .p2align 2
+    ; generate the 3 solutions in serial
     mov      x0, 0
     bl       _runmm 
     mov      x0, 1
@@ -70,52 +56,77 @@ _start:
     mov      x0, 4
     bl       _runmm 
  
-    ; show execution time
+    bl       _print_elapsed_time        ; show how long it took in serial
+    bl       _print_movecount           ; show # of moves, a multiple of 6493
+    bl       _solve_threaded            ; now do it in parallel
+    bl       _print_elapsed_time        ; show how long it took in parallel
+    bl       _print_movecount           ; show # of moves, a multiple of 6493
 
-    adrp     x3, startTicks@PAGE
-    add      x3, x3, startTicks@PAGEOFF
+    mov      x0, 0
+    ldp      x29, x30, [sp, #16]
+    add      sp, sp, #32
+    ret
+
+.p2align 2
+_print_elapsed_time:
+    sub      sp, sp, #32
+    stp      x29, x30, [sp, #16]
+    add      x29, sp, #16
+
+    mrs      x1, cntvct_el0             ; current tick time in x1
+    adrp     x3, priorTicks@PAGE        ; load prior tick count
+    add      x3, x3, priorTicks@PAGEOFF
     ldr      x0, [x3]
-    mrs      x1, cntvct_el0
+    str      x1, [x3]                   ; update prior with current time
     sub      x1, x1, x0
-    ldr      x4, =0xf4240
-    mul      x1, x1, x4
+    ldr      x4, =0xf4240               ; 1,000,000 (microseconds)
+    mul      x1, x1, x4                 ; save precision by multiplying by a big number
     mrs      x2, cntfrq_el0
     udiv     x1, x1, x2
     adrp     x0, elapString@PAGE
     add      x0, x0, elapString@PAGEOFF
     bl       call_printf
+    
+    ldp      x29, x30, [sp, #16]
+    add      sp, sp, #32
+    ret
 
-    ; show the move count (should be a multiple of 6493)
-
-    adrp     x0, moveCount@PAGE
-    add      x0, x0, moveCount@PAGEOFF
-    ldr      w1, [x0]   
-    adrp     x0, movecountString@PAGE
-    add      x0, x0, movecountString@PAGEOFF
-    bl       call_printf
-
-    ; show that we're ending execution
-
-    adrp     x0, stopString@PAGE
-    add      x0, x0, stopString@PAGEOFF
-    bl       call_printf
-
-    ; call the c runtime to exit the app
-
-    mov      x0, 0
-    bl       _exit
- 
 .p2align 2
-_runmm:
+_print_movecount:
     sub      sp, sp, #32
     stp      x29, x30, [sp, #16]
     add      x29, sp, #16
 
-    mov      x19, 0                     ; x19 is the move count
-    mov      x23, x0                    ; x23 is the initial move
-    
-    ; load x21 with the board to use
+    adrp     x0, moveCount@PAGE
+    add      x0, x0, moveCount@PAGEOFF
+    ldr      w1, [x0]
+    str      xzr, [x0]                    ; reset moveCount to 0   
+    adrp     x0, movecountString@PAGE
+    add      x0, x0, movecountString@PAGEOFF
+    bl       call_printf
 
+    ldp      x29, x30, [sp, #16]
+    add      sp, sp, #32
+    ret
+
+.p2align 2
+_runmm:
+    ; the pthread infra needs many these registers to be saved (especially x20)
+
+    stp      x26, x25, [sp, #-96]!      
+    stp      x24, x23, [sp, #16]        
+    stp      x28, x27, [sp, #32]        
+    stp      x22, x21, [sp, #48]
+    stp      x20, x19, [sp, #64]       
+    stp      x29, x30, [sp, #80]       
+    add      x29, sp, #80               
+
+    mov      x19, 0                              ; x19 is the move count
+    mov      x23, x0                             ; x23 is the initial move    
+    adrp     x20, _winner_functions@PAGE         ; x20 holds the function table
+    add      x20, x20, _winner_functions@PAGEOFF
+
+    ; load x21 with the board to use
     cmp      x0, 0
     b.ne     _runmm_try1
     adrp     x21, board0@PAGE
@@ -137,7 +148,7 @@ _runmm:
     add      x21, x21, board4@PAGEOFF
 
   _runmm_for:
-    mov      x22, iterations            ; x22 is the iteration for loop counter
+    ldr      x22, =iterations           ; x22 is the iteration for loop counter. ldr not mov because it's large
 
   _runmm_loop:
     mov      x0, minimum_score          ; alpha
@@ -150,13 +161,62 @@ _runmm:
     b.ne     _runmm_loop
 
     ; add the number of moves (atomic because multiple threads may do this at once)
-    
     adrp     x0, moveCount@PAGE
     add      x0, x0, moveCount@PAGEOFF
     ldaddal  w19, w19, [x0]
 
     ; exit the function
+    ldp      x29, x30, [sp, #80]
+    ldp      x20, x19, [sp, #64]         
+    ldp      x22, x21, [sp, #48]        
+    ldp      x28, x27, [sp, #32]        
+    ldp      x24, x23, [sp, #16]        
+    ldp      x26, x25, [sp], #96        
+    ret
 
+.p2align 2
+_solve_threaded:
+    sub      sp, sp, #32
+    stp      x29, x30, [sp, #16]
+    add      x29, sp, #16
+
+    ; board1 takes the longest to complete; start it first
+    adrp     x0, pthread1@PAGE
+    add      x0, x0, pthread1@PAGEOFF
+    mov      x1, 0
+    adrp     x2, _runmm@PAGE
+    add      x2, x2, _runmm@PAGEOFF
+    mov      x3, 1
+    bl       _pthread_create
+
+    ; created a thread for board4
+    adrp     x0, pthread4@PAGE
+    add      x0, x0, pthread4@PAGEOFF
+    mov      x1, 0
+    adrp     x2, _runmm@PAGE
+    add      x2, x2, _runmm@PAGEOFF
+    mov      x3, 4
+    bl       _pthread_create
+
+    ; solve board0 on this thread
+    mov      x0, 0
+    bl       _runmm
+
+    ; wait for board1 to complete
+    adrp     x0, pthread1@PAGE
+    add      x0, x0, pthread1@PAGEOFF
+    ldr      x0, [x0]
+    mov      x1, 0
+    bl       _pthread_join
+
+    ; wait for board4 to complete
+    adrp     x0, pthread4@PAGE
+    add      x0, x0, pthread4@PAGEOFF
+    ldr      x0, [x0]
+    mov      x1, 0
+    bl       _pthread_join
+
+    ; exit the function
     ldp      x29, x30, [sp, #16]
     add      sp, sp, #32
     ret
@@ -175,7 +235,7 @@ _minmax_max:
     ; x24: beta
     ; x25: depth
     ; x26: value: local variable
-    ; x27: for loop variable I
+    ; x27: for loop local variable I
     ; x28: unused
 
     stp      x26, x25, [sp, #-64]!      
@@ -193,7 +253,6 @@ _minmax_max:
     b.le     _minmax_max_skip_winner
 
     ; call the winner function for the most recent move
-
     mov      x0, o_piece                ; the piece just played
     lsl      x3, x3, 3                  ; each function pointer takes 8 bytes (move is trashed)
     add      x3, x20, x3                ; table + function offset
@@ -245,7 +304,7 @@ _minmax_max:
     cmp      w23, w24                   ; compare alpha with beta
     b.ge     _minmax_max_loadv_done     ; alpha pruning if alpha >= beta
  
-    b        _minmax_max_top_of_loop
+    b        _minmax_max_top_of_loop    ; loop to the next board position 0..8
 
   .p2align 2
   _minmax_max_loadv_done:
@@ -273,7 +332,7 @@ _minmax_min:
     ; x24: beta
     ; x25: depth
     ; x26: value: local variable
-    ; x27: for loop variable I
+    ; x27: for loop local variable I
     ; x28: unused
 
     stp      x26, x25, [sp, #-64]!      
@@ -291,7 +350,6 @@ _minmax_min:
     b.le     _minmax_min_skip_winner
 
     ; call the winner function for the most recent move
-
     mov      x0, x_piece                ; the piece just played
     lsl      x3, x3, 3                  ; each function pointer takes 8 bytes (move is trashed)
     add      x3, x20, x3                ; table + function offset
@@ -347,7 +405,7 @@ _minmax_min:
     cmp      w24, w23                   ; compare beta with alpha
     b.le     _minmax_min_loadv_done     ; beta pruning if beta <= alpha
  
-    b        _minmax_min_top_of_loop
+    b        _minmax_min_top_of_loop    ; loop to the next board position 0..8
 
   .p2align 2
   _minmax_min_loadv_done:
@@ -425,8 +483,8 @@ _pos1func:
 	ret
 	.cfi_endproc
                      
-	.globl _pos2func
-	.p2align 2
+.globl _pos2func
+.p2align 2
 _pos2func:
 	.cfi_startproc
 	ldrb	 w9, [x21]
@@ -455,8 +513,8 @@ _pos2func:
 	ret
 	.cfi_endproc
                      
-	.globl _pos3func
-	.p2align 2
+.globl _pos3func
+.p2align 2
 _pos3func:
 	.cfi_startproc
 	ldrb	 w9, [x21, #4]
@@ -478,8 +536,8 @@ _pos3func:
 	ret
 	.cfi_endproc
 
-	.globl	_pos4func
-	.p2align 2
+.globl _pos4func
+.p2align 2
 _pos4func:
 	.cfi_startproc
 	ldrb	 w9, [x21]
@@ -515,8 +573,8 @@ _pos4func:
 	ret
 	.cfi_endproc
 
-	.globl	_pos5func
-	.p2align 2
+.globl _pos5func
+.p2align 2
 _pos5func:
 	.cfi_startproc
 	ldrb	 w9, [x21, #3]
@@ -538,8 +596,8 @@ _pos5func:
 	ret
 	.cfi_endproc
 
-	.globl	_pos6func
-	.p2align 2
+.globl _pos6func
+.p2align 2
 _pos6func:
 	.cfi_startproc
 	ldrb	 w9, [x21, #7]
@@ -568,8 +626,8 @@ _pos6func:
 	ret
 	.cfi_endproc
                   
-	.globl	_pos7func
-	.p2align 2
+.globl _pos7func
+.p2align 2
 _pos7func:
 	.cfi_startproc
 	ldrb	 w9, [x21, #6]
@@ -591,8 +649,8 @@ _pos7func:
 	ret
 	.cfi_endproc
 
-	.globl	_pos8func
-	.p2align 2
+.globl _pos8func
+.p2align 2
 _pos8func:
 	.cfi_startproc
 	ldrb	 w9, [x21, #6]
