@@ -87,6 +87,7 @@ data_ttt SEGMENT 'DATA'
 data_ttt ENDS
 
 code_ttt SEGMENT 'CODE'
+
 main PROC ; linking with the C runtime, so main will be invoked
     push     ebp
     mov      ebp, esp
@@ -172,7 +173,7 @@ show_move_count PROC
     push     edi
     push     esi
 
-    push      DWORD PTR [moveCount]
+    push     DWORD PTR [moveCount]
     push     offset moveStr
     call     printf
     add      esp, 8
@@ -213,20 +214,16 @@ solve_threaded PROC
     push     0                          ; solve board0 on this thread
     call     TTTThreadProc
 
-    push     -1
-    mov      eax, DWORD PTR [ ebp - 8 ]
-    push     eax
+    push     -1                         ; wait infinite
+    push     DWORD PTR [ ebp - 8 ]
     call     WaitForSingleObject@8
-    mov      eax, DWORD PTR [ ebp - 8 ]
-    push     eax
+    push     DWORD PTR [ ebp - 8 ]
     call     CloseHandle@4
 
-    push     -1
-    mov      eax, DWORD PTR [ ebp - 4 ]
-    push     eax
+    push     -1                         ; wait infinite
+    push     DWORD PTR [ ebp - 4 ]
     call     WaitForSingleObject@8
-    mov      eax, DWORD PTR [ ebp - 4 ]
-    push     eax
+    push     DWORD PTR [ ebp - 4 ]
     call     CloseHandle@4
 
     pop      esi
@@ -323,7 +320,7 @@ minmax_max PROC
 
     ; check if o won and exit early
     cmp      al, o_piece
-    mov      eax, lose_score
+    mov      eax, lose_score            ; this mov may be wasted
     je       SHORT minmax_max_done
 
   minmax_max_skip_winner:
@@ -342,12 +339,12 @@ minmax_max PROC
     mov      BYTE PTR [ edi + ebx ], x_piece        ; make the move
 
     ; recurse to the min
-    push     ebx
+    push     ebx                                    ; the move
     mov      eax, [ ebp + DEPTH_OFFSET ]
     inc      eax
-    push     eax
-    push     DWORD PTR [ ebp + BETA_OFFSET ]
-    push     DWORD PTR [ ebp + ALPHA_OFFSET ]
+    push     eax                                    ; depth
+    push     DWORD PTR [ ebp + BETA_OFFSET ]        ; beta
+    push     DWORD PTR [ ebp + ALPHA_OFFSET ]       ; alpha
     call     minmax_min
  
     ; restore the blank piece on the board
@@ -383,9 +380,8 @@ minmax_max PROC
         minmax_max_no_alpha_update:
     ENDIF
 
-    ; try to alpha prune
     cmp      ecx, DWORD PTR [ ebp + BETA_OFFSET ]      ; compare alpha with beta
-    jge      SHORT minmax_max_loadv_done
+    jge      SHORT minmax_max_loadv_done               ; alpha prune
     mov      DWORD PTR [ ebp + ALPHA_OFFSET ], ecx     ; this may just update with the same value
 
     jmp      SHORT minmax_max_top_of_loop
@@ -436,12 +432,12 @@ minmax_min PROC
 
     ; check if x won and exit early
     cmp      al, x_piece
-    mov      eax, win_score
+    mov      eax, win_score             ; this mov may be wasted
     je       SHORT minmax_min_done
 
     ; can we recurse further?
     cmp      DWORD PTR [ ebp + DEPTH_OFFSET ], 8
-    mov      eax, tie_score
+    mov      eax, tie_score             ; this mov may be wasted
     je       SHORT minmax_min_done
 
   minmax_min_skip_winner:
@@ -460,14 +456,14 @@ minmax_min PROC
     mov      BYTE PTR [ edi + ebx ], o_piece           ; make the move
 
     ; recurse to the max
-    push     ebx
-    mov      eax, [ ebp + DEPTH_OFFSET ]
-    inc      eax
-    push     eax
-    push     DWORD PTR [ ebp + BETA_OFFSET ]
-    push     DWORD PTR [ ebp + ALPHA_OFFSET ]
-    call     minmax_max
-
+    push     ebx                                       ; the move 
+    mov      eax, [ ebp + DEPTH_OFFSET ]                          
+    inc      eax                                                  
+    push     eax                                       ; depth    
+    push     DWORD PTR [ ebp + BETA_OFFSET ]           ; beta     
+    push     DWORD PTR [ ebp + ALPHA_OFFSET ]          ; alpha    
+    call     minmax_max                                           
+                                                                  
     ; restore the blank piece on the board
     mov      ebx, DWORD PTR [ ebp - LOCAL_I_OFFSET ]
     mov      BYTE PTR [ edi + ebx ], blank_piece
@@ -501,9 +497,8 @@ minmax_min PROC
         minmax_min_no_beta_update:
     ENDIF
 
-    ; try to beta prune
     cmp      ecx, DWORD PTR [ ebp + ALPHA_OFFSET ]          ; compare beta with alpha
-    jle      SHORT minmax_min_loadv_done
+    jle      SHORT minmax_min_loadv_done                    ; beta prune
     mov      DWORD PTR [ ebp + BETA_OFFSET ], ecx           ; this may just update with the same value
 
     jmp      SHORT minmax_min_top_of_loop
@@ -741,7 +736,7 @@ proc8 PROC
     ret
 proc8 ENDP
 
-; These are needed to link using the old ml.exe and link.exe required to set /subsystem:console,3.10 so binaries can run on Windows 7
+; These are needed to link using the old ml.exe and link.exe required to set /subsystem:console,3.10 so binaries can run on Windows XP
 
 __scrt_exe_initialize_mta PROC
     ret
