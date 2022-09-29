@@ -14,7 +14,7 @@
 
 iterations       equ     100000         ; # of times to solve the boards
 DEBUG            equ     0              ; 1 for debug tracing, 0 otherwise
-USE686           equ     0		; it's actually slower to use the cmov instructions
+USE686           equ     0              ; it's actually slower to use the cmov instructions
 
 IF USE686
     .686       ; released by Intel in 1995. First Intel cpu to have cmovX instructions
@@ -42,27 +42,31 @@ x_piece          equ     1              ; X move piece
 o_piece          equ     2              ; O move piece
 blank_piece      equ     0              ; blank piece
 
-; minmax_x argument offsets [ebp + X] where X = 2 to N DWORD passed on the stack
+; minmax_x argument offsets [ebp + X] where X = 2 to N DWORDs passed on the stack
 
 ALPHA_OFFSET    equ 4 * 2
 BETA_OFFSET     equ 4 * 3
 DEPTH_OFFSET    equ 4 * 4
 MOVE_OFFSET     equ 4 * 5
 
-; minmax_x local variable offsets [ebp - X] where X = 1 to N where N is the number of DWORDS
+; minmax_x local variable offsets [ebp - X] where X = 1 to N where N is the number of DWORDs
 
 LOCAL_VALUE_OFFSET    equ 4 * 1         ; the value of a board position
 LOCAL_I_OFFSET        equ 4 * 2         ; i in the for loop 0..8
 
 data_ttt SEGMENT 'DATA'
     ; It's important to put each of these boards in separate 64-byte cache lines or multi-core performance is 9x slower
+    ; Update: make the boards 128 bytes apart since some old Intel CPUs effectively have 128 byte cache lines. 2x faster with this.
 
     BOARD0        db     1,0,0,0,0,0,0,0,0
     fillbyte0     db     7+48 dup(0)
+    fillbyte0b    db     64 dup(0)
     BOARD1        db     0,1,0,0,0,0,0,0,0
     fillbyte1     db     7+48 dup(0)
+    fillbyte1b    db     64 dup(0)
     BOARD4        db     0,0,0,0,1,0,0,0,0
     fillbyte4     db     7+48 dup(0)
+    fillbyte4b    db     64 dup(0)
 
     priorTicks    dq     0
     currentTicks  dq     0
@@ -89,12 +93,10 @@ main PROC ; linking with the C runtime, so main will be invoked
     push     edi
     push     esi
 
-    lea      ecx, [priorTicks]
-    push     ecx
+    push     offset priorTicks
     call     QueryPerformanceCounter@4
 
-    lea      ecx, [perfFrequency]
-    push     ecx
+    push     offset perfFrequency
     call     QueryPerformanceFrequency@4
     mov      eax, DWORD PTR [perfFrequency]
     mov      ecx, 1000000               ; get it down to milliseconds
@@ -102,14 +104,11 @@ main PROC ; linking with the C runtime, so main will be invoked
     div      ecx
     mov      DWORD PTR [perfFrequency], eax
 
-    mov      eax, 0                     ; solve for board0
-    push     eax
+    push     0
     call     TTTThreadProc
-    mov      eax, 1                     ; solve for board1
-    push     eax
+    push     1
     call     TTTThreadProc
-    mov      eax, 4                     ; solve for board4
-    push     eax
+    push     4
     call     TTTThreadProc
 
     call     show_duration
@@ -119,10 +118,8 @@ main PROC ; linking with the C runtime, so main will be invoked
     call     show_duration
     call     show_move_count
 
-    mov      eax, iterations
-    push     eax
-    lea      eax, iterStr
-    push     eax
+    push     iterations
+    push     offset iterStr
     call     printf
     add      esp, 8
 
@@ -140,8 +137,7 @@ show_duration PROC
     push     edi
     push     esi
 
-    lea      ecx, [currentTicks]
-    push     ecx
+    push     offset currentTicks
     call     QueryPerformanceCounter@4
 
     mov      eax, DWORD PTR [currentTicks]
@@ -156,13 +152,11 @@ show_duration PROC
     idiv     ecx
 
     push     eax
-    lea      eax, [elapStr]
-    push     eax
+    push     offset elapStr
     call     printf
     add      esp, 8
 
-    lea      ecx, [priorTicks]
-    push     ecx
+    push     offset priorTicks
     call     QueryPerformanceCounter@4
 
     pop      esi
@@ -178,10 +172,8 @@ show_move_count PROC
     push     edi
     push     esi
 
-    mov      eax, [moveCount]
-    push     eax
-    lea      ebx, moveStr
-    push     ebx
+    push      DWORD PTR [moveCount]
+    push     offset moveStr
     call     printf
     add      esp, 8
     mov      DWORD PTR [moveCount], 0
@@ -200,36 +192,28 @@ solve_threaded PROC
     push     edi
     push     esi
 
-    xor      eax, eax
-    push     eax                        ; no thread id
-    push     eax                        ; no creation flags
-    mov      ebx, 4                     ; argument to the call: board4
-    push     ebx
-    lea      ebx, TTTThreadProc
-    push     ebx                        ; the function to call
-    push     eax                        ; default stack size
-    push     eax                        ; no security attributes
+    push     0                          ; no thread id
+    push     0                          ; no creation flags
+    push     4                          ; argument to the call: board4
+    push     offset TTTThreadProc       ; the function to call
+    push     0                          ; default stack size
+    push     0                          ; no security attributes
     call     CreateThread@24
     mov      DWORD PTR [ ebp - 4 ], eax ; save the thread handle
 
-    xor      eax, eax
-    push     eax                        ; no thread id
-    push     eax                        ; no creation flags
-    mov      ebx, 1                     ; argument to the call: board1
-    push     ebx
-    lea      ebx, TTTThreadProc
-    push     ebx                        ; the function to call
-    push     eax                        ; default stack size
-    push     eax                        ; no security attributes
+    push     0                          ; no thread id
+    push     0                          ; no creation flags
+    push     1                          ; argument to the call: board1
+    push     offset TTTThreadProc       ; the function to call
+    push     0                          ; default stack size
+    push     0                          ; no security attributes
     call     CreateThread@24
     mov      DWORD PTR [ ebp - 8 ], eax ; save the thread handle
 
-    mov      eax, 0                     ; solve board0 on this thread
-    push     eax
+    push     0                          ; solve board0 on this thread
     call     TTTThreadProc
 
-    mov      eax, -1
-    push     eax
+    push     -1
     mov      eax, DWORD PTR [ ebp - 8 ]
     push     eax
     call     WaitForSingleObject@8
@@ -237,8 +221,7 @@ solve_threaded PROC
     push     eax
     call     CloseHandle@4
 
-    mov      eax, -1
-    push     eax
+    push     -1
     mov      eax, DWORD PTR [ ebp - 4 ]
     push     eax
     call     WaitForSingleObject@8
@@ -284,14 +267,10 @@ TTTThreadProc PROC
     xor      esi, esi                          ; zero the thread-global move count
 
   TTT_ThreadProc_loop:
-    mov      ecx, DWORD PTR[ebp - 8]
-    push     ecx                        ; first move position
-    xor      ecx, ecx
-    push     ecx                        ; depth (0)
-    mov      ecx, maximum_score         
-    push     ecx                        ; beta
-    mov      ecx, minimum_score         
-    push     ecx                        ; alpha
+    push     DWORD PTR [ebp - 8]        ; first move position
+    push     0                          ; depth (0)
+    push     maximum_score              ; beta
+    push     minimum_score              ; alpha
     call     minmax_min                 ; x just moved, so miminimize now
 
     dec      DWORD PTR [ebp - 4]
@@ -316,16 +295,11 @@ minmax_max PROC
     inc esi
 
     IF DEBUG
-        mov      eax, DWORD PTR [ ebp + MOVE_OFFSET ]
-        push     eax
-        mov      eax, DWORD PTR [ ebp + DEPTH_OFFSET ]
-        push     eax
-        mov      eax, DWORD PTR [ ebp + BETA_OFFSET ]
-        push     eax
-        mov      eax, DWORD PTR [ ebp + ALPHA_OFFSET ]
-        push     eax
-        lea      eax, dbg4
-        push     eax
+        push     DWORD PTR [ ebp + MOVE_OFFSET ]
+        push     DWORD PTR [ ebp + DEPTH_OFFSET ]
+        push     DWORD PTR [ ebp + BETA_OFFSET ]
+        push     DWORD PTR [ ebp + ALPHA_OFFSET ]
+        push     offset dbg4
         call     printf
         add      esp, 5 * 4
     ENDIF
@@ -341,8 +315,7 @@ minmax_max PROC
     IF DEBUG
         push     eax
         push     eax
-        lea      ebx, intS
-        push     ebx
+        push     offset intS
         call     printf
         add      esp, 2 * 4
         pop      eax
@@ -373,10 +346,8 @@ minmax_max PROC
     mov      eax, [ ebp + DEPTH_OFFSET ]
     inc      eax
     push     eax
-    mov      eax, [ ebp + BETA_OFFSET ]
-    push     eax
-    mov      eax, [ ebp + ALPHA_OFFSET ]
-    push     eax
+    push     DWORD PTR [ ebp + BETA_OFFSET ]
+    push     DWORD PTR [ ebp + ALPHA_OFFSET ]
     call     minmax_min
  
     ; restore the blank piece on the board
@@ -407,16 +378,15 @@ minmax_max PROC
     IF USE686
         cmovl    ecx, ebx
     ELSE
-        jge      minmax_max_no_v_update2
+        jge      minmax_max_no_alpha_update
         mov      ecx, ebx
-        minmax_max_no_v_update2:
+        minmax_max_no_alpha_update:
     ENDIF
 
     ; try to alpha prune
-    mov      edx, [ ebp + BETA_OFFSET ]
-    cmp      ecx, edx
+    cmp      ecx, DWORD PTR [ ebp + BETA_OFFSET ]      ; compare alpha with beta
     jge      SHORT minmax_max_loadv_done
-    mov      DWORD PTR [ ebp + ALPHA_OFFSET ], ecx
+    mov      DWORD PTR [ ebp + ALPHA_OFFSET ], ecx     ; this may just update with the same value
 
     jmp      SHORT minmax_max_top_of_loop
 
@@ -438,16 +408,11 @@ minmax_min PROC
     inc esi
 
     IF DEBUG
-        mov      eax, DWORD PTR [ ebp + MOVE_OFFSET ]
-        push     eax
-        mov      eax, DWORD PTR [ ebp + DEPTH_OFFSET ]
-        push     eax
-        mov      eax, DWORD PTR [ ebp + BETA_OFFSET ]
-        push     eax
-        mov      eax, DWORD PTR [ ebp + ALPHA_OFFSET ]
-        push     eax
-        lea      eax, dbg4
-        push     eax
+        push     DWORD PTR [ ebp + MOVE_OFFSET ]
+        push     DWORD PTR [ ebp + DEPTH_OFFSET ]
+        push     DWORD PTR [ ebp + BETA_OFFSET ]
+        push     DWORD PTR [ ebp + ALPHA_OFFSET ]
+        push     offset dbg4
         call     printf
         add      esp, 5 * 4
     ENDIF
@@ -463,8 +428,7 @@ minmax_min PROC
     IF DEBUG
         push     eax
         push     eax
-        lea      ebx, intS
-        push     ebx
+        push     offset intS
         call     printf
         add      esp, 2 * 4
         pop      eax
@@ -500,10 +464,8 @@ minmax_min PROC
     mov      eax, [ ebp + DEPTH_OFFSET ]
     inc      eax
     push     eax
-    mov      eax, [ ebp + BETA_OFFSET ]
-    push     eax
-    mov      eax, [ ebp + ALPHA_OFFSET ]
-    push     eax
+    push     DWORD PTR [ ebp + BETA_OFFSET ]
+    push     DWORD PTR [ ebp + ALPHA_OFFSET ]
     call     minmax_max
 
     ; restore the blank piece on the board
@@ -534,16 +496,15 @@ minmax_min PROC
     IF USE686
         cmovg    ecx, ebx
     ELSE
-        jle      minmax_min_no_v_update2
+        jle      minmax_min_no_beta_update
         mov      ecx, ebx
-        minmax_min_no_v_update2:
+        minmax_min_no_beta_update:
     ENDIF
 
     ; try to beta prune
-    mov      edx, [ ebp + ALPHA_OFFSET ]
-    cmp      ecx, edx
+    cmp      ecx, DWORD PTR [ ebp + ALPHA_OFFSET ]          ; compare beta with alpha
     jle      SHORT minmax_min_loadv_done
-    mov      DWORD PTR [ ebp + BETA_OFFSET ], ecx
+    mov      DWORD PTR [ ebp + BETA_OFFSET ], ecx           ; this may just update with the same value
 
     jmp      SHORT minmax_min_top_of_loop
 
@@ -779,6 +740,15 @@ proc8 PROC
   proc8_yes:
     ret
 proc8 ENDP
+
+; These are needed to link using the old ml.exe and link.exe required to set /subsystem:console,3.10 so binaries can run on Windows 7
+
+__scrt_exe_initialize_mta PROC
+    ret
+__scrt_exe_initialize_mta ENDP
+_filter_x86_sse2_floating_point_exception PROC
+    ret
+_filter_x86_sse2_floating_point_exception ENDP
 
 code_ttt ENDS
 END
