@@ -2732,7 +2732,7 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
                 }
                 else if ( i8086DOS == g_AssemblyTarget )
                 {
-                    fprintf( fp, "    mov      ax, [ %s ]\n", GenVariableName( varname ) );
+                    fprintf( fp, "    mov      ax, ds: [ %s ]\n", GenVariableName( varname ) );
                 }
             }
             else if ( 1 == vals[ iToken ].dimensions )
@@ -3082,7 +3082,7 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
             {
                 static int s_labelVal = 0;
 
-                fprintf( fp, "    cmp      WORD PTR [%s], 0\n", GenVariableName( varname ) );
+                fprintf( fp, "    cmp      WORD PTR ds: [%s], 0\n", GenVariableName( varname ) );
                 fprintf( fp, "    je       _not_true_%d\n", s_labelVal );
                 fprintf( fp, "    mov      ax, 0\n" );
                 fprintf( fp, "    jmp      _not_done_%d\n", s_labelVal );
@@ -4550,8 +4550,8 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "startup PROC NEAR\n" );
         fprintf( fp, "    xor      ax, ax\n" );
         fprintf( fp, "    int      1ah\n" );
-        fprintf( fp, "    mov      WORD PTR [ starttime ], dx\n" ); // low word
-        fprintf( fp, "    mov      WORD PTR [ starttime + 2 ], cx\n" ); // high word
+        fprintf( fp, "    mov      WORD PTR ds: [ starttime ], dx\n" ); // low word
+        fprintf( fp, "    mov      WORD PTR ds: [ starttime + 2 ], cx\n" ); // high word
 
         fprintf( fp, "    mov      ah, dos_write_string\n" );
         fprintf( fp, "    mov      dx, offset startString\n" );
@@ -4664,7 +4664,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                             fprintf( fp, "    sta      %s+1\n", GenVariableName( varname ) );
                         }
                         else if ( i8086DOS == g_AssemblyTarget )
-                            fprintf( fp, "    mov      WORD PTR [%s], %d\n", GenVariableName( varname ), val );
+                            fprintf( fp, "    mov      WORD PTR ds: [%s], %d\n", GenVariableName( varname ), val );
 
                         t += vals[ t ].value;
                     }
@@ -4884,16 +4884,16 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
 
                         if ( Token::CONSTANT == vals[ t + 4 ].token )
                         {
-                            fprintf( fp, "    mov      ax, [ %s + %d ]\n", GenVariableName( vararray ), 2 * vals[ t + 4 ].value );
+                            fprintf( fp, "    mov      ax, ds: [ %s + %d ]\n", GenVariableName( vararray ), 2 * vals[ t + 4 ].value );
                         }
                         else
                         {
-                            fprintf( fp, "    mov      si, [ %s ]\n", GenVariableName( vals[ t + 4 ].strValue ) );
+                            fprintf( fp, "    mov      si, ds: [ %s ]\n", GenVariableName( vals[ t + 4 ].strValue ) );
                             fprintf( fp, "    shl      si, 1\n" );
-                            fprintf( fp, "    mov      ax, [ offset %s + si ]\n", GenVariableName( vararray ) );
+                            fprintf( fp, "    mov      ax, ds: [ offset %s + si ]\n", GenVariableName( vararray ) );
                         }
 
-                        fprintf( fp, "    mov      WORD PTR [ %s ], ax\n", GenVariableName( varname ) );
+                        fprintf( fp, "    mov      WORD PTR ds: [ %s ], ax\n", GenVariableName( varname ) );
 
                         t += vals[ t ].value;
                     }
@@ -4943,7 +4943,7 @@ label_no_eq_optimization:
                         }
                         if ( i8086DOS == g_AssemblyTarget )
                         {
-                            fprintf( fp, "    mov      WORD PTR [%s], ax\n", GenVariableName( varname ) );
+                            fprintf( fp, "    mov      WORD PTR ds: [%s], ax\n", GenVariableName( varname ) );
                         }
                     }
                 }
@@ -5180,10 +5180,10 @@ label_no_eq_optimization:
 
                         string vararray = vals[ variableToken ].strValue;
 
-                        fprintf( fp, "    mov      bx, [ %s ]\n", GenVariableName( vals[ t + 5 ].strValue ) );
-                        fprintf( fp, "    mov      si, [ %s ]\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                        fprintf( fp, "    mov      bx, ds: [ %s ]\n", GenVariableName( vals[ t + 5 ].strValue ) );
+                        fprintf( fp, "    mov      si, ds: [ %s ]\n", GenVariableName( vals[ t + 1 ].strValue ) );
                         fprintf( fp, "    shl      si, 1\n" );
-                        fprintf( fp, "    mov      WORD PTR [ offset %s + si ], bx\n", GenVariableName( vararray ) );
+                        fprintf( fp, "    mov      WORD PTR ds: [ offset %s + si ], bx\n", GenVariableName( vararray ) );
 
                         break;
                     }
@@ -5517,7 +5517,7 @@ label_no_array_eq_optimization:
                 }
                 else if ( i8086DOS == g_AssemblyTarget )
                 {
-                    fprintf( fp, "    mov      WORD PTR [%s], %d\n", GenVariableName( varname ), vals[ t + 2 ].value );
+                    fprintf( fp, "    mov      WORD PTR ds: [%s], %d\n", GenVariableName( varname ), vals[ t + 2 ].value );
                 }
 
                 ForGosubItem item( true, (int) l );
@@ -5595,7 +5595,7 @@ label_no_array_eq_optimization:
                 }
                 else if ( i8086DOS == g_AssemblyTarget )
                 {
-                    fprintf( fp, "    cmp      WORD PTR [%s], %d\n", GenVariableName( varname ), vals[ t + 4 ].value );
+                    fprintf( fp, "    cmp      WORD PTR ds: [%s], %d\n", GenVariableName( varname ), vals[ t + 4 ].value );
                     fprintf( fp, "    jg       after_for_loop_%zd\n", l );
                 }
 
@@ -5674,7 +5674,7 @@ label_no_array_eq_optimization:
                 }
                 else if ( i8086DOS == g_AssemblyTarget )
                 {
-                    fprintf( fp, "    inc      WORD PTR [%s]\n", GenVariableName( loopVal ) );
+                    fprintf( fp, "    inc      WORD PTR ds: [%s]\n", GenVariableName( loopVal ) );
 
                     fprintf( fp, "    jmp      for_loop_%d\n", item.pcReturn );
                 }
@@ -6097,9 +6097,9 @@ label_no_array_eq_optimization:
                 else if ( i8086DOS == g_AssemblyTarget )
                 {
                     if ( Token::INC == vals[ t + 1 ].token )
-                        fprintf( fp, "    inc      WORD PTR [%s]\n", GenVariableName( varname ) );
+                        fprintf( fp, "    inc      WORD PTR ds: [%s]\n", GenVariableName( varname ) );
                     else
-                        fprintf( fp, "    dec      WORD PTR [%s]\n", GenVariableName( varname ) );
+                        fprintf( fp, "    dec      WORD PTR ds: [%s]\n", GenVariableName( varname ) );
                 }
                 break;
             }
@@ -6281,13 +6281,13 @@ label_no_array_eq_optimization:
                     //   17 THEN, value 0, strValue ''
                     //   18 RETURN, value 0, strValue ''
 
-                    fprintf( fp, "    mov      bx, [ %s ]\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                    fprintf( fp, "    mov      bx, ds: [ %s ]\n", GenVariableName( vals[ t + 1 ].strValue ) );
 
-                    fprintf( fp, "    mov      ax, [ %s + %d ]\n", GenVariableName( vals[ t + 3 ].strValue ), 2 * vals[ t + 6 ].value );
+                    fprintf( fp, "    mov      ax, ds: [ %s + %d ]\n", GenVariableName( vals[ t + 3 ].strValue ), 2 * vals[ t + 6 ].value );
                     fprintf( fp, "    cmp      ax, bx\n" );
                     fprintf( fp, "    jne      line_number_%zd\n", l + 1 );
 
-                    fprintf( fp, "    mov      ax, [ %s + %d ]\n", GenVariableName( vals[ t + 3 ].strValue ), 2 * vals[ t + 14 ].value );
+                    fprintf( fp, "    mov      ax, ds: [ %s + %d ]\n", GenVariableName( vals[ t + 3 ].strValue ), 2 * vals[ t + 14 ].value );
                     fprintf( fp, "    cmp      ax, bx\n" );
                     fprintf( fp, "    je       label_gosub_return\n" );
 
@@ -6418,11 +6418,11 @@ label_no_array_eq_optimization:
                     string & lhs = vals[ t + 1 ].strValue;
                     string & rhs = vals[ t + 3 ].strValue;
 
-                    fprintf( fp, "    mov      ax, [ %s ]\n", GenVariableName( lhs ) );
-                    fprintf( fp, "    cmp      ax, [ %s ]\n", GenVariableName( rhs ) );
+                    fprintf( fp, "    mov      ax, ds: [ %s ]\n", GenVariableName( lhs ) );
+                    fprintf( fp, "    cmp      ax, ds: [ %s ]\n", GenVariableName( rhs ) );
                     fprintf( fp, "    %-6s   line_number_%zd\n", RelationalNotInstructionX64[ op ], l + 1 ); // same as x64
-                    fprintf( fp, "    mov      ax, [ %s ]\n", GenVariableName( vals[ t + 8 ].strValue ) );
-                    fprintf( fp, "    mov      WORD PTR [ %s ], ax\n", GenVariableName( vals[ t + 5 ].strValue ) );
+                    fprintf( fp, "    mov      ax, ds: [ %s ]\n", GenVariableName( vals[ t + 8 ].strValue ) );
+                    fprintf( fp, "    mov      WORD PTR ds: [ %s ], ax\n", GenVariableName( vals[ t + 5 ].strValue ) );
                     break;
                 }
                 else if ( i8080CPM != g_AssemblyTarget &&
@@ -6736,7 +6736,7 @@ label_no_array_eq_optimization:
                     // token  13 EXPRESSION, value 2, strValue ''
                     // token  14 CONSTANT, value 9, strValue ''
 
-                    fprintf( fp, "    test     [ %s ], %d\n", GenVariableName( vals[ t + 1 ].strValue ), vals[ t + 3 ].value );
+                    fprintf( fp, "    test     ds: [ %s ], %d\n", GenVariableName( vals[ t + 1 ].strValue ), vals[ t + 3 ].value );
                     fprintf( fp, "    jz       uniq_%d\n", s_uniqueLabel );
                     fprintf( fp, "    mov      bx, %d\n", vals[ t + 8 ].value );
                     fprintf( fp, "    jmp      uniq_%d\n", s_uniqueLabel + 1 );
@@ -6744,7 +6744,7 @@ label_no_array_eq_optimization:
                     fprintf( fp, "    mov      bx, %d\n", vals[ t + 13 ].value );
                     s_uniqueLabel++;
                     fprintf( fp, "  uniq_%d:\n", s_uniqueLabel );
-                    fprintf( fp, "     mov      [ %s ], bx\n", GenVariableName( vals[ t + 10 ].strValue ) );
+                    fprintf( fp, "     mov      ds: [ %s ], bx\n", GenVariableName( vals[ t + 10 ].strValue ) );
                     s_uniqueLabel++;
 
                     break;
@@ -6904,9 +6904,9 @@ label_no_array_eq_optimization:
                     //   10 GOTO, value 4280, strValue ''
 
                     Token op = vals[ t + 2 ].token;
-                    fprintf( fp, "    cmp      WORD PTR [ %s ], %d\n", GenVariableName( vals[ t + 1 ].strValue ), vals[ t + 3 ].value );
+                    fprintf( fp, "    cmp      WORD PTR ds: [ %s ], %d\n", GenVariableName( vals[ t + 1 ].strValue ), vals[ t + 3 ].value );
                     fprintf( fp, "    %-6s   line_number_%zd\n", RelationalNotInstructionX64[ op ], l + 1 );
-                    fprintf( fp, "    mov      WORD PTR [ %s ], %d\n", GenVariableName( vals[ t + 5 ].strValue ), vals[ t + 8 ].value );
+                    fprintf( fp, "    mov      WORD PTR ds: [ %s ], %d\n", GenVariableName( vals[ t + 5 ].strValue ), vals[ t + 8 ].value );
                     fprintf( fp, "    jmp      line_number_%d\n", vals[ t + 9 ].value );
                     break;
                 }
@@ -7065,7 +7065,7 @@ label_no_array_eq_optimization:
                     //    5 THEN, value 0, strValue ''
                     //    6 GOTO, value 4340, strValue ''
 
-                    fprintf( fp, "    test     [ %s ], %d\n", GenVariableName( vals[ t + 1 ].strValue ), vals[ t + 3 ].value );
+                    fprintf( fp, "    test     ds: [ %s ], %d\n", GenVariableName( vals[ t + 1 ].strValue ), vals[ t + 3 ].value );
                     fprintf( fp, "    jnz      line_number_%d\n", vals[ t + 5 ].value );
 
                     break;
@@ -7160,7 +7160,7 @@ label_no_array_eq_optimization:
                     //  4 THEN, value 0, strValue ''
                     //  5 GOTO, value 33, strValue ''
 
-                    fprintf( fp, "    cmp      WORD PTR [ %s ], 0\n", GenVariableName( vals[ t + 2 ].strValue ) );
+                    fprintf( fp, "    cmp      WORD PTR ds: [ %s ], 0\n", GenVariableName( vals[ t + 2 ].strValue ) );
                     fprintf( fp, "    je       line_number_%d\n", vals[ t + 4 ].value );
                     break;
                 }
@@ -7232,7 +7232,7 @@ label_no_array_eq_optimization:
                     //  4 THEN, value 0, strValue ''
                     //  5 GOTO, value 33, strValue ''
 
-                    fprintf( fp, "    cmp      WORD PTR [ %s ], 0\n", GenVariableName( vals[ t + 2 ].strValue ) );
+                    fprintf( fp, "    cmp      WORD PTR ds: [ %s ], 0\n", GenVariableName( vals[ t + 2 ].strValue ) );
                     fprintf( fp, "    je       label_gosub_return\n" );
                     break;
                 }
@@ -7517,11 +7517,11 @@ label_no_array_eq_optimization:
 
                     if ( Token::VARIABLE == vals[ t + 3 ].token )
                     {
-                        fprintf( fp, "    mov      ax, [ %s ]\n", GenVariableName( lhs ) );
-                        fprintf( fp, "    cmp      ax, [ %s ]\n", GenVariableName( vals[ t + 3 ].strValue ) );
+                        fprintf( fp, "    mov      ax, ds: [ %s ]\n", GenVariableName( lhs ) );
+                        fprintf( fp, "    cmp      ax, ds: [ %s ]\n", GenVariableName( vals[ t + 3 ].strValue ) );
                     }
                     else
-                        fprintf( fp, "    cmp      WORD PTR [ %s ], %d\n", GenVariableName( lhs ), vals[ t + 3 ].value );
+                        fprintf( fp, "    cmp      WORD PTR ds: [ %s ], %d\n", GenVariableName( lhs ), vals[ t + 3 ].value );
 
                     fprintf( fp, "    %-6s   line_number_%d\n", RelationalInstructionX64[ op ], vals[ t + 5 ].value );
                     break;
@@ -8501,26 +8501,26 @@ label_no_if_optimization:
         fprintf( fp, "printelap PROC NEAR\n" );
         fprintf( fp, "    xor      ax, ax\n" );
         fprintf( fp, "    int      1ah\n" );        // "ticks" in cx:dx, with 18.2 ticks per second. 
-        fprintf( fp, "    mov      WORD PTR [ scratchpad ], dx\n" ); // low word
-        fprintf( fp, "    mov      WORD PTR [ scratchpad + 2 ], cx\n" ); // high word
+        fprintf( fp, "    mov      WORD PTR ds: [ scratchpad ], dx\n" ); // low word
+        fprintf( fp, "    mov      WORD PTR ds: [ scratchpad + 2 ], cx\n" ); // high word
 
         // subtract the current tick count from the app start tickcount
 
         fprintf( fp, "    mov      dl, 0\n" );
-        fprintf( fp, "    mov      ax, WORD PTR [ scratchpad ]\n" );
-        fprintf( fp, "    mov      bx, WORD PTR [ starttime ]\n" );
+        fprintf( fp, "    mov      ax, WORD PTR ds: [ scratchpad ]\n" );
+        fprintf( fp, "    mov      bx, WORD PTR ds: [ starttime ]\n" );
         fprintf( fp, "    sub      ax, bx\n" );
-        fprintf( fp, "    mov      word ptr [ result ], ax\n" );
-        fprintf( fp, "    mov      ax, WORD PTR [ scratchpad + 2 ]\n" );
-        fprintf( fp, "    mov      bx, WORD PTR [ starttime + 2 ]\n" );
+        fprintf( fp, "    mov      word ptr ds: [ result ], ax\n" );
+        fprintf( fp, "    mov      ax, WORD PTR ds: [ scratchpad + 2 ]\n" );
+        fprintf( fp, "    mov      bx, WORD PTR ds: [ starttime + 2 ]\n" );
         fprintf( fp, "    sbb      ax, bx\n" );
-        fprintf( fp, "    mov      word ptr [ result + 2 ], ax\n" );
+        fprintf( fp, "    mov      word ptr ds: [ result + 2 ], ax\n" );
 
         // 1193180 / 65536 = 18.20648193...
         // multiply by 10000 (to retain precision for the upcoming divide)
 
-        fprintf( fp, "    mov      dx, word ptr [ result + 2 ]\n" );
-        fprintf( fp, "    mov      ax, word ptr [ result ]\n" );
+        fprintf( fp, "    mov      dx, word ptr ds: [ result + 2 ]\n" );
+        fprintf( fp, "    mov      ax, word ptr ds: [ result ]\n" );
         fprintf( fp, "    mov      bx, 10000\n" );
         fprintf( fp, "    mul      bx\n" );
 
