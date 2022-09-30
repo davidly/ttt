@@ -8,7 +8,7 @@ dos_write_char     equ   2h
 dos_get_systemtime equ   1ah
 dos_exit           equ   4ch
 
-iterations  equ   100   ; # of times to run (max 32767)
+iterations  equ     100   ; # of times to run (max 32767)
 max_score   equ     9   ; maximum score
 min_score   equ     2   ; minimum score
 win_score   equ     6   ; winning score
@@ -41,10 +41,11 @@ ORG 100h
 startup PROC NEAR
         xor      ax, ax
         int      1ah
-        mov      WORD PTR [ starttime ], dx
-        mov      WORD PTR [ starttime + 2 ], cx
+        mov      WORD PTR ds: [starttime] , dx
+        mov      WORD PTR ds: [ starttime + 2 ], cx
+
 again:
-        mov      [moves], 0
+        mov      ds: [moves], 0
 
         ; run for the 3 unique first moves
 
@@ -55,8 +56,8 @@ again:
         mov      ax, 4
         call     runmm
 
-        inc      WORD PTR [ iters ]
-        cmp      [ iters ], iterations
+        inc      WORD PTR ds: [ iters ]
+        cmp      ds: [ iters ], iterations
         jne      again
 
         call     printelap
@@ -68,7 +69,7 @@ again:
         mov      dx, offset movesmsg
         int      21h
 
-        mov      ax, [MOVES]
+        mov      ax, ds: [MOVES]
         call     printint
         call     printcrlf
 
@@ -81,7 +82,7 @@ runmm PROC NEAR
         ; make the first move
         mov       di, ax
         push      di
-        lea       si, [ offset board + di ]
+        lea       si, ds: [ offset board + di ]
         mov       BYTE PTR [si], x_piece
 
         push      di                ; move location
@@ -98,8 +99,8 @@ runmm PROC NEAR
         ; restore the board at the first move position
 
         pop       di
-        lea       si, [ offset board + di ]
-        mov       BYTE PTR [si], blank_piece
+        lea       si, ds: [ offset board + di ]
+        mov       BYTE PTR ds: [si], blank_piece
 
         ret
 runmm ENDP
@@ -112,7 +113,7 @@ minmax PROC NEAR
         xor      ax, ax
         mov      [ bp + i_offset ], ax
 
-        inc      WORD PTR [ moves ]
+        inc      WORD PTR ds: [ moves ]
 
         mov      ax, [ bp + depth_offset ]
         cmp      ax, 4
@@ -160,12 +161,12 @@ minmax PROC NEAR
         cmp      si, 9
         je       _load_value_return
 
-        mov      al, BYTE PTR [ offset board + si ]
+        mov      al, BYTE PTR ds: [ offset board + si ]
         cmp      al, 0
         jne      _next_i
 
         mov      ax, [ bp + pm_offset ]
-        mov      BYTE PTR [ offset board + si ], al
+        mov      BYTE PTR ds: [ offset board + si ], al
 
         push     si
         mov      ax, [ bp + depth_offset ]
@@ -180,7 +181,7 @@ minmax PROC NEAR
         mov      [ bp + score_offset ], ax
         mov      si, [ bp + i_offset ]
         xor      ax, ax
-        mov      BYTE PTR [ offset board + si ], al
+        mov      BYTE PTR ds: [ offset board + si ], al
 
         mov      ax, [ bp + depth_offset ]
         and      ax, 1
@@ -241,7 +242,7 @@ minmax ENDP
 
 winner PROC NEAR
         xor      ax, ax
-        lea      si, [offset board]
+        lea      si, ds: [offset board]
         mov      al, [ si ]
         cmp      al, 0
         je       _win_check_3
@@ -392,19 +393,19 @@ prperiod ENDP
 printelap PROC NEAR
     xor      ax, ax
     int      1ah
-    mov      WORD PTR [ scratchpad ], dx
-    mov      WORD PTR [ scratchpad + 2 ], cx
+    mov      WORD PTR ds: [ scratchpad ], dx
+    mov      WORD PTR ds: [ scratchpad + 2 ], cx
     mov      dl, 0
-    mov      ax, WORD PTR [ scratchpad ]
-    mov      bx, WORD PTR [ starttime ]
+    mov      ax, WORD PTR ds: [ scratchpad ]
+    mov      bx, WORD PTR ds: [ starttime ]
     sub      ax, bx
-    mov      word ptr [ result ], ax
-    mov      ax, WORD PTR [ scratchpad + 2 ]
-    mov      bx, WORD PTR [ starttime + 2 ]
+    mov      word ptr ds: [ result ], ax
+    mov      ax, WORD PTR ds: [ scratchpad + 2 ]
+    mov      bx, WORD PTR ds: [ starttime + 2 ]
     sbb      ax, bx
-    mov      word ptr [ result + 2 ], ax
-    mov      dx, word ptr [ result + 2 ]
-    mov      ax, word ptr [ result ]
+    mov      word ptr ds: [ result + 2 ], ax
+    mov      dx, word ptr ds: [ result + 2 ]
+    mov      ax, word ptr ds: [ result ]
     mov      bx, 10000
     mul      bx
     mov      bx, 18206
