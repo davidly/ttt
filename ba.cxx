@@ -1,6 +1,7 @@
 // A very basic BASIC interpreter.
 // Also, compilers for x64 on Windows, arm64 on Apple Silicon, 8080 on cp/m 2.2,
-// Arm32 for Linux (tested on Raspberry PI 3B and 4), 6502 for the Apple 1, and 8086 for DOS.
+// Arm32 for Linux (tested on Raspberry PI 3B and 4), 6502 for the Apple 1, 8086 for DOS,
+// and 32-bit x86 for Windows.
 // implements a small subset of gw-basic; just enough to run a tic-tac-toe proof of failure app.
 // a few of the many limitations:
 //    -- based on TRS-80 Model 100 gw-basic. Equivalent to MBasic on CP/M.
@@ -96,7 +97,7 @@ vector<LineOfCode> g_linesOfCode;
     }
 #endif
 
-enum AssemblyTarget : int { x64Win, arm64Mac, i8080CPM, arm32Linux, mos6502Apple1, i8086DOS };
+enum AssemblyTarget : int { x86Win, x64Win, arm64Mac, i8080CPM, arm32Linux, mos6502Apple1, i8086DOS };
 AssemblyTarget g_AssemblyTarget = x64Win;
 
 enum Token : int { 
@@ -434,6 +435,7 @@ static void Usage()
     printf( "                                  3 -- Generate Linux arm32 armv8 'gcc / as' compatible assembler code to filename.s\n" );
     printf( "                                  6 -- Generate Apple 1 'sbasm30306\\sbasm.py' compatible assembler code to filename.s\n" );
     printf( "                                  d -- Generate 8086 DOS ml /AT /omf /c compatible assembler code to filename.asm\n" );
+    printf( "                                  i -- Generate i386 (686) Windows x86 'ml' compatible assembler code to filename.asm\n" );
     printf( "                 -e               Show execution count and time for each line\n" );
     printf( "                 -l               Show 'pcode' listing\n" );
     printf( "                 -o               Don't do expression optimization for assembly code\n" );
@@ -2563,6 +2565,11 @@ void GenerateMultiply( FILE * fp, map<string, Variable> const & varmap, int & iT
         fprintf( fp, "    xor      dx, dx\n" );
         fprintf( fp, "    imul     bx\n" );
     }
+    else if ( x86Win == g_AssemblyTarget )
+    {
+        fprintf( fp, "    pop      ebx\n" );
+        fprintf( fp, "    imul     eax, ebx\n" );
+    }
 } //GenerateMultiply
 
 void GenerateDivide( FILE * fp, map<string, Variable> const & varmap, int & iToken, int beyond, vector<TokenValue> const & vals )
@@ -2612,6 +2619,13 @@ void GenerateDivide( FILE * fp, map<string, Variable> const & varmap, int & iTok
         fprintf( fp, "    cwd\n" );      // sign-extend ax to dx, so it's dx:ax / bx => ax
         fprintf( fp, "    idiv     bx\n" );
     }
+    else if ( x86Win == g_AssemblyTarget )
+    {
+        fprintf( fp, "    mov      ebx, eax\n" );
+        fprintf( fp, "    pop      eax\n" );
+        fprintf( fp, "    cdq\n" );
+        fprintf( fp, "    idiv     ebx\n" );
+    }
 } //GenerateDivide
 
 void GenerateTerm( FILE * fp, map<string, Variable> const & varmap, int & iToken, int beyond, vector<TokenValue> const & vals )
@@ -2648,6 +2662,8 @@ void GenerateTerm( FILE * fp, map<string, Variable> const & varmap, int & iToken
         }
         else if ( i8086DOS == g_AssemblyTarget )
             fprintf( fp, "    push     ax\n" );
+        else if ( x86Win == g_AssemblyTarget )
+            fprintf( fp, "    push     eax\n" );
 
         if ( Token::MULT == t )
             GenerateMultiply( fp, varmap, iToken, beyond, vals );
@@ -2734,6 +2750,10 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
                 {
                     fprintf( fp, "    mov      ax, ds: [ %s ]\n", GenVariableName( varname ) );
                 }
+                else if ( x86Win == g_AssemblyTarget )
+                {
+                    fprintf( fp, "    mov      eax, DWORD PTR [%s]\n", GenVariableName( varname ) );
+                }
             }
             else if ( 1 == vals[ iToken ].dimensions )
             {
@@ -2807,6 +2827,13 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
                     fprintf( fp, "    add      si, ax\n" );
                     fprintf( fp, "    mov      ax, [ si ]\n" );
                 }
+                else if ( x86Win == g_AssemblyTarget )
+                {
+                    fprintf( fp, "    shl      eax, 2\n" );
+                    fprintf( fp, "    lea      ebx, [ %s ]\n", GenVariableName( varname ) );
+                    fprintf( fp, "    add      ebx, eax\n" );
+                    fprintf( fp, "    mov      eax, [ ebx ]\n" );
+                }
             }
             else if ( 2 == vals[ iToken ].dimensions )
             {
@@ -2837,6 +2864,8 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
                 }
                 else if ( i8086DOS == g_AssemblyTarget )
                     fprintf( fp, "    push     ax\n" );
+                else if ( x86Win == g_AssemblyTarget )
+                    fprintf( fp, "    push     eax\n" );
 
                 if ( Token::COMMA != vals[ iToken ].token )
                     RuntimeFail( "expected a 2-dimensional array", g_lineno );
@@ -2968,6 +2997,16 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
                     fprintf( fp, "    add      si, ax\n" );
                     fprintf( fp, "    mov      ax, [ si ]\n" );
                 }
+                else if ( x86Win == g_AssemblyTarget )
+                {
+                    fprintf( fp, "    pop      ebx\n" );
+                    fprintf( fp, "    imul     ebx, %d\n", pvar->dims[ 1 ] );
+                    fprintf( fp, "    add      eax, ebx\n" );
+                    fprintf( fp, "    shl      eax, 2\n" );
+                    fprintf( fp, "    lea      ebx, [ %s ]\n", GenVariableName( varname ) );
+                    fprintf( fp, "    add      ebx, eax\n" );
+                    fprintf( fp, "    mov      eax, [ ebx ]\n" );
+                }
             }
 
             iToken++;
@@ -2991,6 +3030,8 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
             }
             else if ( i8086DOS == g_AssemblyTarget )
                 fprintf( fp, "    mov      ax, %d\n", vals[ iToken ].value );
+            else if ( x86Win == g_AssemblyTarget )
+                fprintf( fp, "    mov      eax, %d\n", vals[ iToken ].value );
 
             iToken++;
         }
@@ -3092,6 +3133,12 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
         
                 s_labelVal++;
             }
+            else if ( x86Win == g_AssemblyTarget )
+            {
+                fprintf( fp, "    cmp      DWORD PTR [%s], 0\n", GenVariableName( varname ) );
+                fprintf( fp, "    sete     al\n" );
+                fprintf( fp, "    movzx    eax, al\n" );
+            }
 
             iToken++;
         }
@@ -3150,6 +3197,11 @@ void GenerateAdd( FILE * fp, map<string, Variable> const & varmap, int & iToken,
         fprintf( fp, "    pop      bx\n" );
         fprintf( fp, "    add      ax, bx\n" );
     }
+    else if ( x86Win == g_AssemblyTarget )
+    {
+        fprintf( fp, "    pop      ebx\n" );
+        fprintf( fp, "    add      eax, ebx\n" );
+    }
 } //GenerateAdd
 
 void GenerateSubtract( FILE * fp, map<string, Variable> const & varmap, int & iToken, int beyond, vector<TokenValue> const & vals )
@@ -3205,6 +3257,12 @@ void GenerateSubtract( FILE * fp, map<string, Variable> const & varmap, int & iT
         fprintf( fp, "    pop      ax\n" );
         fprintf( fp, "    sub      ax, bx\n" );
     }
+    else if ( x86Win == g_AssemblyTarget )
+    {
+        fprintf( fp, "    mov      ebx, eax\n" );
+        fprintf( fp, "    pop      eax\n" );
+        fprintf( fp, "    sub      eax, ebx\n" );
+    }
 } //GenerateSubtract
 
 void GenerateExpression( FILE * fp, map<string, Variable> const & varmap, int & iToken, int beyond, vector<TokenValue> const & vals )
@@ -3247,6 +3305,8 @@ void GenerateExpression( FILE * fp, map<string, Variable> const & varmap, int & 
         }
         else if ( i8086DOS == g_AssemblyTarget )
             fprintf( fp, "    xor      ax, ax\n" );
+        else if ( x86Win == g_AssemblyTarget )
+            fprintf( fp, "    xor      eax, eax\n" );
     }
     else
     {
@@ -3277,6 +3337,8 @@ void GenerateExpression( FILE * fp, map<string, Variable> const & varmap, int & 
         }
         else if ( i8086DOS == g_AssemblyTarget )
             fprintf( fp, "    push     ax\n" );
+        else if ( x86Win == g_AssemblyTarget )
+            fprintf( fp, "    push     eax\n" );
 
         if ( Token::PLUS == t )
             GenerateAdd( fp, varmap, iToken, beyond, vals );
@@ -3549,6 +3611,14 @@ void GenerateRelational( FILE * fp, map<string, Variable> const & varmap, int & 
 
         s_labelVal++;
     }
+    else if ( x86Win == g_AssemblyTarget )
+    {
+        fprintf( fp, "    mov      ebx, eax\n" );
+        fprintf( fp, "    pop      eax\n" );
+        fprintf( fp, "    cmp      eax, ebx\n" );
+        fprintf( fp, "    %-6s   al\n", OperatorInstructionX64[ op ] );
+        fprintf( fp, "    movzx    eax, al\n" );
+    }
 } //GenerateRelational
 
 void GenerateRelationalExpression( FILE * fp, map<string, Variable> const & varmap, int & iToken, int beyond, vector<TokenValue> const & vals )
@@ -3596,6 +3666,8 @@ void GenerateRelationalExpression( FILE * fp, map<string, Variable> const & varm
         }
         else if ( i8086DOS == g_AssemblyTarget )
             fprintf( fp, "    push     ax\n" );
+        else if ( x86Win == g_AssemblyTarget )
+            fprintf( fp, "    push     eax\n" );
 
         GenerateRelational( fp, varmap, iToken, beyond, vals );
 
@@ -3662,6 +3734,11 @@ void GenerateLogical( FILE * fp, map<string, Variable> const & varmap, int & iTo
         fprintf( fp, "    pop      bx\n" );
         fprintf( fp, "    %-6s   ax, bx\n", OperatorInstructionX64[ op ] ); // same as x64 instructions
     }
+    else if ( x86Win == g_AssemblyTarget )
+    {
+        fprintf( fp, "    pop      ebx\n" );
+        fprintf( fp, "    %-6s   eax, ebx\n", OperatorInstructionX64[ op ] ); // same as x64 instructions
+    }
 } //GenerateLogical
 
 void GenerateLogicalExpression( FILE * fp, map<string, Variable> const & varmap, int & iToken, vector<TokenValue> const & vals )
@@ -3708,6 +3785,8 @@ void GenerateLogicalExpression( FILE * fp, map<string, Variable> const & varmap,
         }
         else if ( i8086DOS == g_AssemblyTarget )
             fprintf( fp, "    push     ax\n" );
+        else if ( x86Win == g_AssemblyTarget )
+            fprintf( fp, "    push     eax\n" );
 
         GenerateLogical( fp, varmap, iToken, beyond, vals );
 
@@ -3725,7 +3804,8 @@ void GenerateOptimizedExpression( FILE * fp, map<string, Variable> const & varma
     // On arm64, result is in w0
     // On i8080, result is in hl
     // On mos6502, result is in curOperand
-    // on i8086, result is in ax
+    // On i8086, result is in ax
+    // On i386, result is in eax
 
     assert( Token::EXPRESSION == vals[ iToken ].token );
     int tokenCount = vals[ iToken ].value;
@@ -3739,7 +3819,7 @@ void GenerateOptimizedExpression( FILE * fp, map<string, Variable> const & varma
                 iToken, TokenStr( vals[ iToken ].token ), vals[ iToken ].value );
 
     if ( i8080CPM == g_AssemblyTarget || arm32Linux == g_AssemblyTarget ||
-         i8086DOS == g_AssemblyTarget || !g_ExpressionOptimization )
+         i8086DOS == g_AssemblyTarget || x86Win == g_AssemblyTarget || !g_ExpressionOptimization )
         goto label_no_expression_optimization;
 
     if ( 2 == tokenCount )
@@ -4092,7 +4172,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
 
     if ( x64Win == g_AssemblyTarget )
     {
-        fprintf( fp, "; Build on Windows using a .bat script like this:\n" );
+        fprintf( fp, "; Build on Windows in a Visual Studio vcvars64.bat cmd window using a .bat script like this:\n" );
         fprintf( fp, "; ml64 /nologo %%1.asm /Zd /Zf /Zi /link /OPT:REF /nologo ^\n" );
         fprintf( fp, ";      /subsystem:console ^\n" );
         fprintf( fp, ";      /defaultlib:kernel32.lib ^\n" );
@@ -4205,6 +4285,31 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "ORG 100h\n" );
         fprintf( fp, "     jmp      startup\n" );
     }
+    else if ( x86Win == g_AssemblyTarget )
+    {
+        fprintf( fp, "; Build on Windows in a Visual Studio vcvars32.bat cmd window using a .bat script like this:\n" );
+        fprintf( fp, "; ml /nologo tttx32.asm /Flx.lst /Zd /Zf /Zi /link /OPT:REF /nologo /PDB:tttx32.pdb ^\n" );
+        fprintf( fp, ";        /subsystem:console\n" );
+        fprintf( fp, ";        /defaultlib:kernel32.lib ^\n" );
+        fprintf( fp, ";        /defaultlib:user32.lib ^\n" );
+        fprintf( fp, ";        /defaultlib:libucrt.lib ^\n" );
+        fprintf( fp, ";        /defaultlib:libcmt.lib ^\n" );
+        fprintf( fp, ";        /entry:mainCRTStartup\n" );
+        fprintf( fp, ".686       ; released by Intel in 1995. First Intel cpu to have cmovX instructions\n" );
+        fprintf( fp, ".model flat, c\n" );
+        fprintf( fp, "\n" );
+        fprintf( fp, "extern QueryPerformanceCounter@4: PROC\n" );
+        fprintf( fp, "extern QueryPerformanceFrequency@4: PROC\n" );
+        fprintf( fp, "extern CreateThread@24: PROC\n" );
+        fprintf( fp, "extern WaitForSingleObject@8: PROC\n" );
+        fprintf( fp, "extern CloseHandle@4: PROC\n" );
+        fprintf( fp, "extern GetLocalTime@4: PROC\n" );
+        fprintf( fp, "\n" );
+        fprintf( fp, "includelib legacy_stdio_definitions.lib\n" );
+        fprintf( fp, "extern printf: proc\n" );
+        fprintf( fp, "extern exit: proc\n" );
+        fprintf( fp, "data_segment SEGMENT 'DATA'\n" );
+    }
 
     for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
     {
@@ -4253,6 +4358,11 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                 {
                     fprintf( fp, "    %8s dw %d DUP (0)\n", GenVariableName( vals[ 0 ].strValue ), cdwords );
                 }
+                else if ( x86Win == g_AssemblyTarget )
+                {
+                    fprintf( fp, "  align 16\n" );
+                    fprintf( fp, "    %8s DD %d DUP (0)\n", GenVariableName( vals[ 0 ].strValue ), cdwords );
+                }
             }
         }
         else if ( Token::PRINT == vals[ 0 ].token || Token::IF == vals[ 0 ].token )
@@ -4275,6 +4385,8 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                     }
                     else if ( i8086DOS == g_AssemblyTarget )
                         fprintf( fp, "    str_%zd_%d   db  '%s', '$'\n", l, t , strEscaped.c_str() );
+                    else if ( x86Win == g_AssemblyTarget )
+                        fprintf( fp, "    str_%zd_%d   db  '%s', 0\n", l, t , strEscaped.c_str() );
                 }
             }
         }
@@ -4352,6 +4464,8 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                 fprintf( fp, "%s  .dw  0\n", GenVariableName( it->first ) );
             else if ( i8086DOS == g_AssemblyTarget )
                 fprintf( fp, "    %8s dw   0\n", GenVariableName( it->first ) );
+            else if ( x86Win == g_AssemblyTarget )
+                fprintf( fp, "    %8s DD   0\n", GenVariableName( it->first ) );
         }
     }
 
@@ -4557,6 +4671,46 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "    mov      dx, offset startString\n" );
         fprintf( fp, "    int      21h\n" );
     }
+    else if ( x86Win == g_AssemblyTarget )
+    {
+        fprintf( fp, "  align 16\n" );
+        fprintf( fp, "    gosubCount     dq    0\n" ); // count of active gosub calls
+        fprintf( fp, "    startTicks     dq    0\n" );
+        fprintf( fp, "    perfFrequency  dq    0\n" );
+        fprintf( fp, "    currentTicks   dq    0\n" );
+        fprintf( fp, "    currentTime    dq 2  DUP(0)\n" ); // SYSTEMTIME is 8 WORDS
+
+        fprintf( fp, "    errorString    db    'internal error', 10, 0\n" );
+        fprintf( fp, "    startString    db    'running basic', 10, 0\n" );
+        fprintf( fp, "    stopString     db    'done running basic', 10, 0\n" );
+        fprintf( fp, "    newlineString  db    10, 0\n" );
+        fprintf( fp, "    elapString     db    '%%d milliseconds', 0\n" );
+        fprintf( fp, "    timeString     db    '%%02d:%%02d:%%02d', 0\n" );
+        fprintf( fp, "    intString      db    '%%d', 0\n" );
+        fprintf( fp, "    strString      db    '%%s', 0\n" );
+
+        fprintf( fp, "data_segment ENDS\n" );
+
+        fprintf( fp, "code_segment SEGMENT 'CODE'\n" );
+        fprintf( fp, "main PROC\n" );
+        fprintf( fp, "    push     ebp\n" );
+        fprintf( fp, "    mov      ebp, esp\n" );
+        fprintf( fp, "    push     edi\n" );
+        fprintf( fp, "    push     esi\n" );
+
+        fprintf( fp, "    push     offset startString\n" );
+        fprintf( fp, "    call     printf\n" );
+        fprintf( fp, "    add      esp, 4\n" );
+        fprintf( fp, "    push     offset startTicks\n" );
+        fprintf( fp, "    call     QueryPerformanceCounter@4\n" );
+        fprintf( fp, "    push     offset perfFrequency\n" );
+        fprintf( fp, "    call     QueryPerformanceFrequency@4\n" );
+        fprintf( fp, "    mov      eax, DWORD PTR [perfFrequency]\n" );
+        fprintf( fp, "    mov      ecx, 1000000\n" ); // get it down to milliseconds
+        fprintf( fp, "    xor      edx, edx\n" );
+        fprintf( fp, "    div      ecx\n" );
+        fprintf( fp, "    mov      DWORD PTR [perfFrequency], eax\n" );
+    }
 
     if ( useRegistersInASM )
     {
@@ -4624,7 +4778,8 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
     
                     assert( Token::EXPRESSION == vals[ t ].token );
 
-                    if ( i8080CPM == g_AssemblyTarget || arm32Linux == g_AssemblyTarget || !g_ExpressionOptimization )
+                    if ( i8080CPM == g_AssemblyTarget || arm32Linux == g_AssemblyTarget ||
+                         x86Win == g_AssemblyTarget || !g_ExpressionOptimization )
                         goto label_no_eq_optimization;
 
                     if ( Token::CONSTANT == vals[ t + 1 ].token &&
@@ -4942,9 +5097,9 @@ label_no_eq_optimization:
                             fprintf( fp, "    sta      %s+1\n", GenVariableName( varname ) );
                         }
                         if ( i8086DOS == g_AssemblyTarget )
-                        {
                             fprintf( fp, "    mov      WORD PTR ds: [%s], ax\n", GenVariableName( varname ) );
-                        }
+                        else if ( x86Win == g_AssemblyTarget )
+                            fprintf( fp, "    mov      DWORD PTR [%s], eax\n", GenVariableName( varname ) );
                     }
                 }
                 else if ( Token::OPENPAREN == vals[ t ].token )
@@ -5219,6 +5374,8 @@ label_no_array_eq_optimization:
                             }
                             else if ( i8086DOS == g_AssemblyTarget )
                                 fprintf( fp, "    push     ax\n" );
+                            else if ( x86Win == g_AssemblyTarget )
+                                fprintf( fp, "    push     eax\n" );
 
                             GenerateOptimizedExpression( fp, varmap, t, vals );
 
@@ -5290,6 +5447,12 @@ label_no_array_eq_optimization:
                                 fprintf( fp, "    imul     bx\n" );
                                 fprintf( fp, "    add      ax, cx\n" );
                             }
+                            else if ( x86Win == g_AssemblyTarget )
+                            {
+                                fprintf( fp, "    pop      ebx\n" );
+                                fprintf( fp, "    imul     ebx, %d\n", pvar->dims[ 1 ] );
+                                fprintf( fp, "    add      eax, ebx\n" );
+                            }
                         }
         
                         t += 2; // ) =
@@ -5337,6 +5500,11 @@ label_no_array_eq_optimization:
                             fprintf( fp, "    shl      ax, 1\n" );
                             fprintf( fp, "    lea      si, [ offset %s ]\n", GenVariableName( varname ) );
                         }
+                        else if ( x86Win == g_AssemblyTarget )
+                        {
+                            fprintf( fp, "    shl      eax, 2\n" );
+                            fprintf( fp, "    lea      ebx, [%s]\n", GenVariableName( varname ) );
+                        }
 
                         assert( Token::EXPRESSION == vals[ t ].token );
     
@@ -5377,6 +5545,8 @@ label_no_array_eq_optimization:
                                 fprintf( fp, "    mov      bx, ax\n" );
                                 fprintf( fp, "    mov      WORD PTR [ si + bx ], %d\n", vals[ t + 1 ].value );
                             }
+                            else if ( x86Win == g_AssemblyTarget )
+                                fprintf( fp, "    mov      DWORD PTR [ebx + eax], %d\n", vals[ t + 1 ].value );
 
                             t += 2;
                         }
@@ -5411,6 +5581,11 @@ label_no_array_eq_optimization:
                             {
                                 fprintf( fp, "    add      si, ax\n" );
                                 fprintf( fp, "    push     si\n" );
+                            }
+                            else if ( x86Win == g_AssemblyTarget )
+                            {
+                                fprintf( fp, "    add      ebx, eax\n" );
+                                fprintf( fp, "    push     ebx\n" );
                             }
                             
                             GenerateOptimizedExpression( fp, varmap, t, vals );
@@ -5453,6 +5628,11 @@ label_no_array_eq_optimization:
                                 fprintf( fp, "    pop      si\n" );
                                 fprintf( fp, "    mov      WORD PTR [ si ], ax\n" );
                             }
+                            else if ( x86Win == g_AssemblyTarget )
+                            {
+                                fprintf( fp, "    pop      ebx\n" );
+                                fprintf( fp, "    mov      DWORD PTR [ebx], eax\n" );
+                            }
                         }
                     }
                 }
@@ -5462,7 +5642,8 @@ label_no_array_eq_optimization:
             }
             else if ( Token::END == token )
             {
-                if ( x64Win == g_AssemblyTarget || mos6502Apple1 == g_AssemblyTarget || i8086DOS == g_AssemblyTarget )
+                if ( x64Win == g_AssemblyTarget || mos6502Apple1 == g_AssemblyTarget || i8086DOS == g_AssemblyTarget ||
+                     x86Win == g_AssemblyTarget )
                     fprintf( fp, "    jmp      end_execution\n" );
                 else if ( arm64Mac == g_AssemblyTarget || arm32Linux == g_AssemblyTarget )
                     fprintf( fp, "    b        end_execution\n" );
@@ -5518,6 +5699,10 @@ label_no_array_eq_optimization:
                 else if ( i8086DOS == g_AssemblyTarget )
                 {
                     fprintf( fp, "    mov      WORD PTR ds: [%s], %d\n", GenVariableName( varname ), vals[ t + 2 ].value );
+                }
+                else if ( x86Win == g_AssemblyTarget )
+                {
+                    fprintf( fp, "    mov      [%s], %d\n", GenVariableName( varname ), vals[ t + 2 ].value );
                 }
 
                 ForGosubItem item( true, (int) l );
@@ -5598,6 +5783,11 @@ label_no_array_eq_optimization:
                     fprintf( fp, "    cmp      WORD PTR ds: [%s], %d\n", GenVariableName( varname ), vals[ t + 4 ].value );
                     fprintf( fp, "    jg       after_for_loop_%zd\n", l );
                 }
+                else if ( x86Win == g_AssemblyTarget )
+                {
+                    fprintf( fp, "    cmp      [%s], %d\n", GenVariableName( varname ), vals[ t + 4 ].value );
+                    fprintf( fp, "    jg       after_for_loop_%zd\n", l );
+                }
 
                 break;
             }
@@ -5617,7 +5807,7 @@ label_no_array_eq_optimization:
                     if ( IsVariableInReg( varmap, loopVal ) )
                         fprintf( fp, "    inc      %s\n", GenVariableReg( varmap, loopVal ) );
                     else
-                        fprintf( fp, "    inc      [%s]\n", GenVariableName( loopVal ) );
+                        fprintf( fp, "    inc      DWORD PTR [%s]\n", GenVariableName( loopVal ) );
 
                     fprintf( fp, "    jmp      for_loop_%d\n", item.pcReturn );
                     fprintf( fp, "    align    16\n" );
@@ -5678,6 +5868,12 @@ label_no_array_eq_optimization:
 
                     fprintf( fp, "    jmp      for_loop_%d\n", item.pcReturn );
                 }
+                else if ( x86Win == g_AssemblyTarget )
+                {
+                    fprintf( fp, "    inc      DWORD PTR [%s]\n", GenVariableName( loopVal ) );
+                    fprintf( fp, "    jmp      for_loop_%d\n", item.pcReturn );
+                    fprintf( fp, "    align    16\n" );
+                }
 
                 if ( i8080CPM == g_AssemblyTarget )
                     fprintf( fp, "  af$%d:\n", item.pcReturn );
@@ -5712,6 +5908,8 @@ label_no_array_eq_optimization:
                     fprintf( fp, "    jsr      line_number_%d\n", vals[ t ].value );
                 else if ( i8086DOS == g_AssemblyTarget)
                     fprintf( fp, "    call     line_number_%d\n", vals[ t ].value );
+                else if ( x86Win == g_AssemblyTarget)
+                    fprintf( fp, "    call     line_number_%d\n", vals[ t ].value );
 
                 break;
             }
@@ -5729,6 +5927,8 @@ label_no_array_eq_optimization:
                     fprintf( fp, "    jmp      line_number_%d\n", vals[ t ].value );
                 else if ( i8086DOS == g_AssemblyTarget)
                     fprintf( fp, "    jmp      line_number_%d\n", vals[ t ].value );
+                else if ( x86Win == g_AssemblyTarget)
+                    fprintf( fp, "    jmp      line_number_%d\n", vals[ t ].value );
 
                 break;
             }
@@ -5745,6 +5945,8 @@ label_no_array_eq_optimization:
                 else if ( mos6502Apple1 == g_AssemblyTarget )
                     fprintf( fp, "    jmp      label_gosub_return\n" );
                 else if ( i8086DOS == g_AssemblyTarget )
+                    fprintf( fp, "    jmp      label_gosub_return\n" );
+                else if ( x86Win == g_AssemblyTarget )
                     fprintf( fp, "    jmp      label_gosub_return\n" );
 
                 break;
@@ -5807,6 +6009,11 @@ label_no_array_eq_optimization:
                             fprintf( fp, "    mov      ah, dos_write_string\n" );
                             fprintf( fp, "    int      21h\n" );
                         }
+                        else if ( x86Win == g_AssemblyTarget )
+                        {
+                            fprintf( fp, "    lea      eax, str_%zd_%d\n", l, t + 1 );
+                            fprintf( fp, "    call     printString\n" );
+                        }
 
                         t += vals[ t ].value;
                     }
@@ -5866,6 +6073,10 @@ label_no_array_eq_optimization:
                         {
                             fprintf( fp, "    call     printtime\n" );
                         }
+                        else if ( x86Win == g_AssemblyTarget )
+                        {
+                            fprintf( fp, "    call     printCurrentTime\n" );
+                        }
 
                         t += vals[ t ].value;
                     }
@@ -5922,6 +6133,10 @@ label_no_array_eq_optimization:
                             fprintf( fp, "    mov      dx, offset elapString\n" );
                             fprintf( fp, "    int      21h\n" );
                         }
+                        else if ( x86Win == g_AssemblyTarget )
+                        {
+                            fprintf( fp, "    call     printElapTime\n" );
+                        }
 
                         t += vals[ t ].value;
                     }
@@ -5950,17 +6165,13 @@ label_no_array_eq_optimization:
                             fprintf( fp, "    bl       call_printf\n" );
                         }
                         else if ( i8080CPM == g_AssemblyTarget )
-                        {
                             fprintf( fp, "    call     puthl\n" );
-                        }
                         else if ( mos6502Apple1 == g_AssemblyTarget )
-                        {
                             fprintf( fp, "    jsr      print_int\n" );
-                        }
                         else if ( i8086DOS == g_AssemblyTarget )
-                        {
                             fprintf( fp, "    call     printint\n" );
-                        }
+                        else if ( x86Win == g_AssemblyTarget )
+                            fprintf( fp, "    call     printInt\n" );
                     }
                 }
     
@@ -5986,13 +6197,11 @@ label_no_array_eq_optimization:
                     fprintf( fp, "    call     BDOS\n" );
                 }
                 else if ( mos6502Apple1 == g_AssemblyTarget )
-                {
                     fprintf( fp, "    jsr      prcrlf\n" ); 
-                }
                 else if ( i8086DOS == g_AssemblyTarget )
-                {
                     fprintf( fp, "    call     printcrlf\n" );
-                }
+                else if ( x86Win == g_AssemblyTarget )
+                    fprintf( fp, "    call     printcrlf\n" );
 
                 if ( t == vals.size() )
                     break;
@@ -6100,6 +6309,13 @@ label_no_array_eq_optimization:
                         fprintf( fp, "    inc      WORD PTR ds: [%s]\n", GenVariableName( varname ) );
                     else
                         fprintf( fp, "    dec      WORD PTR ds: [%s]\n", GenVariableName( varname ) );
+                }
+                else if ( x86Win == g_AssemblyTarget )
+                {
+                    if ( Token::INC == vals[ t + 1 ].token )
+                        fprintf( fp, "    inc      DWORD PTR [%s]\n", GenVariableName( varname ) );
+                    else
+                        fprintf( fp, "    dec      DWORD PTR [%s]\n", GenVariableName( varname ) );
                 }
                 break;
             }
@@ -7627,6 +7843,8 @@ label_no_if_optimization:
                     }
                     else if ( i8086DOS == g_AssemblyTarget )                                                                                                            
                         fprintf( fp, "    cmp      ax, 0\n" );
+                    else if ( x86Win == g_AssemblyTarget )                                                                                                            
+                        fprintf( fp, "    cmp      eax, 0\n" );
 
                     if ( Token::GOTO == vals[ t ].token )
                     {
@@ -7645,6 +7863,9 @@ label_no_if_optimization:
                         }
                         else if ( i8086DOS == g_AssemblyTarget )
                             fprintf( fp, "    jne      line_number_%d\n", vals[ t ].value );
+                        else if ( x86Win == g_AssemblyTarget )
+                            fprintf( fp, "    jne      line_number_%d\n", vals[ t ].value );
+
                         break;
                     }
                     else if ( Token::RETURN == vals[ t ].token )
@@ -7665,6 +7886,9 @@ label_no_if_optimization:
                         }
                         else if ( i8086DOS == g_AssemblyTarget )
                             fprintf( fp, "    jne      label_gosub_return\n" );
+                        else if ( x86Win == g_AssemblyTarget )
+                            fprintf( fp, "    jne      label_gosub_return\n" );
+
                         break;
                     }
                     else
@@ -7711,6 +7935,13 @@ label_no_if_optimization:
                             else
                                 fprintf( fp, "    je       line_number_%zd\n", l + 1 );
                         }
+                        else if ( x86Win == g_AssemblyTarget )
+                        {
+                            if ( vals[ t - 1 ].value ) // is there an else clause?
+                                fprintf( fp, "    je       label_else_%zd\n", l );
+                            else
+                                fprintf( fp, "    je       line_number_%zd\n", l + 1 );
+                        }
                     }
                 }
             }
@@ -7743,6 +7974,11 @@ label_no_if_optimization:
                 else if ( i8086DOS == g_AssemblyTarget )
                 {
                     fprintf( fp, "    jmp      line_number_%zd\n", l + 1 );
+                }
+                else if ( x86Win == g_AssemblyTarget )
+                {
+                    fprintf( fp, "    jmp      line_number_%zd\n", l + 1 );
+                    fprintf( fp, "    align    16\n" );
                 }
 
                 if ( i8080CPM == g_AssemblyTarget )
@@ -8673,6 +8909,159 @@ label_no_if_optimization:
         fprintf( fp, "\n" );
         fprintf( fp, "END\n" );
     }
+    else if ( x86Win == g_AssemblyTarget )
+    {
+        // validate there is an active GOSUB before returning (or not)
+
+        fprintf( fp, "label_gosub_return:\n" );
+        // fprintf( fp, "    dec      DWORD PTR [gosubCount]\n" );   // should we protect against return without gosub?
+        // fprintf( fp, "    cmp      DWORD PTR [gosubCount], 0\n" );
+        // fprintf( fp, "    jl       error_exit\n" );
+        fprintf( fp, "    ret\n" );
+
+        fprintf( fp, "  error_exit:\n" );
+        fprintf( fp, "    push     offset errorString\n" );
+        fprintf( fp, "    call     printf\n" );
+        fprintf( fp, "    add      esp, 4\n" );
+        fprintf( fp, "    jmp      leave_execution\n" );
+
+        fprintf( fp, "  end_execution:\n" );
+        fprintf( fp, "    push     offset stopString\n" );
+        fprintf( fp, "    call     printf\n" );
+        fprintf( fp, "    add      esp, 4\n" );
+
+        fprintf( fp, "  leave_execution:\n" );
+        fprintf( fp, "    push     0\n" );
+        fprintf( fp, "    call     exit\n" );
+        fprintf( fp, "    ret\n" ); // should never get here...
+        fprintf( fp, "main ENDP\n" );
+
+        //////////////////////////////////////
+
+        fprintf( fp, "align 16\n" );
+        fprintf( fp, "call_exit PROC\n" );
+        fprintf( fp, "    push     0\n" );
+        fprintf( fp, "    call     exit\n" );
+        fprintf( fp, "call_exit ENDP\n" );
+
+        //////////////////////////////////////
+
+        fprintf( fp, "align 16\n" );
+        fprintf( fp, "printCurrentTime PROC\n" );
+        fprintf( fp, "    push     ebp\n" );
+        fprintf( fp, "    mov      ebp, esp\n" );
+        fprintf( fp, "    push     edi\n" );
+        fprintf( fp, "    push     esi\n" );
+        fprintf( fp, "    push     offset currentTime\n" );
+        fprintf( fp, "    call     GetLocalTime@4\n" );
+        fprintf( fp, "    movsx    eax, WORD PTR [currentTime + 12]\n" );
+        fprintf( fp, "    push     eax\n" );
+        fprintf( fp, "    movsx    eax, WORD PTR [currentTime + 10]\n" );
+        fprintf( fp, "    push     eax\n" );
+        fprintf( fp, "    movsx    eax, WORD PTR [currentTime + 8]\n" );
+        fprintf( fp, "    push     eax\n" );
+        fprintf( fp, "    push     offset timeString\n" );
+        fprintf( fp, "    call     printf\n" );
+        fprintf( fp, "    add      esp, 32\n" );
+        fprintf( fp, "    pop      esi\n" );
+        fprintf( fp, "    pop      edi\n" );
+        fprintf( fp, "    mov      esp, ebp\n" );
+        fprintf( fp, "    pop      ebp\n" );
+        fprintf( fp, "    ret\n" );
+        fprintf( fp, "printCurrentTime ENDP\n" );
+
+        //////////////////////////////////////
+
+        fprintf( fp, "align 16\n" );
+        fprintf( fp, "printString PROC\n" );
+        fprintf( fp, "    push     ebp\n" );
+        fprintf( fp, "    mov      ebp, esp\n" );
+        fprintf( fp, "    push     edi\n" );
+        fprintf( fp, "    push     esi\n" );
+        fprintf( fp, "    push     eax\n" );
+        fprintf( fp, "    push     offset strString\n" );
+        fprintf( fp, "    call     printf\n" );
+        fprintf( fp, "    add      esp, 8\n" );
+        fprintf( fp, "    pop      esi\n" );
+        fprintf( fp, "    pop      edi\n" );
+        fprintf( fp, "    mov      esp, ebp\n" );
+        fprintf( fp, "    pop      ebp\n" );
+        fprintf( fp, "    ret\n" );
+        fprintf( fp, "printString ENDP\n" );
+
+        //////////////////////////////////////
+
+        fprintf( fp, "align 16\n" );
+        fprintf( fp, "printcrlf PROC\n" );
+        fprintf( fp, "    push     ebp\n" );
+        fprintf( fp, "    mov      ebp, esp\n" );
+        fprintf( fp, "    push     edi\n" );
+        fprintf( fp, "    push     esi\n" );
+        fprintf( fp, "    push     offset newlineString\n" );
+        fprintf( fp, "    call     printf\n" );
+        fprintf( fp, "    add      esp, 4\n" );
+        fprintf( fp, "    pop      esi\n" );
+        fprintf( fp, "    pop      edi\n" );
+        fprintf( fp, "    mov      esp, ebp\n" );
+        fprintf( fp, "    pop      ebp\n" );
+        fprintf( fp, "    ret\n" );
+        fprintf( fp, "printcrlf ENDP\n" );
+
+        //////////////////////////////////////
+
+        fprintf( fp, "align 16\n" );
+        fprintf( fp, "printInt PROC\n" );
+        fprintf( fp, "    push     ebp\n" );
+        fprintf( fp, "    mov      ebp, esp\n" );
+        fprintf( fp, "    push     edi\n" );
+        fprintf( fp, "    push     esi\n" );
+        fprintf( fp, "    push     eax\n" );
+        fprintf( fp, "    push     offset intString\n" );
+        fprintf( fp, "    call     printf\n" );
+        fprintf( fp, "    add      esp, 8\n" );
+        fprintf( fp, "    pop      esi\n" );
+        fprintf( fp, "    pop      edi\n" );
+        fprintf( fp, "    mov      esp, ebp\n" );
+        fprintf( fp, "    pop      ebp\n" );
+        fprintf( fp, "    ret\n" );
+        fprintf( fp, "printInt ENDP\n" );
+
+        //////////////////////////////////////
+
+        fprintf( fp, "align 16\n" );
+        fprintf( fp, "printElapTime PROC\n" );
+        fprintf( fp, "    push     ebp\n" );
+        fprintf( fp, "    mov      ebp, esp\n" );
+        fprintf( fp, "    push     edi\n" );
+        fprintf( fp, "    push     esi\n" );
+        fprintf( fp, "    push     offset currentTicks\n" );
+        fprintf( fp, "    call     QueryPerformanceCounter@4\n" );
+        fprintf( fp, "    mov      eax, DWORD PTR [currentTicks]\n" );
+        fprintf( fp, "    mov      edx, DWORD PTR [currentTicks + 4]\n" );
+        fprintf( fp, "    mov      ebx, DWORD PTR [startTicks]\n" );
+        fprintf( fp, "    mov      ecx, DWORD PTR [startTicks + 4]\n" );
+        fprintf( fp, "    sub      eax, ebx\n" );
+        fprintf( fp, "    sbb      edx, ecx\n" );
+        fprintf( fp, "    idiv     DWORD PTR [perfFrequency]\n" );
+        fprintf( fp, "    xor      edx, edx\n" );
+        fprintf( fp, "    mov      ecx, 1000\n" );
+        fprintf( fp, "    idiv     ecx\n" );
+        fprintf( fp, "    push     eax\n" );
+        fprintf( fp, "    push     offset elapString\n" );
+        fprintf( fp, "    call     printf\n" );
+        fprintf( fp, "    add      esp, 8\n" );
+        fprintf( fp, "    pop      esi\n" );
+        fprintf( fp, "    pop      edi\n" );
+        fprintf( fp, "    mov      esp, ebp\n" );
+        fprintf( fp, "    pop      ebp\n" );
+        fprintf( fp, "    ret\n" );
+        fprintf( fp, "printElapTime ENDP\n" );
+
+        // end of the code segment and program
+
+        fprintf( fp, "code_segment ENDS\n" );
+        fprintf( fp, "END\n" );
+    }
 
     printf( "created assembler file %s\n", outputfile );
 } //GenerateASM
@@ -9413,6 +9802,8 @@ extern int main( int argc, char *argv[] )
                     g_AssemblyTarget = i8080CPM;
                 else if ( 'd' == a )
                     g_AssemblyTarget = i8086DOS;
+                else if ( 'i' == a )
+                    g_AssemblyTarget = x86Win;
                 else
                     Usage();
             }
@@ -9493,7 +9884,7 @@ extern int main( int argc, char *argv[] )
         else
             strcpy_s( dot, _countof( asmfile) - ( dot - asmfile ), ".asm" );
 
-        if ( arm32Linux == g_AssemblyTarget )
+        if ( arm32Linux == g_AssemblyTarget || x86Win == g_AssemblyTarget )
             g_ExpressionOptimization = false; // not implemented yet
 
         GenerateASM( asmfile, varmap, useRegistersInASM );
