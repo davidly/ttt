@@ -9612,7 +9612,7 @@ void InterpretCode( map<string, Variable> & varmap )
                         auto ms = duration_cast<milliseconds>( now.time_since_epoch() ) % 1000;
                         auto timer = system_clock::to_time_t( now );
                         std::tm bt = * /*std::*/ localtime( &timer );
-                        printf( "%d:%d:%d", bt.tm_hour, bt.tm_min, bt.tm_sec );
+                        printf( "%02d:%02d:%02d", bt.tm_hour, bt.tm_min, bt.tm_sec );
                         t += 2;
                     }
                     else if ( Token::ELAP == vals[ t + 1 ].token )
