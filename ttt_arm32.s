@@ -37,8 +37,6 @@
     moveCount:          .int 0
     pthread1:           .quad 0
     pthread4:           .quad 0
-    threadattr1:        .int 0
-    threadattr4:        .int 0
     timespecPriorSec:   .int 0
     timespecPriorNSec:  .int 0
     timespecCurSec:     .int 0
@@ -128,7 +126,7 @@ _print_elapsed_time:
     movw     r1, #:lower16:1000000               @ convert to milliseconds
     movt     r1, #:upper16:1000000
     bl       __aeabi_idiv
-    mov      r4, r0
+    mov      r3, r0
 
     movw     r0, #:lower16:timespecCurSec
     movt     r0, #:upper16:timespecCurSec
@@ -144,7 +142,7 @@ _print_elapsed_time:
     mul      r0, r1, r0
 
     mov      r1, r11
-    add      r2, r0, r4                          @ add the second and nanosecond portions
+    add      r2, r0, r3                          @ add the second and nanosecond portions
     movw     r0, #:lower16:elapString
     movt     r0, #:upper16:elapString
     bl       printf
@@ -206,6 +204,8 @@ _runmm:
 
     mov      r9, #0                             @ r9 is the move count
     mov      r8, r0                             @ r8 is the initial move    
+    movw     r4, #:lower16:_winner_functions
+    movt     r4, #:upper16:_winner_functions
 
     @ load r10 with the board to use
     cmp      r0, #0
@@ -256,7 +256,7 @@ _runmm:
     @bl       printf
 
     @ exit the function
-    pop     {r4, r5, r6, r7, r8, r9, r10, r11}
+    pop      {r4, r5, r6, r7, r8, r9, r10, r11}
     pop      {ip, pc}
 
 .p2align 2
@@ -387,7 +387,7 @@ _minmax_max:
     @ r1:  argument. beta. keep in register r8
     @ r2:  argument. depth. keep in register r6
     @ r3:  argument. move. position of last piece added 0..8. Keep in register for a bit then it's overwritten
-    @ r4:  UNUSED
+    @ r4:  winner function table
     @ r5:  for loop variable I
     @ r6:  depth
     @ r7:  alpha
@@ -397,7 +397,7 @@ _minmax_max:
     @ r11: value: local variable
 
     push     {ip, lr}
-    push     {r4, r5, r6, r7, r8, r11}  @ skip 9 and 10 for move count and board
+    push     {r5, r6, r7, r8, r11}  @ skip 4, 9, and 10 for winner functions, move count, and board
 
     mov      r7, r0                     @ alpha
     mov      r8, r1                     @ beta
@@ -412,9 +412,7 @@ _minmax_max:
     @ call the winner function for the most recent move
     mov      r0, #o_piece               @ the piece just played
     lsl      r3, r3, #2                 @ each function pointer takes 4 bytes (move is trashed)
-    movw     r1, #:lower16:_winner_functions
-    movt     r1, #:upper16:_winner_functions
-    add      r1, r1, r3                 @ table + function offset
+    add      r1, r4, r3                 @ table + function offset
     ldr      r1, [r1]                   @ grab the function pointer
     blx      r1                         @ call it
 
@@ -480,7 +478,7 @@ _minmax_max:
   .p2align 2
   _minmax_max_done:
     @ exit the function
-    pop      {r4, r5, r6, r7, r8, r11}  @ skip 9 and 10 for move count and board
+    pop      {r5, r6, r7, r8, r11}  @ skip 4, 9, and 10 for winner functions, move count, and board
     pop      {ip, pc}
     .cfi_endproc
 
@@ -491,7 +489,7 @@ _minmax_min:
     @ r1:  argument. beta. keep in register r8
     @ r2:  argument. depth. keep in register r6
     @ r3:  argument. move. position of last piece added 0..8. Keep in register for a bit then it's overwritten
-    @ r4:  UNUSED
+    @ r4:  winner function table
     @ r5:  for loop variable I
     @ r6:  depth
     @ r7:  alpha
@@ -501,7 +499,7 @@ _minmax_min:
     @ r11: value: local variable
 
     push     {ip, lr}
-    push     {r4, r5, r6, r7, r8, r11}  @ skip 9 and 10 for move count and board
+    push     {r5, r6, r7, r8, r11}  @ skip 4, 9, and 10 for winner functions, move count, and board
      
     mov      r7, r0                     @ alpha
     mov      r8, r1                     @ beta
@@ -516,9 +514,7 @@ _minmax_min:
     @ call the winner function for the most recent move
     mov      r0, #x_piece               @ the piece just played
     lsl      r3, r3, #2                 @ each function pointer takes 4 bytes (move is trashed)
-    movw     r1, #:lower16:_winner_functions
-    movt     r1, #:upper16:_winner_functions
-    add      r1, r1, r3                 @ table + function offset
+    add      r1, r4, r3                 @ table + function offset
     ldr      r1, [r1]                   @ grab the function pointer
     blx      r1                         @ call it
 
@@ -588,7 +584,7 @@ _minmax_min:
   .p2align 2
   _minmax_min_done:
     @ exit the function
-    pop      {r4, r5, r6, r7, r8, r11}  @ skip 9 and 10 for move count and board
+    pop      {r5, r6, r7, r8, r11}  @ skip 4, 9, and 10 for winner functions, move count, and board
     pop      {ip, pc}
     .cfi_endproc
 
