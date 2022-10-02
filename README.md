@@ -5,7 +5,7 @@ Source code referred to here: https://medium.com/@davidly_33504/tic-tac-toe-and-
 
 In short, this repo contains various implementations of code to prove that you can't win at tic-tac-toe if the opponent is competent.
 
-Aside from tic-tac-toe, this code provides examples of how to do things in various languages (go, Python, Lua, Julia, Rust, Visual Basic, Pascal, C#, C++, Swift, x64 and 8080 assembly languages) including concurrency, high resolution timing, pointers to functions, passing arguments by reference and value, basic control flow, atomic increments, etc.
+Aside from tic-tac-toe, this code provides examples of how to do things in various languages (go, Python, Lua, Julia, Rust, Visual Basic, Pascal, C#, C++, Swift, assembly language for 6502, 8080, 8086, 32-bit x86, Arm32, x64, and Arm64) including concurrency, high resolution timing, pointers to functions, passing arguments by reference and value, basic control flow, atomic increments, etc.
 
 To build:
 
@@ -55,16 +55,16 @@ The BA version is faster than Python even when Python is using function pointers
 I'm not really proud of BA -- it was a very quickly written hack. But it shows that Python could benefit from some performance work.
 
 I added minimal support in BA to compile BASIC apps to x64 .asm files which can then be assembled into a Windows .exe file. 
-Afterwards I added codegen for Arm64 on Macs, Arm32 on Linux, MOS 6502 on the Apple 1, and Intel 8080 on CP/M 2.2. Use the -a flag in BA to generate
-the x64 .asm file, and ma.bat to create the .exe. For example:
+Afterwards I added codegen for Arm64 on Macs, Arm32 on Linux, MOS 6502 on the Apple 1, Intel 8080 on CP/M 2.2, 8086 on DOS, and 32-bit
+x86 on Windows. Use the -a:x flag in BA to generate the x64 .asm file, and ma.bat to create the .exe. For example:
 
-    ba ttt_1dim.bas /x /a
+    ba ttt_1dim.bas /x /a:x
     ma.bat ttt_1dim
     ttt_1dim.exe
     
 To compile code and run on an 8080/Z80 CP/M 2.2 machine:
 
-    ba app.bas /x /8
+    ba app.bas /x /a:8
     (copy app.asm to a CP/M machine)
     asm app
     load app
@@ -72,26 +72,27 @@ To compile code and run on an 8080/Z80 CP/M 2.2 machine:
     
 To commpile code and run on an arm64 Mac:
 
-    ba ttt_1dim.bas /x /m
+    ba ttt_1dim.bas /x /a:m
     ./ma.sh ttt_1dim
     ./ttt_1dim
     
 To compile code and run on an arm32 Raspberry PI 3:
 
-    ba ttt_1dim.bas /x /3
+    ba ttt_1dim.bas /x /a:3
     gcc -o ttt_1dim ttt_1dim.s -march=armv8-a
     ./ttt_1dim
     
 To compile and run on a MOS 6502 Apple 1
 
-    ba foo.bas /x /6
+    ba foo.bas /x /a:6
     sbasm.py foo.s
     copy foo.h to the Apple 1, then on that machine:
     1000 r    
         
 The compiler generates code that's in the middle of the pack of most real compilers on both x64 Windows and arm64 Mac. The 8080 code
 generated for CP/M 2.2 systems is about 3x as fast as Turbo Pascal 3.01A and 3x slower than hand-written assembler code (mostly due
-to using 16-bit integers and lack of global optimizations). The arm32 and 6502 code is unoptimized but working.
+to using 16-bit integers and lack of global optimizations). 6502 code generation is OK given that's it's such a hard target for
+compilers and working with 16 bit integers is so cumbersome. The arm32 and 32 bit x86 code is unoptimized but working.
 
 To build BA:
 
