@@ -2,8 +2,10 @@
 @  Build on an arm32 Linux machine using a .sh script like this (tested on Raspberry PI 4):
 @     gcc -o $1 $1.s -march=armv8-a -pthread
 @
-@ r10 = global pointer to the thread's board (board0, board1, or board4)
-@ r9  = global move count for the thread
+@ per-thread-global registers:
+@ r9  = thread-global move count
+@ r10 = thread-global pointer to the board (board0, board1, or board4)
+@ r11 = thread-global pointer to winner functions
 
 .global main
 .code 32
@@ -21,16 +23,18 @@
 
 .data
   @ allocate separate boards for the 3 unique starting moves so multiple threads can solve in parallel
-  @ pi 3 has cache lines of 32 bytes and pi 4 uses 64. Each board must be on a separate ache line
+  @ pi 3 has cache lines of 32 bytes and pi 4 uses 64. Each board must be on a separate cache line
+  @ pi 4 multi-core performance is bad regardless of what spacing exists.
+    noise:  .space 128
   .p2align 5
     board0: .byte 1,0,0,0,0,0,0,0,0
-    noise0: .space 128
+    noise0: .space 128-9
   .p2align 5 
     board1: .byte 0,1,0,0,0,0,0,0,0
-    noise1: .space 128
+    noise1: .space 128-9
   .p2align 5 
     board4: .byte 0,0,0,0,1,0,0,0,0
-    noise4: .space 128
+    noise4: .space 128-9
 
   .p2align 3
     priorTicks:         .int 0
@@ -204,8 +208,8 @@ _runmm:
 
     mov      r9, #0                             @ r9 is the move count
     mov      r8, r0                             @ r8 is the initial move    
-    movw     r4, #:lower16:_winner_functions
-    movt     r4, #:upper16:_winner_functions
+    movw     r11, #:lower16:_winner_functions   @ r11 is the winner functions lookup table
+    movt     r11, #:upper16:_winner_functions
 
     @ load r10 with the board to use
     cmp      r0, #0
@@ -387,17 +391,17 @@ _minmax_max:
     @ r1:  argument. beta. keep in register r8
     @ r2:  argument. depth. keep in register r6
     @ r3:  argument. move. position of last piece added 0..8. Keep in register for a bit then it's overwritten
-    @ r4:  winner function table
+    @ r4:  value: local variable
     @ r5:  for loop variable I
     @ r6:  depth
     @ r7:  alpha
     @ r8:  beta
-    @ r9:  global move count for this thread
-    @ r10: global board for this thread
-    @ r11: value: local variable
+    @ r9:  thread-global move count
+    @ r10: thread-global board
+    @ r11: thread-global winner function table
 
     push     {ip, lr}
-    push     {r5, r6, r7, r8, r11}  @ skip 4, 9, and 10 for winner functions, move count, and board
+    push     {r4, r5, r6, r7, r8}  @ skip 9, 10, and 11 for move count, board, and winner functions
 
     mov      r7, r0                     @ alpha
     mov      r8, r1                     @ beta
@@ -412,7 +416,7 @@ _minmax_max:
     @ call the winner function for the most recent move
     mov      r0, #o_piece               @ the piece just played
     lsl      r3, r3, #2                 @ each function pointer takes 4 bytes (move is trashed)
-    add      r1, r4, r3                 @ table + function offset
+    add      r1, r11, r3                @ table + function offset
     ldr      r1, [r1]                   @ grab the function pointer
     blx      r1                         @ call it
 
@@ -424,7 +428,7 @@ _minmax_max:
 
   .p2align 2
   _minmax_max_skip_winner:
-    mov      r11, #minimum_score        @ the value is minimum because we're maximizing
+    mov      r4, #minimum_score         @ the value is minimum because we're maximizing
     mov      r5, #-1                    @ avoid a jump by starting the for loop I at -1
 
   .p2align 2
@@ -454,31 +458,31 @@ _minmax_max:
     cmp      r0, #win_score             @ winning score? 
     beq      _minmax_max_done           @ then return
 
-    cmp      r0, r11                    @ compare score with value
+    cmp      r0, r4                     @ compare score with value
     ble      _minmax_max_no_v
-    mov      r11, r0                    @ update value if score is > value
+    mov      r4, r0                     @ update value if score is > value
   .p2align 2
   _minmax_max_no_v:
 
-    cmp      r7, r11                    @ compare alpha with value
+    cmp      r7, r4                     @ compare alpha with value
     bge      _minmax_max_no_alpha
-    mov      r7, r11                    @ update alpha if alpha is < value
+    mov      r7, r4                     @ update alpha if alpha is < value
   .p2align 2
     _minmax_max_no_alpha:
 
     cmp      r7, r8                     @ compare alpha with beta
     bge     _minmax_max_loadv_done      @ alpha pruning if alpha >= beta
  
-    b       _minmax_max_top_of_loop    @ loop to the next board position 0..8
+    b       _minmax_max_top_of_loop     @ loop to the next board position 0..8
 
   .p2align 2
   _minmax_max_loadv_done:
-    mov      r0, r11                    @ load the return value with value
+    mov      r0, r4                     @ load the return value with value
   
   .p2align 2
   _minmax_max_done:
     @ exit the function
-    pop      {r5, r6, r7, r8, r11}  @ skip 4, 9, and 10 for winner functions, move count, and board
+    pop      {r4, r5, r6, r7, r8}       @ skip 9, 10, and 11 for move count, board, and winner functions
     pop      {ip, pc}
     .cfi_endproc
 
@@ -489,17 +493,17 @@ _minmax_min:
     @ r1:  argument. beta. keep in register r8
     @ r2:  argument. depth. keep in register r6
     @ r3:  argument. move. position of last piece added 0..8. Keep in register for a bit then it's overwritten
-    @ r4:  winner function table
+    @ r4:  value: local variable
     @ r5:  for loop variable I
     @ r6:  depth
     @ r7:  alpha
     @ r8:  beta
-    @ r9:  global move count for this thread
-    @ r10: globa board for this thread
-    @ r11: value: local variable
+    @ r9:  thread-global move count
+    @ r10: thread-global board
+    @ r11: thread-global winner function table
 
     push     {ip, lr}
-    push     {r5, r6, r7, r8, r11}  @ skip 4, 9, and 10 for winner functions, move count, and board
+    push     {r4, r5, r6, r7, r8}  @ skip 9, 10, and 11 for move count, board, and winner functions
      
     mov      r7, r0                     @ alpha
     mov      r8, r1                     @ beta
@@ -514,7 +518,7 @@ _minmax_min:
     @ call the winner function for the most recent move
     mov      r0, #x_piece               @ the piece just played
     lsl      r3, r3, #2                 @ each function pointer takes 4 bytes (move is trashed)
-    add      r1, r4, r3                 @ table + function offset
+    add      r1, r11, r3                @ table + function offset
     ldr      r1, [r1]                   @ grab the function pointer
     blx      r1                         @ call it
 
@@ -530,7 +534,7 @@ _minmax_min:
 
   .p2align 2
   _minmax_min_skip_winner:
-    mov      r11, #maximum_score        @ the value is maximum because we're minimizing
+    mov      r4, #maximum_score         @ the value is maximum because we're minimizing
     mov      r5, #-1                    @ avoid a jump by starting the for loop I at -1
 
   .p2align 2
@@ -560,15 +564,15 @@ _minmax_min:
     cmp      r0, #lose_score            @ losing score? 
     beq      _minmax_min_done           @ then return
 
-    cmp      r0, r11                    @ compare score with value
+    cmp      r0, r4                     @ compare score with value
     bge      _minmax_min_no_v
-    mov      r11, r0                    @ update value if score is < value
+    mov      r4, r0                     @ update value if score is < value
   .p2align 2
   _minmax_min_no_v:
 
-    cmp      r11, r8                    @ compare value with beta
+    cmp      r4, r8                     @ compare value with beta
     bge      _minmax_min_no_beta
-    mov      r8, r11                    @ update beta if value < beta
+    mov      r8, r4                     @ update beta if value < beta
   .p2align 2
   _minmax_min_no_beta:
 
@@ -579,12 +583,12 @@ _minmax_min:
 
   .p2align 2
   _minmax_min_loadv_done:
-    mov      r0, r11                    @ load the return value with value
+    mov      r0, r4                     @ load the return value with value
   
   .p2align 2
   _minmax_min_done:
     @ exit the function
-    pop      {r5, r6, r7, r8, r11}  @ skip 4, 9, and 10 for winner functions, move count, and board
+    pop      {r4, r5, r6, r7, r8}       @ skip 9, 10, and 11 for move count, board, and winner functions
     pop      {ip, pc}
     .cfi_endproc
 
