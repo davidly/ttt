@@ -2204,7 +2204,7 @@ void LoadArm32Label( FILE * fp, const char * reg, const char * labelname )
 void LoadArm32LineNumber( FILE * fp, const char * reg, int linenumber )
 {
     char aclabel[ 100 ];
-    sprintf( aclabel, "line_number_%d\n", linenumber );
+    sprintf( aclabel, "line_number_%d", linenumber );
     LoadArm32Label( fp, reg, aclabel );
 } //LoadArm32LineNumber
 
@@ -4727,7 +4727,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                 fprintf( fp, "    mov      %s, 0\n", MappedRegistersArm64[ i ] );
         else if ( arm32Linux == g_AssemblyTarget )
             for ( size_t i = 0; i < _countof( MappedRegistersArm32 ); i++ )
-                fprintf( fp, "    mov      %s, 0\n", MappedRegistersArm32[ i ] );
+                fprintf( fp, "    mov      %s, #0\n", MappedRegistersArm32[ i ] );
         else if ( x86Win == g_AssemblyTarget )
             for ( size_t i = 0; i < _countof( MappedRegistersX86 ); i++ )
                 fprintf( fp, "    xor      %s, %s\n", MappedRegistersX86[ i ], MappedRegistersX86[ i ] );
@@ -4789,8 +4789,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
     
                     assert( Token::EXPRESSION == vals[ t ].token );
 
-                    if ( i8080CPM == g_AssemblyTarget || arm32Linux == g_AssemblyTarget ||
-                         !g_ExpressionOptimization )
+                    if ( i8080CPM == g_AssemblyTarget || !g_ExpressionOptimization )
                         goto label_no_eq_optimization;
 
                     if ( Token::CONSTANT == vals[ t + 1 ].token &&
@@ -4808,6 +4807,19 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                                 fprintf( fp, "    mov      %s, %d\n", GenVariableReg( varmap, varname ), val );
                             else
                                 fprintf( fp, "    mov      DWORD PTR [%s], %d\n", GenVariableName( varname ), val );
+                        }
+                        else if ( arm32Linux == g_AssemblyTarget )
+                        {
+                            if ( IsVariableInReg( varmap, varname ) )
+                            {
+                                LoadArm32Constant( fp, GenVariableReg( varmap, varname ), val );
+                            }
+                            else
+                            {
+                                LoadArm32Constant( fp, "r0", val );
+                                LoadArm32Address( fp, "r1", varname );
+                                fprintf( fp, "    str      r0, [r1]\n" );
+                            }
                         }
                         else if ( arm64Mac == g_AssemblyTarget )
                         {
@@ -4840,7 +4852,8 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                     {
                         // e.g.: x% = y%
 
-                        if ( x64Win == g_AssemblyTarget || arm64Mac == g_AssemblyTarget || x86Win == g_AssemblyTarget )
+                        if ( x64Win == g_AssemblyTarget || arm64Mac == g_AssemblyTarget || x86Win == g_AssemblyTarget ||
+                             arm32Linux == g_AssemblyTarget )
                             fprintf( fp, "    mov      %s, %s\n", GenVariableReg( varmap, vals[ variableToken ].strValue ),
                                                                   GenVariableReg( varmap, vals[ t + 1 ].strValue ) );
 
@@ -4896,6 +4909,32 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                                 fprintf( fp, "    mov      %s, [ rax + rbx ]\n", GenVariableReg( varmap, vals[ variableToken ].strValue ) );
                             }
                         }
+                        else if ( arm32Linux == g_AssemblyTarget )
+                        {
+                            string & vararray = vals[ t + 1 ].strValue;
+                            string & varname = vals[ variableToken ].strValue;
+
+                            if ( Token::CONSTANT == vals[ t + 4 ].token )
+                            {
+                                LoadArm32Address( fp, "r1", varmap, vararray );
+
+                                if ( 0 != vals[ t + 4 ].value )
+                                {
+                                    int constant = 4 * vals[ t + 4 ].value;
+                                    LoadArm32Constant( fp, "r2", constant );
+                                    fprintf( fp, "    add      r1, r1, r2\n" );
+                                }
+
+                                fprintf( fp, "    ldr      %s, [r1]\n", GenVariableReg( varmap, varname ) );
+                            }
+                            else
+                            {
+                                LoadArm32Address( fp, "r1", varmap, vararray );
+                                fprintf( fp, "    lsl      r2, %s, #2\n", GenVariableReg( varmap, vals[ t + 4 ].strValue ) );
+                                fprintf( fp, "    add      r1, r1, r2\n" );
+                                fprintf( fp, "    ldr      %s, [r1]\n", GenVariableReg( varmap, varname ) );
+                            }
+                        }
                         else if ( arm64Mac == g_AssemblyTarget )
                         {
                             string & vararray = vals[ t + 1 ].strValue;
@@ -4922,6 +4961,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                                     }
                                     else
                                     {
+                                    // BUGBUG what if vararray is in register?!?
                                         LoadArm64Address( fp, "x1", varmap, vals[ t + 1 ].strValue );
             
                                         if ( fitsIn12Bits( constant ) )
@@ -4936,6 +4976,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                                     }
                                 }
                                 else
+                                   // BUGBUG WHAT if vararray isn't in a register?
                                    fprintf( fp, "    ldr      %s, [%s]\n", GenVariableReg( varmap, varname ),
                                                                            GenVariableReg64( varmap, vararray ) );
                             }
@@ -6528,6 +6569,14 @@ label_no_array_eq_optimization:
                                 GenVariableReg( varmap, vals[ t + 5 ].strValue ),
                                 GenVariableReg( varmap, vals[ t + 8 ].strValue ) );
                     }
+                    else if ( arm32Linux == g_AssemblyTarget )
+                    {
+                        fprintf( fp, "    cmp      %s, %s\n", GenVariableReg( varmap, vals[ t + 1 ].strValue ),
+                                                              GenVariableReg( varmap, vals[ t + 3 ].strValue ) );
+                        fprintf( fp, "    mov%s     %s, %s\n", ConditionsArm[ vals[ t + 2 ].token ],
+                                                               GenVariableReg( varmap, vals[ t + 5 ].strValue ),
+                                                               GenVariableReg( varmap, vals[ t + 8 ].strValue ) );
+                    }
                     else if ( arm64Mac == g_AssemblyTarget )
                     {
                         fprintf( fp, "    cmp      %s, %s\n", GenVariableReg( varmap, vals[ t + 1 ].strValue ),
@@ -6673,6 +6722,27 @@ label_no_array_eq_optimization:
                                                                                  4 * vals[ t + 14 ].value );
                         fprintf( fp, "    %-6s   label_gosub_return\n", RelationalInstructionX64[ vals[ t + 10 ].token ] );
                     }
+                    else if ( arm32Linux == g_AssemblyTarget )
+                    {
+                        int offsetA = 4 * vals[ t + 6 ].value;
+                        int offsetB = 4 * vals[ t + 14 ].value;
+                        string & vararray = vals[ t + 3 ].strValue;
+                     
+                        LoadArm32Address( fp, "r2", varmap, vals[ t + 3 ].strValue );
+                        LoadArm32Constant( fp, "r1", offsetA );
+                        fprintf( fp, "    add      r1, r1, r2\n" );
+                        fprintf( fp, "    ldr      r0, [r1]\n" );
+
+                        fprintf( fp, "    cmp      %s, r0\n", GenVariableReg( varmap, vals[ t + 1 ].strValue ) );
+                        fprintf( fp, "    b%s      line_number_%zd\n", ConditionsNotArm[ vals[ t + 2 ].token ], l + 1 );
+
+                        LoadArm32Constant( fp, "r1", offsetB );
+                        fprintf( fp, "    add      r1, r1, r2\n" );
+                        fprintf( fp, "    ldr      r0, [r1]\n" );
+
+                        fprintf( fp, "    cmp      %s, r0\n", GenVariableReg( varmap, vals[ t + 9 ].strValue ) );
+                        fprintf( fp, "    b%s      label_gosub_return\n", ConditionsArm[ vals[ t + 10 ].token ] );
+                    }
                     else if ( arm64Mac == g_AssemblyTarget )
                     {
                         int offsetA = 4 * vals[ t + 6 ].value;
@@ -6749,6 +6819,7 @@ label_no_array_eq_optimization:
                 else if ( i8080CPM != g_AssemblyTarget &&
                           mos6502Apple1 != g_AssemblyTarget &&
                           i8086DOS != g_AssemblyTarget &&
+                          arm32Linux != g_AssemblyTarget &&
                           15 == vals.size() &&
                           4 == vals[ t ].value &&
                           Token::VARIABLE == vals[ t + 1 ].token &&
@@ -6960,6 +7031,7 @@ label_no_array_eq_optimization:
                           mos6502Apple1 != g_AssemblyTarget &&
                           i8086DOS != g_AssemblyTarget &&
                           x86Win != g_AssemblyTarget &&
+                          arm32Linux != g_AssemblyTarget &&
                           23 == vals.size() &&
                           4 == vals[ t ].value &&
                           Token::VARIABLE == vals[ t + 1 ].token &&
@@ -7038,6 +7110,7 @@ label_no_array_eq_optimization:
                 else if ( i8080CPM != g_AssemblyTarget &&
                           mos6502Apple1 != g_AssemblyTarget &&
                           i8086DOS != g_AssemblyTarget &&
+                          arm32Linux != g_AssemblyTarget &&
                           11 == vals.size() &&
                           4 == vals[ t ].value &&
                           Token::VARIABLE == vals[ t + 1 ].token &&
@@ -7122,6 +7195,7 @@ label_no_array_eq_optimization:
                 else if ( i8080CPM != g_AssemblyTarget &&
                           mos6502Apple1 != g_AssemblyTarget &&
                           i8086DOS != g_AssemblyTarget &&
+                          arm32Linux != g_AssemblyTarget &&
                           9 == vals.size() &&
                           6 == vals[ t ].value &&
                           Token::VARIABLE == vals[ t + 1 ].token &&
@@ -7205,6 +7279,11 @@ label_no_array_eq_optimization:
                     {
                         fprintf( fp, "    test     %s, %d\n", GenVariableReg( varmap, vals[ t + 1 ].strValue ), vals[ t + 3 ].value );
                         fprintf( fp, "    jnz      line_number_%d\n", vals[ t + 5 ].value );
+                    }
+                    else if ( arm32Linux == g_AssemblyTarget )
+                    {
+                        fprintf( fp, "    tst      %s, #%d\n", GenVariableReg( varmap, vals[ t + 1 ].strValue ), vals[ t + 3 ].value );
+                        fprintf( fp, "    bne      line_number_%d\n", vals[ t + 5 ].value );
                     }
                     else if ( arm64Mac == g_AssemblyTarget )
                     {
@@ -7502,6 +7581,12 @@ label_no_array_eq_optimization:
                         {
                             if ( x64Win == g_AssemblyTarget || x86Win == g_AssemblyTarget )
                                 fprintf( fp, "    cmp      %s, %d\n", GenVariableReg( varmap, varname ), vals[ 4 ].value );
+                            else if ( arm32Linux == g_AssemblyTarget )
+                            {
+                                int constant = vals[ 4 ].value;
+                                LoadArm32Constant( fp, "r1", constant );
+                                fprintf( fp, "    cmp      %s, r1\n", GenVariableReg( varmap, varname ) );
+                            }
                             else if ( arm64Mac == g_AssemblyTarget )
                             {
                                 int constant = vals[ 4 ].value;
@@ -7518,6 +7603,13 @@ label_no_array_eq_optimization:
                         {
                             if ( x64Win == g_AssemblyTarget || x86Win == g_AssemblyTarget )
                                 fprintf( fp, "    cmp      DWORD PTR [%s], %d\n", GenVariableName( varname ), vals[ 4 ].value );
+                            else if ( arm32Linux == g_AssemblyTarget )
+                            {
+                                LoadArm32Address( fp, "r2", varname );
+                                fprintf( fp, "    ldr      r0, [r2]\n" );
+                                LoadArm32Constant( fp, "r1", vals[ 4 ].value );
+                                fprintf( fp, "    cmp      r0, r1\n" );
+                            }
                             else if ( arm64Mac == g_AssemblyTarget )
                             {
                                 LoadArm64Address( fp, "x2", varname );
@@ -7536,13 +7628,19 @@ label_no_array_eq_optimization:
                         {
                             if ( IsVariableInReg( varmap, varname4 ) )
                             {
-                                if ( x64Win == g_AssemblyTarget || arm64Mac == g_AssemblyTarget || x86Win == g_AssemblyTarget )
+                                if ( x64Win == g_AssemblyTarget || arm64Mac == g_AssemblyTarget || x86Win == g_AssemblyTarget || arm32Linux == g_AssemblyTarget )
                                     fprintf( fp, "    cmp      %s, %s\n", GenVariableReg( varmap, varname2 ), GenVariableReg( varmap, varname4 ) );
                             }
                             else
                             {
                                 if ( x64Win == g_AssemblyTarget || x86Win == g_AssemblyTarget )
                                     fprintf( fp, "    cmp      %s, DWORD PTR [%s]\n", GenVariableReg( varmap, varname2 ), GenVariableName( varname4 ) );
+                                else if ( arm32Linux == g_AssemblyTarget )
+                                {
+                                    LoadArm32Address( fp, "r2", varname4 );
+                                    fprintf( fp, "    ldr      r1, [r2]\n" );
+                                    fprintf( fp, "    cmp      %s, r1\n", GenVariableReg( varmap, varname2 ) );
+                                }
                                 else if ( arm64Mac == g_AssemblyTarget )
                                 {
                                     LoadArm64Address( fp, "x2", varname4 );
@@ -7555,10 +7653,16 @@ label_no_array_eq_optimization:
                         {
                             if ( x64Win == g_AssemblyTarget || x86Win == g_AssemblyTarget )
                                 fprintf( fp, "    cmp      DWORD PTR[%s], %s\n", GenVariableName( varname2 ), GenVariableReg( varmap, varname4 ) );
+                            else if ( arm32Linux == g_AssemblyTarget )
+                            {
+                                LoadArm32Address( fp, "r2", varname2 );
+                                fprintf( fp, "    ldr      r0, [r2]\n" );
+                                fprintf( fp, "    cmp      r0, %s\n", GenVariableReg( varmap, varname4 ) );
+                            }
                             else if ( arm64Mac == g_AssemblyTarget )
                             {
                                 LoadArm64Address( fp, "x2", varname2 );
-                                fprintf( fp, "    ldr    w0, [x2]\n" );
+                                fprintf( fp, "    ldr      w0, [x2]\n" );
                                 fprintf( fp, "    cmp      w0, %s\n", GenVariableReg( varmap, varname4 ) );
                             }
                         }
@@ -7569,6 +7673,8 @@ label_no_array_eq_optimization:
                         {
                             if ( x64Win == g_AssemblyTarget || x86Win == g_AssemblyTarget )
                                 fprintf( fp, "    mov      eax, %d\n", vals[ 2 ].value );
+                            else if ( arm32Linux == g_AssemblyTarget )
+                                LoadArm32Constant( fp, "r0", vals[ 2 ].value );
                             else if ( arm64Mac == g_AssemblyTarget )
                                 LoadArm64Constant( fp, "x0", vals[ 2 ].value );
                         }
@@ -7579,6 +7685,8 @@ label_no_array_eq_optimization:
                             {
                                 if ( x64Win == g_AssemblyTarget || x86Win == g_AssemblyTarget )
                                     fprintf( fp, "    mov      eax, %s\n", GenVariableReg( varmap, varname ) );
+                                else if ( arm32Linux == g_AssemblyTarget )
+                                    fprintf( fp, "    mov      r0, %s\n", GenVariableReg( varmap, varname ) );
                                 else if ( arm64Mac == g_AssemblyTarget )
                                     fprintf( fp, "    mov      x0, %s\n", GenVariableReg( varmap, varname ) );
                             }
@@ -7586,6 +7694,11 @@ label_no_array_eq_optimization:
                             {
                                 if ( x64Win == g_AssemblyTarget || x86Win == g_AssemblyTarget )
                                     fprintf( fp, "    mov      eax, DWORD PTR [%s]\n", GenVariableName( varname ) );
+                                else if ( arm32Linux == g_AssemblyTarget )
+                                {
+                                    LoadArm32Address( fp, "r2", varname );
+                                    fprintf( fp, "    ldr      r0, [r2]\n" );
+                                }
                                 else if ( arm64Mac == g_AssemblyTarget )
                                 {
                                     LoadArm64Address( fp, "x2", varname );
@@ -7598,6 +7711,11 @@ label_no_array_eq_optimization:
                         {
                             if ( x64Win == g_AssemblyTarget || x86Win == g_AssemblyTarget )
                                 fprintf( fp, "    cmp      eax, %d\n", vals[ 4 ].value );
+                            else if ( arm32Linux == g_AssemblyTarget )
+                            {
+                                LoadArm32Constant( fp, "r1", vals[ 4 ].value );
+                                fprintf( fp, "    cmp      r0, r1\n" );
+                            }
                             else if ( arm64Mac == g_AssemblyTarget )
                             {
                                 LoadArm64Constant( fp, "x1", vals[ 4 ].value );
@@ -7611,6 +7729,8 @@ label_no_array_eq_optimization:
                             {
                                 if ( x64Win == g_AssemblyTarget || x86Win == g_AssemblyTarget )
                                     fprintf( fp, "    cmp      eax, %s\n", GenVariableReg( varmap, varname ) );
+                                else if ( arm32Linux == g_AssemblyTarget )
+                                    fprintf( fp, "    cmp      r0, %s\n", GenVariableReg( varmap, varname ) );
                                 else if ( arm64Mac == g_AssemblyTarget )
                                     fprintf( fp, "    cmp      w0, %s\n", GenVariableReg( varmap, varname ) );
                             }
@@ -7618,6 +7738,12 @@ label_no_array_eq_optimization:
                             {
                                 if ( x64Win == g_AssemblyTarget || x86Win == g_AssemblyTarget )
                                     fprintf( fp, "    cmp      eax, DWORD PTR [%s]\n", GenVariableName( varname ) );
+                                else if ( arm32Linux == g_AssemblyTarget )
+                                {
+                                    LoadArm32Address( fp, "r2", varname );
+                                    fprintf( fp, "    ldr      r1, [r2]\n" );
+                                    fprintf( fp, "    cmp      r0, r1\n" );
+                                }
                                 else if ( arm64Mac == g_AssemblyTarget )
                                 {
                                     LoadArm64Address( fp, "x2", varname );
@@ -7636,6 +7762,8 @@ label_no_array_eq_optimization:
                     {
                         if ( x64Win == g_AssemblyTarget || x86Win == g_AssemblyTarget )
                             fprintf( fp, "    %-6s   line_number_%d\n", RelationalInstructionX64[ ifOp ], vals[ t ].value );
+                        else if ( arm32Linux == g_AssemblyTarget )
+                            fprintf( fp, "    b%s      line_number_%d\n", ConditionsArm[ ifOp ], vals[ t ].value );
                         else if ( arm64Mac == g_AssemblyTarget )
                             fprintf( fp, "    b.%s     line_number_%d\n", ConditionsArm[ ifOp ], vals[ t ].value );
                         break;
@@ -7644,9 +7772,10 @@ label_no_array_eq_optimization:
                     {
                         if ( x64Win == g_AssemblyTarget || x86Win == g_AssemblyTarget )
                             fprintf( fp, "    %-6s   label_gosub_return\n", RelationalInstructionX64[ ifOp ] );
+                        else if ( arm32Linux == g_AssemblyTarget )
+                            fprintf( fp, "    b%s       label_gosub_return\n", ConditionsArm[ ifOp ] );
                         else if ( arm64Mac == g_AssemblyTarget )
                             fprintf( fp, "    b.%s      label_gosub_return\n", ConditionsArm[ ifOp ] );
-
                         break;
                     }
                     else
@@ -7655,6 +7784,8 @@ label_no_array_eq_optimization:
                         {
                             if ( x64Win == g_AssemblyTarget || x86Win == g_AssemblyTarget )
                                 fprintf( fp, "    %-6s   SHORT label_else_%zd\n", RelationalNotInstructionX64[ ifOp ], l );
+                            else if ( arm32Linux == g_AssemblyTarget )
+                                fprintf( fp, "    b%s       label_else_%zd\n", ConditionsNotArm[ ifOp ], l );
                             else if ( arm64Mac == g_AssemblyTarget )
                                 fprintf( fp, "    b.%s      label_else_%zd\n", ConditionsNotArm[ ifOp ], l );
                         }
@@ -7662,6 +7793,8 @@ label_no_array_eq_optimization:
                         {
                             if ( x64Win == g_AssemblyTarget || x86Win == g_AssemblyTarget )
                                 fprintf( fp, "    %-6s   SHORT line_number_%zd\n", RelationalNotInstructionX64[ ifOp ], l + 1 );
+                            else if ( arm32Linux == g_AssemblyTarget )
+                                fprintf( fp, "    b%s     line_number_%zd\n", ConditionsNotArm[ ifOp ], l + 1 );
                             else if ( arm64Mac == g_AssemblyTarget )
                                 fprintf( fp, "    b.%s    line_number_%zd\n", ConditionsNotArm[ ifOp ], l + 1 );
                         }
@@ -7764,13 +7897,19 @@ label_no_array_eq_optimization:
                     {
                         if ( x64Win == g_AssemblyTarget || x86Win == g_AssemblyTarget )
                             fprintf( fp, "    test     %s, %s\n", GenVariableReg( varmap, varname ), GenVariableReg( varmap, varname ) );
-                        else if ( arm64Mac == g_AssemblyTarget )
-                            fprintf( fp, "    cmp      %s, 0\n", GenVariableReg( varmap, varname ) );
+                        else if ( arm64Mac == g_AssemblyTarget || arm32Linux == g_AssemblyTarget )
+                            fprintf( fp, "    cmp      %s, #0\n", GenVariableReg( varmap, varname ) );
                     }
                     else
                     {
                         if ( x64Win == g_AssemblyTarget || x86Win == g_AssemblyTarget )
                             fprintf( fp, "    cmp      DWORD PTR [%s], 0\n", GenVariableName( varname ) );
+                        else if ( arm32Linux == g_AssemblyTarget )
+                        {
+                            LoadArm32Address( fp, "r1", varname );
+                            fprintf( fp, "    ldr      r0, [r1]\n" );
+                            fprintf( fp, "    cmp      r0, #0\n" );
+                        }
                         else if ( arm64Mac == g_AssemblyTarget )
                         {
                             LoadArm64Address( fp, "x1", varname );
@@ -7787,6 +7926,8 @@ label_no_array_eq_optimization:
                     {
                         if ( x64Win == g_AssemblyTarget || x86Win == g_AssemblyTarget )
                             fprintf( fp, "    je       line_number_%d\n", vals[ t ].value );
+                        else if ( arm32Linux == g_AssemblyTarget )
+                            fprintf( fp, "    beq      line_number_%d\n", vals[ t ].value );
                         else if ( arm64Mac == g_AssemblyTarget )
                             fprintf( fp, "    b.eq     line_number_%d\n", vals[ t ].value );
                         break;
@@ -7795,6 +7936,8 @@ label_no_array_eq_optimization:
                     {
                         if ( x64Win == g_AssemblyTarget || x86Win == g_AssemblyTarget )
                             fprintf( fp, "    je       label_gosub_return\n" );
+                        else if ( arm32Linux == g_AssemblyTarget )
+                            fprintf( fp, "    beq      label_gosub_return\n" );
                         else if ( arm64Mac == g_AssemblyTarget )
                             fprintf( fp, "    b.eq     label_gosub_return\n" );
                         break;
@@ -7805,6 +7948,8 @@ label_no_array_eq_optimization:
                         {
                             if ( x64Win == g_AssemblyTarget || x86Win == g_AssemblyTarget )
                                 fprintf( fp, "    jne      SHORT label_else_%zd\n", l );
+                            else if ( arm32Linux == g_AssemblyTarget )
+                                fprintf( fp, "    bne      label_else_%zd\n", l );
                             else if ( arm64Mac == g_AssemblyTarget )
                                 fprintf( fp, "    b.ne     label_else_%zd\n", l );
                         }
@@ -7812,6 +7957,8 @@ label_no_array_eq_optimization:
                         {
                             if ( x64Win == g_AssemblyTarget || x86Win == g_AssemblyTarget )
                                 fprintf( fp, "    jne      SHORT line_number_%zd\n", l + 1 );
+                            else if ( arm32Linux == g_AssemblyTarget )
+                                fprintf( fp, "    bne      line_number_%zd\n", l + 1 );
                             else if ( arm64Mac == g_AssemblyTarget )
                                 fprintf( fp, "    b.ne     line_number_%zd\n", l + 1 );
                         }
@@ -9934,9 +10081,6 @@ extern int main( int argc, char *argv[] )
             strcpy_s( dot, _countof( asmfile) - ( dot - asmfile ), ".s" );
         else
             strcpy_s( dot, _countof( asmfile) - ( dot - asmfile ), ".asm" );
-
-        if ( arm32Linux == g_AssemblyTarget )
-            g_ExpressionOptimization = false; // not implemented yet
 
         GenerateASM( asmfile, varmap, useRegistersInASM );
     }
