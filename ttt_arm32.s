@@ -188,10 +188,9 @@ _print_elapsed_time_old:
 _print_movecount:
     push     {ip, lr}
     push     {r4, r5, r6, r7, r8, r9, r10, r11}
-    movw     r1, #:lower16:moveCount
-    movt     r1, #:upper16:moveCount
-    mov      r2, r1
-    ldr      r1, [r1]
+    movw     r2, #:lower16:moveCount
+    movt     r2, #:upper16:moveCount
+    ldr      r1, [r2]
     mov      r0, #0
     str      r0, [r2]
     movw     r0, #:lower16:movecountString
@@ -459,21 +458,13 @@ _minmax_max:
     beq      _minmax_max_done           @ then return
 
     cmp      r0, r4                     @ compare score with value
-    ble      _minmax_max_no_v
-    mov      r4, r0                     @ update value if score is > value
+    movgt    r4, r0                     @ update value if score is > value
 
-  .p2align 2
-  _minmax_max_no_v:
     cmp      r7, r4                     @ compare alpha with value
-    bge      _minmax_max_no_alpha
-    mov      r7, r4                     @ update alpha if alpha is < value
+    movlt    r7, r4                     @ update alpha if alpha is < value
 
-  .p2align 2
-  _minmax_max_no_alpha:
     cmp      r7, r8                     @ compare alpha with beta
-    bge     _minmax_max_loadv_done      @ alpha pruning if alpha >= beta
- 
-    b       _minmax_max_top_of_loop     @ loop to the next board position 0..8
+    blt      _minmax_max_top_of_loop    @ loop to the next board position 0..8
 
   .p2align 2
   _minmax_max_loadv_done:
@@ -565,21 +556,13 @@ _minmax_min:
     beq      _minmax_min_done           @ then return
 
     cmp      r0, r4                     @ compare score with value
-    bge      _minmax_min_no_v
-    mov      r4, r0                     @ update value if score is < value
+    movlt    r4, r0                     @ update value if score is < value
 
-  .p2align 2
-  _minmax_min_no_v:
     cmp      r4, r8                     @ compare value with beta
-    bge      _minmax_min_no_beta
-    mov      r8, r4                     @ update beta if value < beta
+    movlt      r8, r4                   @ update beta if value < beta
 
-  .p2align 2
-  _minmax_min_no_beta:
     cmp      r8, r7                     @ compare beta with alpha
-    ble      _minmax_min_loadv_done     @ beta pruning if beta <= alpha
- 
-    b        _minmax_min_top_of_loop    @ loop to the next board position 0..8
+    bgt      _minmax_min_top_of_loop    @ loop to the next board position 0..8
 
   .p2align 2
   _minmax_min_loadv_done:
