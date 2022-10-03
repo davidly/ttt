@@ -365,13 +365,6 @@ _solve_threaded:
     mov      r0, #0
     bl       _runmm
 
-    @ wait for board1 to complete
-    movw     r0, #:lower16:pthread1
-    movt     r0, #:upper16:pthread1
-    ldr      r0, [r0]
-    mov      r1, #0
-    bl       pthread_join
-
     @ wait for board4 to complete
     movw     r0, #:lower16:pthread4
     movt     r0, #:upper16:pthread4
@@ -379,8 +372,15 @@ _solve_threaded:
     mov      r1, #0
     bl       pthread_join
 
+    @ wait for board1 to complete
+    movw     r0, #:lower16:pthread1
+    movt     r0, #:upper16:pthread1
+    ldr      r0, [r0]
+    mov      r1, #0
+    bl       pthread_join
+
     @ exit the function
-    pop     {r4, r5, r6, r7, r8, r9, r10, r11}
+    pop      {r4, r5, r6, r7, r8, r9, r10, r11}
     pop      {ip,pc}
     .cfi_endproc
 
@@ -461,15 +461,15 @@ _minmax_max:
     cmp      r0, r4                     @ compare score with value
     ble      _minmax_max_no_v
     mov      r4, r0                     @ update value if score is > value
+
   .p2align 2
   _minmax_max_no_v:
-
     cmp      r7, r4                     @ compare alpha with value
     bge      _minmax_max_no_alpha
     mov      r7, r4                     @ update alpha if alpha is < value
-  .p2align 2
-    _minmax_max_no_alpha:
 
+  .p2align 2
+  _minmax_max_no_alpha:
     cmp      r7, r8                     @ compare alpha with beta
     bge     _minmax_max_loadv_done      @ alpha pruning if alpha >= beta
  
@@ -567,15 +567,15 @@ _minmax_min:
     cmp      r0, r4                     @ compare score with value
     bge      _minmax_min_no_v
     mov      r4, r0                     @ update value if score is < value
+
   .p2align 2
   _minmax_min_no_v:
-
     cmp      r4, r8                     @ compare value with beta
     bge      _minmax_min_no_beta
     mov      r8, r4                     @ update beta if value < beta
+
   .p2align 2
   _minmax_min_no_beta:
-
     cmp      r8, r7                     @ compare beta with alpha
     ble      _minmax_min_loadv_done     @ beta pruning if beta <= alpha
  
