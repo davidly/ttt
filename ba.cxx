@@ -4961,8 +4961,10 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                                     }
                                     else
                                     {
-                                    // BUGBUG what if vararray is in register?!?
-                                        LoadArm64Address( fp, "x1", varmap, vals[ t + 1 ].strValue );
+                                        if ( IsVariableInReg( varmap, vararray ) )
+                                            fprintf( fp, "    mov      x1, %s\n", GenVariableReg( varmap, vararray ) );
+                                        else
+                                            LoadArm64Address( fp, "x1", varmap, vararray );
             
                                         if ( fitsIn12Bits( constant ) )
                                             fprintf( fp, "    add      x1, x1, %d\n", constant );
@@ -4976,9 +4978,16 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                                     }
                                 }
                                 else
-                                   // BUGBUG WHAT if vararray isn't in a register?
-                                   fprintf( fp, "    ldr      %s, [%s]\n", GenVariableReg( varmap, varname ),
-                                                                           GenVariableReg64( varmap, vararray ) );
+                                {
+                                   if ( IsVariableInReg( varmap, vararray ) )
+                                       fprintf( fp, "    ldr      %s, [%s]\n", GenVariableReg( varmap, varname ),
+                                                                               GenVariableReg64( varmap, vararray ) );
+                                   else
+                                   {
+                                       LoadArm64Address( fp, "x1", varmap, vararray );
+                                       fprintf( fp, "    ldr      %s, [x1]\n", GenVariableReg( varmap, varname ) );
+                                   }
+                                }
                             }
                             else
                             {
