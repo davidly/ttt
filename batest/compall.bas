@@ -9,11 +9,14 @@
 
 40 h% = i% - 1
 50 j% = i% + 1
-59 rem line 60 will trigger on the first iteration because -32768 - 1 is an underflow
+59 rem line 60 will trigger on the first iteration on 16-bit machines because (-32768 - 1) is an underflow
 60 if h% > i% print "h is greater than i: h "; h%; " i "; i%
 70 if i% > j% print "i is greater than j: i "; i%; " j "; j%
 72 if i% = -32768 print "low"
 75 if i% = 0 print "i is 0 now"
 77 if i% = 32766 print "high"
-80 return
+80 if i% > 32766 print "i is impossibly high line 80: "; i%
+81 if i% > 32767 print "i is impossibly high line 81: "; i%
+82 if i% < -32768 print "i is impossibly low line 82: "; i%
+100 return
 
