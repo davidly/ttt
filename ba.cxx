@@ -6516,14 +6516,12 @@ label_no_array_eq_optimization:
                     //   17 THEN, value 0, strValue ''
                     //   18 RETURN, value 0, strValue ''
 
-                    fprintf( fp, "    mov      bx, ds: [ %s ]\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                    fprintf( fp, "    mov      ax, ds: [ %s ]\n", GenVariableName( vals[ t + 1 ].strValue ) );
 
-                    fprintf( fp, "    mov      ax, ds: [ %s + %d ]\n", GenVariableName( vals[ t + 3 ].strValue ), 2 * vals[ t + 6 ].value );
-                    fprintf( fp, "    cmp      ax, bx\n" );
+                    fprintf( fp, "    cmp      ax, ds: [ %s + %d ]\n", GenVariableName( vals[ t + 3 ].strValue ), 2 * vals[ t + 6 ].value );
                     fprintf( fp, "    jne      line_number_%zd\n", l + 1 );
 
-                    fprintf( fp, "    mov      ax, ds: [ %s + %d ]\n", GenVariableName( vals[ t + 3 ].strValue ), 2 * vals[ t + 14 ].value );
-                    fprintf( fp, "    cmp      ax, bx\n" );
+                    fprintf( fp, "    cmp      ax, ds: [ %s + %d ]\n", GenVariableName( vals[ t + 3 ].strValue ), 2 * vals[ t + 14 ].value );
                     fprintf( fp, "    je       label_gosub_return\n" );
 
                     break;
@@ -6664,7 +6662,8 @@ label_no_array_eq_optimization:
                     fprintf( fp, "    mov      ax, ds: [ %s ]\n", GenVariableName( lhs ) );
                     fprintf( fp, "    cmp      ax, ds: [ %s ]\n", GenVariableName( rhs ) );
                     fprintf( fp, "    %-6s   line_number_%zd\n", RelationalNotInstructionX64[ op ], l + 1 ); // same as x64
-                    fprintf( fp, "    mov      ax, ds: [ %s ]\n", GenVariableName( vals[ t + 8 ].strValue ) );
+                    if ( lhs.compare( vals[ t + 8 ].strValue ) )
+                        fprintf( fp, "    mov      ax, ds: [ %s ]\n", GenVariableName( vals[ t + 8 ].strValue ) );
                     fprintf( fp, "    mov      WORD PTR ds: [ %s ], ax\n", GenVariableName( vals[ t + 5 ].strValue ) );
                     break;
                 }
