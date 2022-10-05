@@ -87,7 +87,7 @@ runmm PROC NEAR
         push      di                ; move location
         xor       ax, ax
         push      ax                ; depth
-        mov       ax, max_score	    ; pushing constants didn't start until the 80186
+        mov       ax, max_score     ; pushing constants didn't start until the 80186
         push      ax                ; beta
         mov       ax, min_score
         push      ax                ; alpha
