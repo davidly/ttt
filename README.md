@@ -121,13 +121,13 @@ To run ttt_trs80.asm on a TRS-80. (renamed as ttt.asm)
 	
         Transfer lt.ba, which translates the assembly code back to a .co file and run the binary:
 	
-	    In basic (only basic can transfer .ba files and only TELCOM can copy .DO files)
-	    Load "com:88E1E"
-	    On the pc, copy lt.ba com3
-	    After the transfer, hit Break on the trs-80
-	    Save the code to the RAM filesystem as lt.ba using F3 (save)
+            In basic (only basic can transfer .ba files and only TELCOM can copy .DO files)
+            Load "com:88E1E"
+            On the pc, copy lt.ba com3
+            After the transfer, hit Break on the trs-80
+            Save the code to the RAM filesystem as lt.ba using F3 (save)
 	
-	Load, process, and execute t.do:
+        Load, process, and execute t.do:
 	
             On the trs-80, go into Telcom and configure serial to the same settings as above.
             Start terminal and press f2 for download. Specify t.do
