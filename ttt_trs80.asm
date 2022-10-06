@@ -6,7 +6,7 @@ DISONE  equ     04b44h  ; display character in A
 SECS    equ     0f933h  ; memory location for seconds (doesn't seem to work)
 CHGET   equ     012cbh  ; get a character
 
-ITERATIONS  equ       10   ; # of times to run (max 32767)
+ITERATIONS  equ      100   ; # of times to run (max 32767)
 XSCO        equ        9   ; maximum score
 NSCO        equ        2   ; minimum score
 WSCO        equ        6   ; winning score
@@ -378,9 +378,9 @@ CALLSCOREPROC:
         push     b                  ; save the piece that took the move for later
 
         add      a                  ; double the move position because function pointers are two bytes
-        lxi      b, callAddress
+        lxi      b, jumpAddress
         inx      b                  ; get past the call instruction to the address
-        lxi      h, WINPROCS
+        lxi      h, WINPROCS        ; load the function pointer
         mov      e, a
         mvi      d, 0
         dad      d
@@ -396,9 +396,8 @@ CALLSCOREPROC:
 
         pop      a                  ; the piece that took the move
 
-callAddress:
-        call     PUTHL              ; Not really. call function address written in the code stream
-        ret
+jumpAddress:
+        jmp      PUTHL              ; Jump to the function address written in the code stream (not PUTHL)
 
 proc0:
         lxi      h, BOARD + 1

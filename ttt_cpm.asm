@@ -151,7 +151,7 @@ ENDIF
         jm      X$SKIPWIN
 
 IF USEWINPROCS
-        mov     a, b		    ; where the move was taken 0..8
+        mov     a, b                ; where the move was taken 0..8
         mvi     b, OPIECE           ; the piece that took the move
         call    CALLSCOREPROC       ; look for a winning position
 ENDIF
@@ -274,7 +274,7 @@ ENDIF
         jm      N$SKIPWIN
 
 IF USEWINPROCS
-        mov     a, b		    ; where the move was taken 0..8
+        mov     a, b                ; where the move was taken 0..8
         mvi     b, XPIECE           ; the piece that took the move
         call    CALLSCOREPROC       ; look for a winning position
 ENDIF
@@ -511,7 +511,7 @@ PUTHL:
         ral                         ; which is the top bit of the high byte
         sbb     a                   ; A=00 if positive, FF if negative
         sta     NEGF                ; Store it as the negative flag
-        cnz     NEGHL              ; And if HL was negative, make it positive
+        cnz     NEGHL               ; And if HL was negative, make it positive
         lxi     d, NUM              ; Load pointer to end of number string
         push    d                   ; Onto the stack
         lxi     b, -10              ; Divide by ten (by trial subtraction)
@@ -547,9 +547,9 @@ CALLSCOREPROC:
         push     b ; save the piece that took the move for later
 
         add      a ; double the move position because function pointers are two bytes
-        lxi      b, callAddress
+        lxi      b, jumpAddress
         inx      b                  ; get past the call instruction to the address
-        lxi      h, WINPROCS
+        lxi      h, WINPROCS        ; load the function pointer
         mov      e, a
         mvi      d, 0
         dad      d
@@ -563,10 +563,10 @@ CALLSCOREPROC:
         ldax     d
         stax     b
 
-        pop      a  ; the piece that took the move
+        pop      a                  ; the piece that took the move
 
-  callAddress:
-        call     PUTHL      ; Not really. call function address written in the code stream
+  jumpAddress:
+        jmp      PUTHL              ; Jump to the function address written in the code stream (not PUTHL)
         ret
 
 proc0:
