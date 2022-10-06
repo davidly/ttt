@@ -23,6 +23,26 @@ echo         .eq     $ffef
 prbyte       .eq     $ffdc
 exitapp      .eq     $ff1f
 
+; The Apple 1 reserves locations 0x0024 through 0x002b in the 0 page for the monitor.
+; Put all globals in 0 page where it's faster because why not?
+
+wpfunptr     .eq     $30            ; temporary spot for the function pointer pointer. occupies 30 and 31 in the 0-page
+wpfunptrhigh .eq     $31
+board        .eq     $32
+board1       .eq     $33
+board2       .eq     $34
+board3       .eq     $35
+board4       .eq     $36
+board5       .eq     $37
+board6       .eq     $38
+board7       .eq     $39
+board8       .eq     $3a
+moves        .eq     $3b            ; # of moves examined so far
+moveshigh    .eq     $3c
+iters        .eq     $3d            ; # of iterations in the top-level loop
+wpfun        .eq     $3e            ; temporary spot for the actual winner function pointer
+wpfunhigh    .eq     $3f			   
+
 max_score    .eq     9              ; maximum score
 min_score    .eq     2              ; minimum score
 win_score    .eq     6              ; winning score
@@ -40,7 +60,18 @@ start
     jsr      echo
 
     lda      #ITERATIONS
-    sta      iters                  
+    sta      iters
+
+    lda      #0
+    sta      board
+    sta      board1
+    sta      board2
+    sta      board3
+    sta      board4
+    sta      board5
+    sta      board6
+    sta      board7
+    sta      board8
 
 _again
     lda      #0                     ; reset moves each iteration or it will overflow
@@ -97,12 +128,11 @@ runmm
 
     rts
 
-minmax_arg_move     .eq  $010a
-minmax_arg_depth    .eq  $0109
-minmax_arg_beta     .eq  $0108
-minmax_arg_alpha    .eq  $0107
-; gap of 2 for return address   ( 5 and 6 )
-minmax_local_pm     .eq  $0104
+minmax_arg_move     .eq  $0109
+minmax_arg_depth    .eq  $0108
+minmax_arg_beta     .eq  $0107
+minmax_arg_alpha    .eq  $0106
+; gap of 2 for return address   ( 4 and 5 )
 minmax_local_i      .eq  $0103
 minmax_local_score  .eq  $0102
 minmax_local_value  .eq  $0101
@@ -110,7 +140,6 @@ minmax_local_value  .eq  $0101
 
 minmax_max
     lda      #0
-    pha                             ; allocate space for Player Move
     pha                             ; allocate space for I
     pha                             ; allocate space for Score
     pha                             ; allocate space for Value
@@ -122,38 +151,15 @@ minmax_max
     inc      moveshigh
 _max_skip_moves_high
 
-; debug code
-;    lda      minmax_arg_depth, x
-;    clc
-;    adc      #70                    ; 70 is F
-;    jsr      echo
-;    tsx                             ; put the current stack pointer in X to reference variables
-
-;    lda      minmax_arg_move, x
-;    clc
-;    adc      #80                    ; 80 is P
-;    jsr      echo                                            
-;    tsx                             ; put the current stack pointer in X to reference variables
-;
-;    lda      minmax_arg_alpha, x
-;    clc
-;    adc      #48
-;    jsr      echo
-;    tsx                             ; put the current stack pointer in X to reference variables
-;
-;    lda      minmax_arg_beta, x
-;    clc
-;    adc      #48
-;    jsr      echo
-;    tsx                             ; put the current stack pointer in X to reference variables
-; end debug code
-
     lda      minmax_arg_depth, x
     cmp      #4                     ; can't be a winner if < 4 moves so far
     bmi      _max_no_winner_check
 
-    jsr      winner
-    tsx                             ; restore x with sp in case winner changed it with debugging code
+    ; the proc to call is in y 0..8
+    ; the piece last moved is in a -- XPIECE or OPIECE
+    ldy      minmax_arg_move, x
+    lda      #OPIECE
+    jsr      call_winnerproc
 
     cmp      #OPIECE                ; if O won, return win
     bne      _max_no_winner_check
@@ -164,10 +170,10 @@ _max_no_winner_check
     lda      #min_score             ; maximize for X's move
     sta      minmax_local_value, x
 
-_max_loop                               ; for i = 0; i < 0; i++. i is initialized at function entry.
+_max_loop                           ; for i = 0; i < 0; i++. i is initialized at function entry.
     lda      minmax_local_i, x
     cmp      #9
-    bne      _max_loop_keep_going       ; can't beq to return because it's too far awawy
+    bne      _max_loop_keep_going   ; can't beq to return because it's too far awawy
     jmp      _max_load_value_return
 
 _max_loop_keep_going
@@ -214,7 +220,7 @@ _max_maximize_score
     cmp      #win_score
     bne      _max_keep_going        ; can't beq to return because it's too far away
     tay
-    jmp      _max_load_y_return         ; can't do better than win; return now
+    jmp      _max_load_y_return     ; can't do better than win; return now
 
 _max_keep_going
     cmp      minmax_local_value, x  ; compare score with value
@@ -233,17 +239,16 @@ _max_check_beta
     lda      minmax_arg_alpha, x    ; load alpha
     cmp      minmax_arg_beta, x     ; compare alpha with beta
     bmi      _max_next_i
-    jmp      _max_load_value_return     ; beta pruning
+    jmp      _max_load_value_return ; beta pruning
 
 _max_next_i
     inc      minmax_local_i, x      ; increment i
-    jmp      _max_loop                  ; loop for the next i
+    jmp      _max_loop              ; loop for the next i
     
 _max_load_value_return
     lda      minmax_local_value, x  ; load value for return
     tay
 _max_load_y_return
-    pla                             ; deallocate pm
     pla                             ; deallocate i
     pla                             ; deallocate score
     pla                             ; deallocate value
@@ -252,7 +257,6 @@ _max_load_y_return
 
 minmax_min
     lda      #0
-    pha                             ; allocate space for Player Move
     pha                             ; allocate space for I
     pha                             ; allocate space for Score
     pha                             ; allocate space for Value
@@ -264,38 +268,15 @@ minmax_min
     inc      moveshigh
 _min_skip_moves_high
 
-; debug code
-;    lda      minmax_arg_depth, x
-;    clc
-;    adc      #70                    ; 70 is F
-;    jsr      echo
-;    tsx                             ; put the current stack pointer in X to reference variables
-
-;    lda      minmax_arg_move, x
-;    clc
-;    adc      #80                    ; 80 is P
-;    jsr      echo                                            
-;    tsx                             ; put the current stack pointer in X to reference variables
-;
-;    lda      minmax_arg_alpha, x
-;    clc
-;    adc      #48
-;    jsr      echo
-;    tsx                             ; put the current stack pointer in X to reference variables
-;
-;    lda      minmax_arg_beta, x
-;    clc
-;    adc      #48
-;    jsr      echo
-;    tsx                             ; put the current stack pointer in X to reference variables
-; end debug code
-
     lda      minmax_arg_depth, x
     cmp      #4                     ; can't be a winner if < 4 moves so far
     bmi      _min_no_winner_check
 
-    jsr      winner
-    tsx                             ; restore x with sp in case winner changed it with debugging code
+    ; the proc to call is in y 0..8
+    ; the piece last moved is in a -- XPIECE or OPIECE
+    ldy      minmax_arg_move, x
+    lda      #XPIECE
+    jsr      call_winnerproc
 
     cmp      #XPIECE                ; if X won, return win
     bne      _min_no_winner
@@ -305,18 +286,18 @@ _min_skip_moves_high
 _min_no_winner
     lda      minmax_arg_depth, x
     cmp      #8                     ; the board is full
-    bne      _min_no_winner_check       ; can't beq to return because it's too far away
+    bne      _min_no_winner_check   ; can't beq to return because it's too far away
     ldy      #tie_score             ; potentially wasted load
-    jmp      _min_load_y_return         ; cat's game
+    jmp      _min_load_y_return     ; cat's game
 
 _min_no_winner_check
     lda      #max_score             ; depth is even, so minimize for O's move
     sta      minmax_local_value, x
 
-_min_loop                               ; for i = 0; i < 0; i++. i is initialized at function entry.
+_min_loop                           ; for i = 0; i < 0; i++. i is initialized at function entry.
     lda      minmax_local_i, x
     cmp      #9
-    bne      _min_loop_keep_going       ; can't beq to return because it's too far awawy
+    bne      _min_loop_keep_going   ; can't beq to return because it's too far awawy
     jmp      _min_load_value_return
 
 _min_loop_keep_going
@@ -363,7 +344,7 @@ _minimize_score
     cmp      #lose_score
     bne      _min_keep_going
     tay
-    jmp      _min_load_y_return         ; can't do worse than lose; return now
+    jmp      _min_load_y_return     ; can't do worse than lose; return now
 
 _min_keep_going
     cmp      minmax_local_value, x  ; compare score with value
@@ -379,123 +360,251 @@ _min_ab_prune
 _min_check_alpha
     lda      minmax_arg_alpha, x    ; load alpha
     cmp      minmax_arg_beta, x     ; compare alpha with beta
-    bmi      _min_next_i                ; 
+    bmi      _min_next_i            
 _min_prune
-    jmp      _min_load_value_return     ; alpha pruning
+    jmp      _min_load_value_return ; alpha pruning
 
 _min_next_i
     inc      minmax_local_i, x      ; increment i
-    jmp      _min_loop                  ; loop for the next i
+    jmp      _min_loop              ; loop for the next i
     
 _min_load_value_return
     lda      minmax_local_value, x  ; load value for return
     tay
 _min_load_y_return
-    pla                             ; deallocate pm
     pla                             ; deallocate i
     pla                             ; deallocate score
     pla                             ; deallocate value
     tya                             ; score is in y
     rts                             ; return to sender
 
-; return winning piece in a or 0 if a tie
+call_winnerproc
+    ; the proc to call is in y 0..8
+    ; the piece last moved is in a -- XPIECE or OPIECE
 
-winner
-    lda      board
-    cmp      #0
-    beq      _win_check_3
+    pha                             ; save A
 
+    ; store the proc to call in wpfun and wpfunhigh proc0..proc8
+
+    tya
+    asl
+    clc
+    adc      #winnerprocs
+    sta      wpfunptr
+    lda      #0
+    adc      /winnerprocs
+    sta      wpfunptr+1
+    ldy      #0
+    lda      (wpfunptr), y
+    sta      wpfun
+    iny
+    lda      (wpfunptr), y
+    sta      wpfun+1
+
+    pla                             ; restore A
+    jmp      (wpfun)                ; wpfun will return to the caller
+
+proc0
     cmp      board1
-    bne      _win_check_0_b
+    bne      _proc0_nextwin
     cmp      board2
-    bne      _win_check_0_b
-    rts
+    beq      _proc0_yes
 
-_win_check_0_b
+_proc0_nextwin
     cmp      board3
-    bne      _win_check_3
+    bne      _proc0_nextwin2
     cmp      board6
-    bne      _win_check_3
-    rts
+    beq     _proc0_yes
 
-_win_check_3
-    lda      board3
-    cmp      #0
-    beq      _win_check_6
-
+_proc0_nextwin2
     cmp      board4
-    bne      _win_check_6
-    cmp      board5
-    bne      _win_check_6
-    rts
-
-_win_check_6
-    lda      board6
-    cmp      #0
-    beq      _win_check_1
-
-    cmp      board7
-    bne      _win_check_1
+    bne      _proc0_no
     cmp      board8
-    bne      _win_check_1
-    rts
+    beq     _proc0_yes
 
-_win_check_1
-    lda      board1
-    cmp      #0
-    beq      _win_check_2
-
-    cmp      board4
-    bne      _win_check_2
-    cmp      board7
-    bne      _win_check_2
-    rts
-
-_win_check_2
-    lda      board2
-    cmp      #0
-    beq      _win_check_4
-
-    cmp      board5
-    bne      _win_check_4
-    cmp      board8
-    bne      _win_check_4
-    rts
-
-_win_check_4
-    lda      board4
-    cmp      #0
-    beq      _win_return
-
-    cmp      board
-    bne      _win_check_4_b
-    cmp      board8
-    bne      _win_check_4_b
-    rts
-
-_win_check_4_b
-    cmp      board2
-    bne      _win_return_blank
-    cmp      board6
-    beq     _win_return
-
-_win_return_blank
+_proc0_no
     lda      #0
 
-_win_return
+_proc0_yes
     rts
 
-board     .db     0
-board1    .db     0
-board2    .db     0
-board3    .db     0
-board4    .db     0
-board5    .db     0
-board6    .db     0
-board7    .db     0
-board8    .db     0
-moves     .db     0
-moveshigh .db     0
-iters     .db     0
+proc1
+    cmp      board
+    bne      _proc1_nextwin
+    cmp      board2
+    beq      _proc1_yes
+
+_proc1_nextwin
+    cmp      board4
+    bne      _proc1_no
+    cmp      board7
+    beq     _proc1_yes
+
+_proc1_no
+    lda      #0
+
+_proc1_yes
+    rts
+
+proc2
+    cmp      board
+    bne      _proc2_nextwin
+    cmp      board1
+    beq      _proc2_yes
+
+_proc2_nextwin
+    cmp      board5
+    bne      _proc2_nextwin2
+    cmp      board8
+    beq     _proc2_yes
+
+_proc2_nextwin2
+    cmp      board4
+    bne      _proc2_no
+    cmp      board6
+    beq     _proc2_yes
+
+_proc2_no
+    lda      #0
+
+_proc2_yes
+    rts
+
+proc3
+    cmp      board
+    bne      _proc3_nextwin
+    cmp      board6
+    beq      _proc3_yes
+
+_proc3_nextwin
+    cmp      board4
+    bne      _proc3_no
+    cmp      board5
+    beq     _proc3_yes
+
+_proc3_no
+    lda      #0
+
+_proc3_yes
+    rts
+
+proc4
+    cmp      board
+    bne      _proc4_nextwin
+    cmp      board8
+    beq      _proc4_yes
+
+_proc4_nextwin
+    cmp      board2
+    bne      _proc4_nextwin2
+    cmp      board6
+    beq     _proc4_yes
+
+_proc4_nextwin2
+    cmp      board1
+    bne      _proc4_nextwin3
+    cmp      board7
+    beq     _proc4_yes
+
+_proc4_nextwin3
+    cmp      board3
+    bne      _proc4_no
+    cmp      board5
+    beq     _proc4_yes
+
+_proc4_no
+    lda      #0
+
+_proc4_yes
+    rts
+
+proc5
+    cmp      board3
+    bne      _proc5_nextwin
+    cmp      board4
+    beq      _proc5_yes
+
+_proc5_nextwin
+    cmp      board2
+    bne      _proc5_no
+    cmp      board8
+    beq     _proc5_yes
+
+_proc5_no
+    lda      #0
+
+_proc5_yes
+    rts
+
+proc6
+    cmp      board4
+    bne      _proc6_nextwin
+    cmp      board2
+    beq      _proc6_yes
+
+_proc6_nextwin
+    cmp      board
+    bne      _proc6_nextwin2
+    cmp      board3
+    beq     _proc6_yes
+
+_proc6_nextwin2
+    cmp      board7
+    bne      _proc6_no
+    cmp      board8
+    beq     _proc6_yes
+
+_proc6_no
+    lda      #0
+
+_proc6_yes
+    rts
+
+proc7
+    cmp      board1
+    bne      _proc7_nextwin
+    cmp      board4
+    beq      _proc7_yes
+
+_proc7_nextwin
+    cmp      board6
+    bne      _proc7_no
+    cmp      board8
+    beq     _proc7_yes
+
+_proc7_no
+    lda      #0
+
+_proc7_yes
+    rts
+
+proc8
+    cmp      board
+    bne      _proc8_nextwin
+    cmp      board4
+    beq      _proc8_yes
+
+_proc8_nextwin
+    cmp      board2
+    bne      _proc8_nextwin2
+    cmp      board5
+    beq     _proc8_yes
+
+_proc8_nextwin2
+    cmp      board6
+    bne      _proc8_no
+    cmp      board7
+    beq     _proc8_yes
+
+_proc8_no
+    lda      #0
+
+_proc8_yes
+    rts
+
+winnerprocs .dw   proc0, proc1, proc2, proc3, proc4, proc5, proc6, proc7, proc8
+
+
+
 
 
