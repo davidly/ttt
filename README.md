@@ -136,7 +136,7 @@ To run ttt_trs80.asm on a TRS-80. (renamed as ttt.asm)
             Run lt.ba, which loads t.do, converts it to binary in RAM, and executes the app
 	
 
-![image](https://user-images.githubusercontent.com/1497921/194436856-34486690-bfbb-4a33-b7df-668786b20dfd.png)
+![image](https://user-images.githubusercontent.com/1497921/194439456-ceac4df8-1c8a-4aae-b788-d407e8fc8350.png)
 
 
 
