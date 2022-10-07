@@ -41,7 +41,7 @@ moves        .eq     $3b            ; # of moves examined so far
 moveshigh    .eq     $3c
 iters        .eq     $3d            ; # of iterations in the top-level loop
 wpfun        .eq     $3e            ; temporary spot for the actual winner function pointer
-wpfunhigh    .eq     $3f			   
+wpfunhigh    .eq     $3f                           
 
 max_score    .eq     9              ; maximum score
 min_score    .eq     2              ; minimum score
@@ -139,7 +139,7 @@ minmax_local_value  .eq  $0101
 ; return score in a
 
 minmax_max
-    lda      #0
+    lda      #0                     ; initialize local variables to 0
     pha                             ; allocate space for I
     pha                             ; allocate space for Score
     pha                             ; allocate space for Value
@@ -155,10 +155,8 @@ _max_skip_moves_high
     cmp      #4                     ; can't be a winner if < 4 moves so far
     bmi      _max_no_winner_check
 
-    ; the proc to call is in y 0..8
-    ; the piece last moved is in a -- XPIECE or OPIECE
-    ldy      minmax_arg_move, x
-    lda      #OPIECE
+    ldy      minmax_arg_move, x    ; y has the proc to call 0..8
+    lda      #OPIECE                ; a has the most recent piece to move
     jsr      call_winnerproc
 
     cmp      #OPIECE                ; if O won, return win
@@ -173,17 +171,13 @@ _max_no_winner_check
 _max_loop                           ; for i = 0; i < 0; i++. i is initialized at function entry.
     lda      minmax_local_i, x
     cmp      #9
-    bne      _max_loop_keep_going   ; can't beq to return because it's too far awawy
-    jmp      _max_load_value_return
+    beq      _max_load_value_return
 
-_max_loop_keep_going
     tay                             ; remember index i in y
     lda      board, y               ; load the current board position value
     cmp      #0                     ; is the board position free?
-    beq      _max_position_available  ; can't bne _next_i because it's too far away
-    jmp      _max_next_i
+    bne      _max_next_i
 
-_max_position_available
     lda      #XPIECE
     sta      board, y               ; update the board with the move
 
@@ -215,16 +209,12 @@ _max_position_available
     lda      #BLANKPIECE
     sta      board, y               ; restore blank move to the board
 
-_max_maximize_score
     lda      minmax_local_score, x  ; load the score
     cmp      #win_score
-    bne      _max_keep_going        ; can't beq to return because it's too far away
-    tay
-    jmp      _max_load_y_return     ; can't do better than win; return now
+    beq      _max_return_a          ; can't do better than winning
 
-_max_keep_going
     cmp      minmax_local_value, x  ; compare score with value
-    beq      _max_ab_prune
+    beq      _max_ab_prune          ; 6502 has no <= branch, and swapping args requires another load
     bmi      _max_ab_prune
     sta      minmax_local_value, x  ; update value with the better score
 
@@ -238,8 +228,7 @@ _max_ab_prune
 _max_check_beta
     lda      minmax_arg_alpha, x    ; load alpha
     cmp      minmax_arg_beta, x     ; compare alpha with beta
-    bmi      _max_next_i
-    jmp      _max_load_value_return ; beta pruning
+    bpl      _max_load_value_return ; beta pruning. bpl is >=
 
 _max_next_i
     inc      minmax_local_i, x      ; increment i
@@ -247,7 +236,8 @@ _max_next_i
     
 _max_load_value_return
     lda      minmax_local_value, x  ; load value for return
-    tay
+_max_return_a
+    tay										; save a in y because a is trashed by cleaning the stack
 _max_load_y_return
     pla                             ; deallocate i
     pla                             ; deallocate score
@@ -256,7 +246,7 @@ _max_load_y_return
     rts                             ; return to sender
 
 minmax_min
-    lda      #0
+    lda      #0                                                 ; initialize local variables to 0
     pha                             ; allocate space for I
     pha                             ; allocate space for Score
     pha                             ; allocate space for Value
@@ -272,10 +262,8 @@ _min_skip_moves_high
     cmp      #4                     ; can't be a winner if < 4 moves so far
     bmi      _min_no_winner_check
 
-    ; the proc to call is in y 0..8
-    ; the piece last moved is in a -- XPIECE or OPIECE
-    ldy      minmax_arg_move, x
-    lda      #XPIECE
+    ldy      minmax_arg_move, x    ; y has the proc to call 0..8
+    lda      #XPIECE                ; a has the most recent piece to move
     jsr      call_winnerproc
 
     cmp      #XPIECE                ; if X won, return win
@@ -297,17 +285,13 @@ _min_no_winner_check
 _min_loop                           ; for i = 0; i < 0; i++. i is initialized at function entry.
     lda      minmax_local_i, x
     cmp      #9
-    bne      _min_loop_keep_going   ; can't beq to return because it's too far awawy
-    jmp      _min_load_value_return
+    beq      _min_load_value_return
 
-_min_loop_keep_going
     tay                             ; remember index i in y
     lda      board, y               ; load the current board position value
     cmp      #0                     ; is the board position free?
-    beq      _min_position_available
-    jmp      _min_next_i
+    bne      _min_next_i
 
-_min_position_available
     lda      #OPIECE
     sta      board, y               ; update the board with the move
 
@@ -339,14 +323,10 @@ _min_position_available
     lda      #BLANKPIECE
     sta      board, y               ; restore blank move to the board
 
-_minimize_score
     lda      minmax_local_score, x  ; load the score
     cmp      #lose_score
-    bne      _min_keep_going
-    tay
-    jmp      _min_load_y_return     ; can't do worse than lose; return now
+    beq      _min_return_a          ; can't do worse than a losing score
 
-_min_keep_going
     cmp      minmax_local_value, x  ; compare score with value
     bpl      _min_ab_prune
     sta      minmax_local_value, x  ; update value with the better score
@@ -360,9 +340,7 @@ _min_ab_prune
 _min_check_alpha
     lda      minmax_arg_alpha, x    ; load alpha
     cmp      minmax_arg_beta, x     ; compare alpha with beta
-    bmi      _min_next_i            
-_min_prune
-    jmp      _min_load_value_return ; alpha pruning
+    bpl      _min_load_value_return ; alpha pruning. bpl is >=
 
 _min_next_i
     inc      minmax_local_i, x      ; increment i
@@ -370,7 +348,8 @@ _min_next_i
     
 _min_load_value_return
     lda      minmax_local_value, x  ; load value for return
-    tay
+_min_return_a
+    tay										; save a in y because a is trashed by cleaning the stack
 _min_load_y_return
     pla                             ; deallocate i
     pla                             ; deallocate score
@@ -384,25 +363,25 @@ call_winnerproc
 
     pha                             ; save A
 
-    ; store the proc to call in wpfun and wpfunhigh proc0..proc8
+    ; store the proc to call in wpfun and wpfunhigh: proc0..proc8
 
     tya
-    asl
+    asl										; double the offset because each function pointer is 2 bytes
     clc
-    adc      #winnerprocs
-    sta      wpfunptr
+    adc      #winnerprocs				; add the low byte of the list of procs
+    sta      wpfunptr					; store the low byte of the pointer to the proc
     lda      #0
-    adc      /winnerprocs
-    sta      wpfunptr+1
+    adc      /winnerprocs				; load the high byte with a carry if needed from the low bytes
+    sta      wpfunptr+1					; sore the high byte of the pointer to the proc
     ldy      #0
-    lda      (wpfunptr), y
-    sta      wpfun
+    lda      (wpfunptr), y          ; read the low byte of the function pointer
+    sta      wpfun						; write the low byte of the function pointer
     iny
-    lda      (wpfunptr), y
-    sta      wpfun+1
+    lda      (wpfunptr), y				; read the high byte of the function pointer
+    sta      wpfun+1						; write the high byte of the function pointer
 
     pla                             ; restore A
-    jmp      (wpfun)                ; wpfun will return to the caller
+    jmp      (wpfun)                ; call it. (wpfun) will return to the caller
 
 proc0
     cmp      board1
