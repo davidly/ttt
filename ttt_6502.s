@@ -1,10 +1,7 @@
 ;
 ; Apple 1 / 6502 implementation of proving you can't win at tic-tac-toe.
-; Takes about 3 seconds to run each iteration of 3 unique starting moves.
-; That's on an Apple 1 replica.
-; Given 10 iterations, that's about 30 seconds.
+; Tested on th  RetroTechLyfe Apple 1 clone computer and the POM1 Apple 1 emulator.
 ; The moves variable should contain 6493 decimal / 0x195d hex if it's running correctly.
-; On the Pom1 Apple 1 simulator it takes 2 seconds per iteration. Not sure why.
 ;
 ; Assemble with sbasm30306\sbasm.py ttt.s
 ; sbasm.py can be found here: https://www.sbprojects.net/sbasm/
@@ -155,7 +152,7 @@ _max_skip_moves_high
     cmp      #4                     ; can't be a winner if < 4 moves so far
     bmi      _max_no_winner_check
 
-    ldy      minmax_arg_move, x    ; y has the proc to call 0..8
+    ldy      minmax_arg_move, x     ; y has the proc to call 0..8
     lda      #OPIECE                ; a has the most recent piece to move
     jsr      call_winnerproc
 
@@ -168,7 +165,7 @@ _max_no_winner_check
     lda      #min_score             ; maximize for X's move
     sta      minmax_local_value, x
 
-_max_loop                           ; for i = 0; i < 0; i++. i is initialized at function entry.
+_max_loop                           ; for i = 0; i < 9; i++. i is initialized at function entry.
     lda      minmax_local_i, x
     cmp      #9
     beq      _max_load_value_return
@@ -237,7 +234,7 @@ _max_next_i
 _max_load_value_return
     lda      minmax_local_value, x  ; load value for return
 _max_return_a
-    tay										; save a in y because a is trashed by cleaning the stack
+    tay                             ; save a in y because a is trashed by cleaning the stack
 _max_load_y_return
     pla                             ; deallocate i
     pla                             ; deallocate score
@@ -246,7 +243,7 @@ _max_load_y_return
     rts                             ; return to sender
 
 minmax_min
-    lda      #0                                                 ; initialize local variables to 0
+    lda      #0                     ; initialize local variables to 0
     pha                             ; allocate space for I
     pha                             ; allocate space for Score
     pha                             ; allocate space for Value
@@ -262,7 +259,7 @@ _min_skip_moves_high
     cmp      #4                     ; can't be a winner if < 4 moves so far
     bmi      _min_no_winner_check
 
-    ldy      minmax_arg_move, x    ; y has the proc to call 0..8
+    ldy      minmax_arg_move, x     ; y has the proc to call 0..8
     lda      #XPIECE                ; a has the most recent piece to move
     jsr      call_winnerproc
 
@@ -282,7 +279,7 @@ _min_no_winner_check
     lda      #max_score             ; depth is even, so minimize for O's move
     sta      minmax_local_value, x
 
-_min_loop                           ; for i = 0; i < 0; i++. i is initialized at function entry.
+_min_loop                           ; for i = 0; i < 9; i++. i is initialized at function entry.
     lda      minmax_local_i, x
     cmp      #9
     beq      _min_load_value_return
@@ -349,7 +346,7 @@ _min_next_i
 _min_load_value_return
     lda      minmax_local_value, x  ; load value for return
 _min_return_a
-    tay										; save a in y because a is trashed by cleaning the stack
+    tay                             ; save a in y because a is trashed by cleaning the stack
 _min_load_y_return
     pla                             ; deallocate i
     pla                             ; deallocate score
@@ -366,19 +363,19 @@ call_winnerproc
     ; store the proc to call in wpfun and wpfunhigh: proc0..proc8
 
     tya
-    asl										; double the offset because each function pointer is 2 bytes
+    asl                             ; double the offset because each function pointer is 2 bytes
     clc
-    adc      #winnerprocs				; add the low byte of the list of procs
-    sta      wpfunptr					; store the low byte of the pointer to the proc
+    adc      #winnerprocs           ; add the low byte of the list of procs
+    sta      wpfunptr               ; store the low byte of the pointer to the proc
     lda      #0
-    adc      /winnerprocs				; load the high byte with a carry if needed from the low bytes
-    sta      wpfunptr+1					; sore the high byte of the pointer to the proc
+    adc      /winnerprocs           ; load the high byte with a carry if needed from the low bytes
+    sta      wpfunptr+1             ; sore the high byte of the pointer to the proc
     ldy      #0
     lda      (wpfunptr), y          ; read the low byte of the function pointer
-    sta      wpfun						; write the low byte of the function pointer
+    sta      wpfun                  ; write the low byte of the function pointer
     iny
-    lda      (wpfunptr), y				; read the high byte of the function pointer
-    sta      wpfun+1						; write the high byte of the function pointer
+    lda      (wpfunptr), y          ; read the high byte of the function pointer
+    sta      wpfun+1                ; write the high byte of the function pointer
 
     pla                             ; restore A
     jmp      (wpfun)                ; call it. (wpfun) will return to the caller
