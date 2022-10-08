@@ -390,13 +390,13 @@ _proc0_nextwin
     cmp      board3
     bne      _proc0_nextwin2
     cmp      board6
-    beq     _proc0_yes
+    beq      _proc0_yes
 
 _proc0_nextwin2
     cmp      board4
     bne      _proc0_no
     cmp      board8
-    beq     _proc0_yes
+    beq      _proc0_yes
 
 _proc0_no
     lda      #0
@@ -414,7 +414,7 @@ _proc1_nextwin
     cmp      board4
     bne      _proc1_no
     cmp      board7
-    beq     _proc1_yes
+    beq      _proc1_yes
 
 _proc1_no
     lda      #0
@@ -432,13 +432,13 @@ _proc2_nextwin
     cmp      board5
     bne      _proc2_nextwin2
     cmp      board8
-    beq     _proc2_yes
+    beq      _proc2_yes
 
 _proc2_nextwin2
     cmp      board4
     bne      _proc2_no
     cmp      board6
-    beq     _proc2_yes
+    beq      _proc2_yes
 
 _proc2_no
     lda      #0
@@ -456,7 +456,7 @@ _proc3_nextwin
     cmp      board4
     bne      _proc3_no
     cmp      board5
-    beq     _proc3_yes
+    beq      _proc3_yes
 
 _proc3_no
     lda      #0
@@ -474,19 +474,19 @@ _proc4_nextwin
     cmp      board2
     bne      _proc4_nextwin2
     cmp      board6
-    beq     _proc4_yes
+    beq      _proc4_yes
 
 _proc4_nextwin2
     cmp      board1
     bne      _proc4_nextwin3
     cmp      board7
-    beq     _proc4_yes
+    beq      _proc4_yes
 
 _proc4_nextwin3
     cmp      board3
     bne      _proc4_no
     cmp      board5
-    beq     _proc4_yes
+    beq      _proc4_yes
 
 _proc4_no
     lda      #0
@@ -504,7 +504,7 @@ _proc5_nextwin
     cmp      board2
     bne      _proc5_no
     cmp      board8
-    beq     _proc5_yes
+    beq      _proc5_yes
 
 _proc5_no
     lda      #0
@@ -522,13 +522,13 @@ _proc6_nextwin
     cmp      board
     bne      _proc6_nextwin2
     cmp      board3
-    beq     _proc6_yes
+    beq      _proc6_yes
 
 _proc6_nextwin2
     cmp      board7
     bne      _proc6_no
     cmp      board8
-    beq     _proc6_yes
+    beq      _proc6_yes
 
 _proc6_no
     lda      #0
@@ -546,7 +546,7 @@ _proc7_nextwin
     cmp      board6
     bne      _proc7_no
     cmp      board8
-    beq     _proc7_yes
+    beq      _proc7_yes
 
 _proc7_no
     lda      #0
@@ -564,13 +564,13 @@ _proc8_nextwin
     cmp      board2
     bne      _proc8_nextwin2
     cmp      board5
-    beq     _proc8_yes
+    beq      _proc8_yes
 
 _proc8_nextwin2
     cmp      board6
     bne      _proc8_no
     cmp      board7
-    beq     _proc8_yes
+    beq      _proc8_yes
 
 _proc8_no
     lda      #0
