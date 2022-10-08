@@ -1,3 +1,4 @@
+; i8080 version of an app that proves you can't win at tic-tac-toe
 ;
 ; copy / assemble, link, and run on cp/m using:
 ; r tttcpm.asm      -- cp/m emulators sometimes allow reading files like this.
@@ -543,31 +544,22 @@ PUTHL:
 
 IF USEWINPROCS
 
+; a = the proc to call 0..8
+; b = the player who just took a move, O or X
 CALLSCOREPROC:
-        push     b ; save the piece that took the move for later
-
-        add      a ; double the move position because function pointers are two bytes
-        lxi      b, jumpAddress
-        inx      b                  ; get past the call instruction to the address
-        lxi      h, WINPROCS        ; load the function pointer
-        mov      e, a
+        add      a                  ; double the move position because function pointers are two bytes
+        lxi      h, WINPROCS        ; load the pointer to the list of function pointers 0..8
+        mov      e, a               ; prepare to add
         mvi      d, 0
-        dad      d
-        xchg
-
-        ; now read the function pointer and patch the instructions we're about to execute
-        ldax     d  
-        stax     b
-        inx      b
+        dad      d		    ; hl = de + hl
+        xchg			    ; exchange de and hl
+        ldax     d		    ; load the low byte of procX
+        mov      l, a
         inx      d
-        ldax     d
-        stax     b
-
-        pop      a                  ; the piece that took the move
-
-  jumpAddress:
-        jmp      PUTHL              ; Jump to the function address written in the code stream (not PUTHL)
-        ret
+        ldax     d		    ; load the hight byte of procX
+        mov      h, a
+        mov      a, b		    ; put the player move (X or O) in a
+        pchl                        ; move the winner proc address from hl to pc (jump to it)
 
 proc0:
         lxi      h, BOARD + 1
