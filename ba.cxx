@@ -202,6 +202,10 @@ const char * MappedRegistersArm32[] = { /*"r3",*/ "r4", "r5", "r6", "r7", "r8", 
 
 const char * MappedRegistersX86[] = { "ecx", "esi", "edi" };
 
+// For 6502 there are no mapped registers, but there are variables allocated on the Zero Page. Each of these consumes 2 bytes.
+
+const int Max6502ZeroPageVariables = 16;
+
 __makeinline const char * TokenStr( Token i )
 {
     if ( i < 0 || i > Token::INVALID )
@@ -305,13 +309,14 @@ struct Variable
         my_strlwr( name );
     }
 
-    int value;           // when a scalar
-    char name[4];        // variables can only be 2 chars + type (%) + null
-    int dimensions;      // 0 for scalar. 1 or 2 for arrays.
-    int dims[ 2 ];       // only support up to 2 dimensional arrays.
-    vector<int> array;   // actual array values
-    int references;      // when generating assembler: how many references in the basic app?
-    string reg;          // when generating assembler: register mapped to this variable, if any
+    int value;            // when a scalar
+    char name[4];         // variables can only be 2 chars + type (%) + null
+    int dimensions;       // 0 for scalar. 1 or 2 for arrays.
+    int dims[ 2 ];        // only support up to 2 dimensional arrays.
+    vector<int> array;    // actual array values
+    int references;       // when generating assembler: how many references in the basic app?
+    string reg;           // when generating assembler: register mapped to this variable, if any
+    bool mos6502ZeroPage; // true if allocated in the zero page for 6502
 };
 
 struct TokenValue
@@ -4181,6 +4186,8 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         Usage();
     }
 
+    int mos6502FirstZeroPageVariable = 0x40;
+
     if ( x64Win == g_AssemblyTarget )
     {
         fprintf( fp, "; Build on Windows in a Visual Studio vcvars64.bat cmd window using a .bat script like this:\n" );
@@ -4272,6 +4279,11 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "curOperand    .eq     $32\n" ); // most recent expression. occupies 32 and 33
         fprintf( fp, "otherOperand  .eq     $34\n" ); // secondary operand. occupies 34 and 35
         fprintf( fp, "arrayOffset   .eq     $36\n" ); // array offset temporary. occupies 36 and 37
+
+        // if global variables above go to this constant, raise this constant
+
+        mos6502FirstZeroPageVariable = 0x40;
+
         fprintf( fp, "    jmp      start\n" );
     }
     else if ( i8086DOS == g_AssemblyTarget )
@@ -4455,9 +4467,24 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
     else if ( arm64Mac == g_AssemblyTarget )
         fprintf( fp, "  .p2align 4\n" );
 
+    int num6502ZeroPageVariables = 0;
+
+    if ( mos6502Apple1 == g_AssemblyTarget )
+    {
+        for ( size_t i = 0; i < varscount.size() && num6502ZeroPageVariables != Max6502ZeroPageVariables; i++ )
+        {
+            Variable * pvar = FindVariable( varmap, varscount[ i ].name );
+            assert( pvar );
+            pvar->mos6502ZeroPage = true;
+            fprintf( fp, "%s  .eq $%x\n", GenVariableName( varscount[ i ].name ),
+                     ( 2 * num6502ZeroPageVariables ) + mos6502FirstZeroPageVariable );
+            num6502ZeroPageVariables++;
+        }
+    }
+
     for ( auto it = varmap.begin(); it != varmap.end(); it++ )
     {
-        if ( ( 0 == it->second.dimensions ) && ( 0 == it->second.reg.length() ) )
+        if ( ( 0 == it->second.dimensions ) && ( 0 == it->second.reg.length() )  )
         {
             if ( x64Win == g_AssemblyTarget || x86Win == g_AssemblyTarget )
                 fprintf( fp, "    %8s DD   0\n", GenVariableName( it->first ) );
@@ -4467,7 +4494,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                 fprintf( fp, "    %8s: .quad 0\n", GenVariableName( it->first ) );
             else if ( i8080CPM == g_AssemblyTarget )
                 fprintf( fp, "    %8s: dw  0\n", GenVariableName( it->first ) );
-            else if ( mos6502Apple1 == g_AssemblyTarget )
+            else if ( mos6502Apple1 == g_AssemblyTarget && ! it->second.mos6502ZeroPage )
                 fprintf( fp, "%s  .dw  0\n", GenVariableName( it->first ) );
             else if ( i8086DOS == g_AssemblyTarget )
                 fprintf( fp, "    %8s dw   0\n", GenVariableName( it->first ) );
@@ -4646,6 +4673,23 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                     fprintf( fp, "    jsr      zeromem\n" );
                 }
             }
+        }
+
+        // zero the values of the Zero Page variables
+
+        if ( 0 != num6502ZeroPageVariables )
+        {
+            int zeroPageBytes = 2 * num6502ZeroPageVariables;
+
+            fprintf( fp, "    lda      #%d\n", zeroPageBytes );
+            fprintf( fp, "    sta      curOperand\n" );
+            fprintf( fp, "    lda      /%d\n", zeroPageBytes );
+            fprintf( fp, "    sta      curOperand+1\n" );
+            fprintf( fp, "    lda      #%d\n", mos6502FirstZeroPageVariable );
+            fprintf( fp, "    sta      otherOperand\n" );
+            fprintf( fp, "    lda      /%d\n", mos6502FirstZeroPageVariable );
+            fprintf( fp, "    sta      otherOperand+1\n" );
+            fprintf( fp, "    jsr      zeromem\n" );
         }
 
         fprintf( fp, "    lda      #startString\n" );
