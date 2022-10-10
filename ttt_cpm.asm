@@ -6,8 +6,7 @@
 ; load tttcpm
 ; tttcpm
 ;
-; Runs in about 2.2s per iteration on CP/M 2.2 with a Z80 at 4 Mhz with USEWINPROCS = 1
-; Runs in about 2.4s per iteration with USEWINPROCS = 0
+; Runs faster with USEWINPROCS equ 1
 
 ; cp/m specific constants
 
@@ -28,7 +27,6 @@ OPIECE      equ     2   ; Y move piece
 BLANKPIECE  equ     0   ; empty move piece
 
 org     100H
-
         push    b
         push    d
         push    h
@@ -167,8 +165,6 @@ ENDIF
   X$SKIPWIN:
         mvi     a, NSCO             ; maximizing odd depths
         sta     V
-
-  X$MMFOR:
         mvi     a, 0                ; the variable I will go from 0..8
         sta     I
 
@@ -203,7 +199,7 @@ IF USEWINPROCS
         lda     I                   ; the move position
 ENDIF
 
-        ; D = alpha, E = beta, C = depth, A = return score
+        ; A = Move position, D = alpha, E = beta, C = depth  ====> A = return score
 
         call    MM$MIN
         sta     SC                  ; save the score
@@ -221,7 +217,7 @@ ENDIF
         stax    b
 
         lda     SC                  ; maximize case
-        cpi     WSCO                ; V - WSCO. If zero, can't do better.
+        cpi     WSCO                ; SC - WSCO. If zero, can't do better.
         rz
 
         lda     SC
@@ -295,8 +291,6 @@ ENDIF
   N$SKIPWIN:
         mvi     a, XSCO
         sta     V
-
-  N$MMFOR:
         mvi     a, 0                ; the variable I will go from 0..8
         sta     I
 
@@ -330,7 +324,7 @@ ENDIF
 IF USEWINPROCS
         lda     I                   ; the move position
 ENDIF        
-        ; D = alpha, E = beta, C = depth, A = return score
+        ; A = Move position, D = alpha, E = beta, C = depth  ====> A = return score
 
         call    MM$MAX
         sta     SC                  ; save the score
@@ -348,7 +342,7 @@ ENDIF
         stax    b
 
         lda     SC
-        cpi     LSCO                ; V - LSCO. If zero, can't do worse.
+        cpi     LSCO                ; SC - LSCO. If zero, can't do worse.
         rz
 
         lda     V
@@ -551,14 +545,14 @@ CALLSCOREPROC:
         lxi      h, WINPROCS        ; load the pointer to the list of function pointers 0..8
         mov      e, a               ; prepare to add
         mvi      d, 0
-        dad      d		    ; hl = de + hl
-        xchg			    ; exchange de and hl
-        ldax     d		    ; load the low byte of procX
+        dad      d                  ; hl = de + hl
+        xchg                        ; exchange de and hl
+        ldax     d                  ; load the low byte of procX
         mov      l, a
         inx      d
-        ldax     d		    ; load the hight byte of procX
+        ldax     d                  ; load the hight byte of procX
         mov      h, a
-        mov      a, b		    ; put the player move (X or O) in a
+        mov      a, b               ; put the player move (X or O) in a
         pchl                        ; move the winner proc address from hl to pc (jump to it)
 
 proc0:
