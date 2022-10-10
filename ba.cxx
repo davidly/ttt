@@ -438,13 +438,13 @@ static void Usage()
     printf( "  Basic interpreter\n" );
     printf( "  Arguments:     filename.bas     Subset of TRS-80 compatible BASIC\n" );
     printf( "                 -a:X             Generate assembly code, where X is one of:\n" );
-    printf( "                                  x -- Generate Windows x64 'ml64' compatible assembler code to filename.asm\n" );
-    printf( "                                  m -- Generate Mac 'as -arch arm64' compatible assembler code to filename.s\n" );
-    printf( "                                  8 -- Generate CP/M 2.2 i8080 'asm' compatible assembler code to filename.asm\n" );
-    printf( "                                  3 -- Generate Linux arm32 armv8 'gcc / as' compatible assembler code to filename.s\n" );
-    printf( "                                  6 -- Generate Apple 1 'sbasm30306\\sbasm.py' compatible assembler code to filename.s\n" );
-    printf( "                                  d -- Generate 8086 DOS ml /AT /omf /c compatible assembler code to filename.asm\n" );
-    printf( "                                  i -- Generate i386 (686) Windows x86 'ml' compatible assembler code to filename.asm\n" );
+    printf( "                                  6 -- Generate 8-bit Apple 1 'sbasm30306\\sbasm.py' compatible assembler code to filename.s\n" );
+    printf( "                                  8 -- Generate 8-bit CP/M 2.2 i8080 'asm' compatible assembler code to filename.asm\n" );
+    printf( "                                  d -- Generate 16-bit 8086 DOS ml /AT /omf /c compatible assembler code to filename.asm\n" );
+    printf( "                                  3 -- Generate 32-bit Linux arm32 armv8 'gcc / as' compatible assembler code to filename.s\n" );
+    printf( "                                  i -- Generate 32-bit i386 (686) Windows x86 'ml' compatible assembler code to filename.asm\n" );
+    printf( "                                  m -- Generate 64-bit Mac 'as -arch arm64' compatible assembler code to filename.s\n" );
+    printf( "                                  x -- Generate 64-bit Windows x64 'ml64' compatible assembler code to filename.asm\n" );
     printf( "                 -e               Show execution count and time for each line\n" );
     printf( "                 -l               Show 'pcode' listing\n" );
     printf( "                 -o               Don't do expression optimization for assembly code\n" );
@@ -452,6 +452,7 @@ static void Usage()
     printf( "                 -r               Don't use registers for variables in assembly code\n" );
     printf( "                 -t               Show debug tracing\n" );
     printf( "                 -x               Parse only; don't execute the code\n" );
+    printf( "  notes:  --  Assembly instructions are located at the top of generated files\n" );
     exit( 1 );
 } //Usage
 
@@ -4311,8 +4312,8 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
     else if ( x86Win == g_AssemblyTarget )
     {
         fprintf( fp, "; Build on Windows in a Visual Studio vcvars32.bat cmd window using a .bat script like this:\n" );
-        fprintf( fp, "; ml /nologo tttx32.asm /Flx.lst /Zd /Zf /Zi /link /OPT:REF /nologo /PDB:tttx32.pdb ^\n" );
-        fprintf( fp, ";        /subsystem:console\n" );
+        fprintf( fp, "; ml /nologo %%1.asm /Fl /Zd /Zf /Zi /link /OPT:REF /nologo ^\n" );
+        fprintf( fp, ";        /subsystem:console ^\n" );
         fprintf( fp, ";        /defaultlib:kernel32.lib ^\n" );
         fprintf( fp, ";        /defaultlib:user32.lib ^\n" );
         fprintf( fp, ";        /defaultlib:libucrt.lib ^\n" );
@@ -5377,7 +5378,7 @@ label_no_eq_optimization:
                         //   6 EXPRESSION, value 2, strValue ''
                         //   7 VARIABLE, value 0, strValue 'v%'
 
-                        string vararray = vals[ variableToken ].strValue;
+                        string & vararray = vals[ variableToken ].strValue;
 
                         if ( IsVariableInReg( varmap, vararray ) )
                         {
@@ -5410,7 +5411,7 @@ label_no_eq_optimization:
                         //   6 EXPRESSION, value 2, strValue ''
                         //   7 VARIABLE, value 0, strValue 'v%'
 
-                        string vararray = vals[ variableToken ].strValue;
+                        string & vararray = vals[ variableToken ].strValue;
 
                         fprintf( fp, "    lda      %s\n", GenVariableName( vals[ t + 1 ].strValue ) );
                         fprintf( fp, "    sta      arrayOffset\n" );
@@ -5452,13 +5453,47 @@ label_no_eq_optimization:
                         //   6 EXPRESSION, value 2, strValue ''
                         //   7 VARIABLE, value 0, strValue 'v%'
 
-                        string vararray = vals[ variableToken ].strValue;
+                        string & vararray = vals[ variableToken ].strValue;
 
                         fprintf( fp, "    mov      bx, ds: [ %s ]\n", GenVariableName( vals[ t + 5 ].strValue ) );
                         fprintf( fp, "    mov      si, ds: [ %s ]\n", GenVariableName( vals[ t + 1 ].strValue ) );
                         fprintf( fp, "    shl      si, 1\n" );
                         fprintf( fp, "    mov      WORD PTR ds: [ offset %s + si ], bx\n", GenVariableName( vararray ) );
 
+                        break;
+                    }
+                    else if ( x86Win == g_AssemblyTarget &&
+                              8 == vals.size() &&
+                              Token::VARIABLE == vals[ t + 1 ].token &&
+                              IsVariableInReg( varmap, vals[ t + 1 ].strValue ) &&
+                              Token::VARIABLE == vals[ t + 5 ].token )
+                    {
+                        // line 4230 has 8 tokens  ====>> 4230 sv%(st%) = v%
+                        //   0 VARIABLE, value 0, strValue 'sv%'
+                        //   1 OPENPAREN, value 0, strValue ''
+                        //   2 EXPRESSION, value 2, strValue ''
+                        //   3 VARIABLE, value 0, strValue 'st%'
+                        //   4 CLOSEPAREN, value 0, strValue ''
+                        //   5 EQ, value 0, strValue ''
+                        //   6 EXPRESSION, value 2, strValue ''
+                        //   7 VARIABLE, value 0, strValue 'v%'
+
+                        string & vararray = vals[ variableToken ].strValue;
+                        string & varrhs = vals[ t + 5 ].strValue;
+
+                        fprintf( fp, "    mov      eax, %s\n", GenVariableReg( varmap, vals[ t + 1 ].strValue ) );
+                        fprintf( fp, "    shl      eax, 2\n" );
+
+                        if ( IsVariableInReg( varmap, varrhs ) )
+                        {
+                            fprintf( fp, "    mov      DWORD PTR [ offset %s + eax ], %s\n", GenVariableName( vararray ),
+                                                                                             GenVariableReg( varmap, varrhs ) );
+                        }
+                        else
+                        {
+                            fprintf( fp, "    mov      ebx, DWORD PTR [%s]\n", GenVariableName( varrhs ) );
+                            fprintf( fp, "    mov      DWORD PTR [ offset %s + eax ], ebx\n", GenVariableName( vararray ) );
+                        }
                         break;
                     }
                     else
@@ -6617,8 +6652,8 @@ label_no_array_eq_optimization:
                                                               GenVariableReg( varmap, vals[ t + 3 ].strValue ) );
 
                         fprintf( fp, "    %-6s   %s, %s\n", CMovInstructionX64[ vals[ t + 2 ].token ],
-                                GenVariableReg( varmap, vals[ t + 5 ].strValue ),
-                                GenVariableReg( varmap, vals[ t + 8 ].strValue ) );
+                                 GenVariableReg( varmap, vals[ t + 5 ].strValue ),
+                                 GenVariableReg( varmap, vals[ t + 8 ].strValue ) );
                     }
                     else if ( arm32Linux == g_AssemblyTarget )
                     {
@@ -8138,10 +8173,14 @@ label_no_if_optimization:
             else if ( Token::ELSE == token )
             {
                 assert( -1 != activeIf );
-                if ( x64Win == g_AssemblyTarget || x86Win == g_AssemblyTarget )
+                if ( x64Win == g_AssemblyTarget )
                 {
                     fprintf( fp, "    jmp      line_number_%zd\n", l + 1 );
                     fprintf( fp, "    align    16\n" );
+                }
+                else if ( x86Win == g_AssemblyTarget )
+                {
+                    fprintf( fp, "    jmp      line_number_%zd\n", l + 1 );
                 }
                 else if ( arm32Linux == g_AssemblyTarget )
                 {
