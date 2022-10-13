@@ -27,10 +27,6 @@ OPIECE      equ     2   ; Y move piece
 BLANKPIECE  equ     0   ; empty move piece
 
 org     100H
-        push    b
-        push    d
-        push    h
-
   AGAIN:
         lxi     h, 0
         shld    MOVES               ; set to 0 each iteration to avoid overflow
@@ -67,11 +63,7 @@ org     100H
         lxi     h, CRLF
         call    DISPLY
 
-        pop     h
-        pop     d
-        pop     b
-
-        jmp 0                       ; cp/m call to terminate process
+        jmp 0                       ; cp/m call to terminate the app
 
 DISONE:                             ; display the character in a
         push    b
@@ -102,16 +94,13 @@ DISDIG:                             ; Argument # 0-9 is in register B
         ret
 
 RUNMM:                              ; Run the MINMAX function for a given first move
-        push    a
         mov     d, a
         mvi     b, 0                ; store the first move
         mov     c, a
         lxi     h, BOARD
         dad     b
-        mov     b, h
-        mov     c, l
-        mvi     a, XPIECE
-        stax    b
+        mvi     m, XPIECE
+        push    h                   ; save the pointer to the move location for later
 
         mov     a, d                ; where the first move is: 0, 1, or 4
         mvi     d, NSCO             ; alpha
@@ -119,21 +108,14 @@ RUNMM:                              ; Run the MINMAX function for a given first 
         mvi     c, 0                ; depth
         call    MM$MIN
 
-        pop     a
-        mvi     b, 0                ; store the first move
-        mov     c, a
-        lxi     h, BOARD
-        dad     b
-        mov     b, h
-        mov     c, l
-        mvi     a, BLANKPIECE
-        stax    b
+        pop     h                   ; restore the move location
+        mvi     m, BLANKPIECE       ; restore a blank on the board
 
         ret
 
 MM$MAX:                             ; the recursive scoring function
 IF USEWINPROCS
-        mov     b, a                ; save the move position
+        mov     b, a                ; save where the move was taken
 ENDIF
         mov     a, c                ; save depth, alpha, and beta from c, d, and e
         sta     DEPTH
@@ -141,7 +123,7 @@ ENDIF
         mov     h, e
         shld    ALPHA               ; write alpha and beta
 
-        lhld    MOVES
+        lhld    MOVES               ; no 16-bit memory increment, so load in hl for that
         inx     h
         shld    MOVES
 
@@ -173,15 +155,12 @@ ENDIF
         mov     c, a
         lxi     h, BOARD
         dad     b
-        mov     b, h
-        mov     c, l
-        ldax    b
-        cpi     0                   ; is the board space free?
+        mov     a, m
+        cpi     BLANKPIECE          ; is the board space free?
         jnz     X$MMLEND
 
-        mvi     a, XPIECE
-        stax    b                   ; make the move
-        push    b                   ; save the pointer to the board position for restoration later
+        mvi     m, XPIECE           ; make the move
+        push    h                   ; save the pointer to the board position for restoration later
 
         ; save state, recurse, and restore state
 
@@ -189,7 +168,7 @@ ENDIF
         push    h
         mov     d, l                ; alpha
         mov     e, h                ; beta
-        lhld    I                   ; I in l and PM in h
+        lhld    I                   ; I in l and (unused) in h
         push    h
         lhld    V                   ; V in l and DEPTH in h
         push    h
@@ -208,23 +187,22 @@ ENDIF
         shld    V                   ; restore V and DEPTH
         mov     d, h                ; save DEPTH
         pop     h                   
-        shld    I                   ; restore I and PM
+        shld    I                   ; restore I and (unused)
         pop     h
         shld    ALPHA               ; restore ALPHA and BETA
 
-        pop     b                   ; restore the 0 in the board where the turn was placed
-        mvi     a, 0
-        stax    b
+        pop     h
+        mvi     m, BLANKPIECE       ; restore the 0 in the board where the turn was placed
 
         lda     SC                  ; maximize case
         cpi     WSCO                ; SC - WSCO. If zero, can't do better.
         rz
 
-        lda     SC
+        lda     SC                  ; check if we should update V with SC
         mov     b, a
         lda     V
         cmp     b                   ; V - SC
-        jp      X$MMNOMAX            ; jp is >= 0. The comparision is backwards due to no jle or jgz on 8080
+        jp      X$MMNOMAX           ; jp is >= 0. The comparision is backwards due to no jle or jgz on 8080
         mov     a, b
         sta     V                   ; update V with the new best score
   X$MMNOMAX:
@@ -254,7 +232,7 @@ ENDIF
 
 MM$MIN:                             ; the recursive scoring function
 IF USEWINPROCS
-        mov     b, a
+        mov     b, a                ; save where the move was taken
 ENDIF
         mov     a, c                ; save depth, alpha, and beta from c, d, and e
         sta     DEPTH
@@ -262,7 +240,7 @@ ENDIF
         mov     h, e
         shld    ALPHA               ; write alpha and beta
 
-        lhld    MOVES
+        lhld    MOVES               ; no 16-bit memory increment, so load in hl for that
         inx     h
         shld    MOVES
 
@@ -299,15 +277,12 @@ ENDIF
         mov     c, a
         lxi     h, BOARD
         dad     b
-        mov     b, h
-        mov     c, l
-        ldax    b
-        cpi     0                   ; is the board space free?
+        mov     a, m
+        cpi     BLANKPIECE          ; is the board space free?
         jnz     N$MMLEND
 
-        mvi     a, OPIECE           ; store the move on the board
-        stax    b
-        push    b                   ; save the pointer to the board position for restoration later
+        mvi     m, OPIECE           ; make the move
+        push    h                   ; save the pointer to the board position for restoration later
 
         ; save state, recurse, and restore state
 
@@ -315,7 +290,7 @@ ENDIF
         push    h
         mov     d, l                ; alpha
         mov     e, h                ; beta
-        lhld    I                   ; I in l and PM in h
+        lhld    I                   ; I in l and (unused) in h
         push    h
         lhld    V                   ; V in l and DEPTH in h
         push    h
@@ -333,19 +308,18 @@ ENDIF
         shld    V                   ; restore V and DEPTH
         mov     d, h                ; save DEPTH
         pop     h                   
-        shld    I                   ; restore I and PM
+        shld    I                   ; restore I and (unused)
         pop     h
         shld    ALPHA               ; restore ALPHA and BETA
 
-        pop     b                   ; restore the 0 in the board where the turn was placed
-        mvi     a, 0
-        stax    b
+        pop     h
+        mvi     m, BLANKPIECE       ; restore the 0 in the board where the turn was placed
 
         lda     SC
         cpi     LSCO                ; SC - LSCO. If zero, can't do worse.
         rz
 
-        lda     V
+        lda     V                   ; check if we should update V with SC
         mov     b, a
         lda     SC
         cmp     b                   ; SC - V
