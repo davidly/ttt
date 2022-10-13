@@ -20,10 +20,6 @@ MAXVALS     equ   00201h   ; nsco and xpiece when maximizing
 
         aseg
         org     0c738h  ; 51000 decimal
-
-        push    b
-        push    d
-        push    h
  
 AGAIN:
         lxi     h, 0
@@ -61,23 +57,17 @@ AGAIN:
         lxi     h, CRLF
         call    DISPLY
         
-        pop     h
-        pop     d
-        pop     b
-
         ret
 
 RUNMM:                              ; Run the MINMAX function for a given board
-        push    a
+                                    ; D = alpha, E = beta, C = depth
         mov     d, a
         mvi     b, 0                ; store the first move
         mov     c, a
         lxi     h, BOARD
         dad     b
-        mov     b, h
-        mov     c, l
-        mvi     a, XPIECE
-        stax    b
+        mvi     m, XPIECE
+        push    h                   ; save the pointer to the move location for later
 
         mov     a, d                ; where the first move is: 0, 1, or 4
         mvi     d, NSCO             ; alpha
@@ -85,15 +75,9 @@ RUNMM:                              ; Run the MINMAX function for a given board
         mvi     c, 0                ; depth
         call    MM_MIN
 
-        pop     a
-        mvi     b, 0                ; store the first move
-        mov     c, a
-        lxi     h, BOARD
-        dad     b
-        mov     b, h
-        mov     c, l
-        mvi     a, BLANKPIECE
-        stax    b
+        pop     h                   ; restore the move location
+        mvi     m, BLANKPIECE       ; restore a blank on the board
+
         ret
 
 MM_MMAX:                            ; the recursive scoring function
@@ -104,7 +88,7 @@ MM_MMAX:                            ; the recursive scoring function
         mov     h, e
         shld    ALPHA               ; write alpha and beta
 
-        lhld    MOVES
+        lhld    MOVES               ; no 16-bit memory increment, so load in hl for that
         inx     h
         shld    MOVES
 
@@ -123,8 +107,6 @@ MM_MMAX:                            ; the recursive scoring function
 X_SKIPWIN:
         mvi     a, NSCO             ; maximizing odd depths
         sta     V
-
-X_MMFOR:
         mvi     a, 0                ; the variable I will go from 0..8
         sta     I
 
@@ -133,15 +115,12 @@ X_MMLOOP:
         mov     c, a
         lxi     h, BOARD
         dad     b
-        mov     b, h
-        mov     c, l
-        ldax    b
-        cpi     0                   ; is the board space free?
+        mov     a, m
+        cpi     BLANKPIECE          ; is the board space free?
         jnz     X_MMLEND
 
-        mvi     a, XPIECE
-        stax    b                   ; make the move
-        push    b                   ; save the pointer to the board position for restoration later
+        mvi     m, XPIECE           ; make the move
+        push    h                   ; save the pointer to the board position for restoration later
 
         ; save state, recurse, and restore state
 
@@ -170,15 +149,14 @@ X_MMLOOP:
         pop     h
         shld    ALPHA               ; restore ALPHA and BETA
 
-        pop     b                   ; restore the 0 in the board where the turn was placed
-        mvi     a, 0
-        stax    b
+        pop     h
+        mvi     m, BLANKPIECE       ; restore the 0 in the board where the turn was placed
 
         lda     SC                  ; maximize case
         cpi     WSCO                ; V - WSCO. If zero, can't do better.
         rz
 
-        lda     SC
+        lda     SC                  ; check if we should update V with SC
         mov     b, a
         lda     V
         cmp     b                   ; V - SC
@@ -218,7 +196,7 @@ MM_MIN:                             ; the recursive scoring function
         mov     h, e
         shld    ALPHA               ; write alpha and beta
 
-        lhld    MOVES
+        lhld    MOVES               ; no 16-bit memory increment, so load in hl for that
         inx     h
         shld    MOVES
 
@@ -226,7 +204,7 @@ MM_MIN:                             ; the recursive scoring function
         cpi     4                   ; DEPTH - 4  (if 4 or fewer pieces played, no possible winner)
         jm      N_SKIPWIN
 
-        mov     a, b                        ; where the move was taken 0..8
+        mov     a, b                ; where the move was taken 0..8
         mvi     b, XPIECE           ; the piece that took the move
         call    CALLSCOREPROC       ; look for a winning position
 
@@ -242,8 +220,6 @@ MM_MIN:                             ; the recursive scoring function
 N_SKIPWIN:
         mvi     a, XSCO
         sta     V
-
-N_MMFOR:
         mvi     a, 0                ; the variable I will go from 0..8
         sta     I
 
@@ -252,15 +228,12 @@ N_MMLOOP:
         mov     c, a
         lxi     h, BOARD
         dad     b
-        mov     b, h
-        mov     c, l
-        ldax    b
-        cpi     0                   ; is the board space free?
+        mov     a, m
+        cpi     BLANKPIECE          ; is the board space free?
         jnz     N_MMLEND
 
-        mvi     a, OPIECE           ; store the move on the board
-        stax    b
-        push    b                   ; save the pointer to the board position for restoration later
+        mvi     m, OPIECE           ; make the move
+        push    h                   ; save the pointer to the board position for restoration later
 
         ; save state, recurse, and restore state
 
@@ -289,15 +262,14 @@ N_MMLOOP:
         pop     h
         shld    ALPHA               ; restore ALPHA and BETA
 
-        pop     b                   ; restore the 0 in the board where the turn was placed
-        mvi     a, 0
-        stax    b
+        pop     h
+        mvi     m, BLANKPIECE       ; restore the 0 in the board where the turn was placed
 
         lda     SC
         cpi     LSCO                ; V - LSCO. If zero, can't do worse.
         rz
 
-        lda     V
+        lda     V                   ; check if we should update V with SC
         mov     b, a
         lda     SC
         cmp     b                   ; SC - V

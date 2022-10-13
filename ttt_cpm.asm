@@ -94,6 +94,7 @@ DISDIG:                             ; Argument # 0-9 is in register B
         ret
 
 RUNMM:                              ; Run the MINMAX function for a given first move
+                                    ; D = alpha, E = beta, C = depth
         mov     d, a
         mvi     b, 0                ; store the first move
         mov     c, a
