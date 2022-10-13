@@ -6,9 +6,14 @@
 ; load tttcpm
 ; tttcpm
 ;
+; The board positions:
+;   0 1 2
+;   3 4 5
+;   6 7 8
+;
 ; Runs faster with USEWINPROCS equ 1
 
-; cp/m specific constants
+; cp/m-specific constants
 
 BDOS EQU  5
 WCONF EQU 2
@@ -39,13 +44,13 @@ org     100H
         sta     BETA
 
         mvi     a, 0                
-        call    RUNMM               ; first of 3 unique board configurations
+        call    RunMinMax           ; first of 3 unique board configurations
 
         mvi     a, 1
-        call    RUNMM               ; second
+        call    RunMinMax           ; second
 
         mvi     a, 4
-        call    RUNMM               ; third
+        call    RunMinMax           ; third
                                  
         lhld    ITERS               ; increment iteration count and loop until done
         inx     h
@@ -65,7 +70,7 @@ org     100H
 
         jmp 0                       ; cp/m call to terminate the app
 
-DISONE:                             ; display the character in a
+DisplayOneCharacter:                ; display the character in a
         push    b
         push    d
         push    h
@@ -79,23 +84,21 @@ DISONE:                             ; display the character in a
         pop     b
         ret
 
-DISDIG:                             ; Argument # 0-9 is in register B
+DisplayDigit:                       ; Argument # 0-9 is in register B
         push    b
         push    d
         push    h
 
         mvi     a, 48
         add     b
-        call    DISONE
+        call    DisplayOneCharacter
 
         pop     h
         pop     d
         pop     b
         ret
 
-RUNMM:                              ; Run the MINMAX function for a given first move
-                                    ; D = alpha, E = beta, C = depth
-        mov     d, a
+RunMinMax:                          ; Run the MINMAX function for a given first move
         mvi     b, 0                ; store the first move
         mov     c, a
         lxi     h, BOARD
@@ -103,18 +106,26 @@ RUNMM:                              ; Run the MINMAX function for a given first 
         mvi     m, XPIECE
         push    h                   ; save the pointer to the move location for later
 
-        mov     a, d                ; where the first move is: 0, 1, or 4
         mvi     d, NSCO             ; alpha
         mvi     e, XSCO             ; beta
         mvi     c, 0                ; depth
-        call    MM$MIN
+        call    MinMaxMinimize
 
         pop     h                   ; restore the move location
         mvi     m, BLANKPIECE       ; restore a blank on the board
 
         ret
 
-MM$MAX:                             ; the recursive scoring function
+; The 8080 has no simple way to address arguments or local variables relative to sp.
+; The approach here is to:
+;   1) pass arguments in a, c, d, and e (move position, depth, alpha, and beta respectively)
+;   2) store the arguments in global variables so they are easy to access
+;   3) when making a call, push the global variables on the stack
+;   4) when returning froma call, restore the global variables with popped stack values
+;   5) for tail functions, just pass arguments in registers with no stack or global usage for arguments
+; The extra copies to/from globals are expensive, but overall faster since accessing them is fast.
+
+MinMaxMaximize:                     ; the recursive scoring function
 IF USEWINPROCS
         mov     b, a                ; save where the move was taken
 ENDIF
@@ -130,12 +141,12 @@ ENDIF
 
         mov     a, c                ; # of pieces played so far == 1 + depth
         cpi     4                   ; DEPTH - 4  (if 4 or fewer pieces played, no possible winner)
-        jm      X$SKIPWIN
+        jm      MAX$SKIPWIN
 
 IF USEWINPROCS
         mov     a, b                ; where the move was taken 0..8
         mvi     b, OPIECE           ; the piece that took the move
-        call    CALLSCOREPROC       ; look for a winning position
+        call    CallScoreProc       ; look for a winning position
 ENDIF
 IF NOT USEWINPROCS
         call    WINNER              ; look for a winning position
@@ -145,20 +156,20 @@ ENDIF
         mvi     a, LSCO             ; losing score since O won
         rz
 
-  X$SKIPWIN:
+  MAX$SKIPWIN:
         mvi     a, NSCO             ; maximizing odd depths
         sta     V
         mvi     a, 0                ; the variable I will go from 0..8
         sta     I
 
-  X$MMLOOP:
+  MAX$MMLOOP:
         mvi     b, 0                ; check if we can write to this board position
         mov     c, a
         lxi     h, BOARD
         dad     b
         mov     a, m
         cpi     BLANKPIECE          ; is the board space free?
-        jnz     X$MMLEND
+        jnz     MAX$MMLEND
 
         mvi     m, XPIECE           ; make the move
         push    h                   ; save the pointer to the board position for restoration later
@@ -181,7 +192,7 @@ ENDIF
 
         ; A = Move position, D = alpha, E = beta, C = depth  ====> A = return score
 
-        call    MM$MIN
+        call    MinMaxMinimize
         sta     SC                  ; save the score
 
         pop     h                   ; restore state after recursion
@@ -203,35 +214,35 @@ ENDIF
         mov     b, a
         lda     V
         cmp     b                   ; V - SC
-        jp      X$MMNOMAX           ; jp is >= 0. The comparision is backwards due to no jle or jgz on 8080
+        jp      MAX$MMNOMAX         ; jp is >= 0. The comparision is backwards due to no jle or jgz on 8080
         mov     a, b
         sta     V                   ; update V with the new best score
-  X$MMNOMAX:
+  MAX$MMNOMAX:
         lda     ALPHA
         mov     b, a
         lda     V
         cmp     b                   ; V - ALPHA
-        jm      X$MMNOALP
+        jm      MAX$MMNOALP
         sta     ALPHA               ; new alpha
-  X$MMNOALP:
+  MAX$MMNOALP:
         lda     BETA
         mov     b, a
         lda     ALPHA
         cmp     b                   ; Alpha - Beta
-        jm      X$MMLEND
+        jm      MAX$MMLEND
         lda     V
         ret                         ; Alpha pruning
-  X$MMLEND:
+  MAX$MMLEND:
         lda     I
         inr     a
         sta     I
         cpi     9                   ; a - 9.  Want to loop for 0..8
-        jm      X$MMLOOP
+        jm      MAX$MMLOOP
 
         lda     V
         ret
 
-MM$MIN:                             ; the recursive scoring function
+MinMaxMinimize:                     ; the recursive scoring function
 IF USEWINPROCS
         mov     b, a                ; save where the move was taken
 ENDIF
@@ -247,12 +258,12 @@ ENDIF
 
         mov     a, c                ; # of pieces played so far == 1 + depth
         cpi     4                   ; DEPTH - 4  (if 4 or fewer pieces played, no possible winner)
-        jm      N$SKIPWIN
+        jm      MIN$SKIPWIN
 
 IF USEWINPROCS
         mov     a, b                ; where the move was taken 0..8
         mvi     b, XPIECE           ; the piece that took the move
-        call    CALLSCOREPROC       ; look for a winning position
+        call    CallScoreProc       ; look for a winning position
 ENDIF
 IF NOT USEWINPROCS
         call    WINNER              ; look for a winning position
@@ -267,20 +278,20 @@ ENDIF
         mvi     a, TSCO             ; tie score. avoid branch by always loading
         rz
 
-  N$SKIPWIN:
+  MIN$SKIPWIN:
         mvi     a, XSCO
         sta     V
         mvi     a, 0                ; the variable I will go from 0..8
         sta     I
 
-  N$MMLOOP:
+  MIN$MMLOOP:
         mvi     b, 0                ; check if we can write to this board position
         mov     c, a
         lxi     h, BOARD
         dad     b
         mov     a, m
         cpi     BLANKPIECE          ; is the board space free?
-        jnz     N$MMLEND
+        jnz     MIN$MMLEND
 
         mvi     m, OPIECE           ; make the move
         push    h                   ; save the pointer to the board position for restoration later
@@ -302,7 +313,7 @@ IF USEWINPROCS
 ENDIF        
         ; A = Move position, D = alpha, E = beta, C = depth  ====> A = return score
 
-        call    MM$MAX
+        call    MinMaxMaximize
         sta     SC                  ; save the score
 
         pop     h                   ; restore state after recursion
@@ -324,32 +335,32 @@ ENDIF
         mov     b, a
         lda     SC
         cmp     b                   ; SC - V
-        jp      N$MMNOMIN
+        jp      MIN$MMNOMIN
         sta     V
-  N$MMNOMIN:
+  MIN$MMNOMIN:
         lda     BETA
         mov     b, a
         lda     V
         cmp     b                   ; V - Beta
-        jp      N$MMNOBET
+        jp      MIN$MMNOBET
         sta     BETA                ; new beta
-  N$MMNOBET:
+  MIN$MMNOBET:
         mov     b, a
         lda     ALPHA
         cmp     b                   ; Alpha - Beta
         lda     V                   ; potentially wasted load, but saves a branch
         rp                          ; Beta pruning
-  N$MMLEND:
+  MIN$MMLEND:
         lda     I
         inr     a
         sta     I
         cpi     9                   ; a - 9.  Want to loop for 0..8
-        jm      N$MMLOOP
+        jm      MIN$MMLOOP
 
         lda     V
         ret
 
-WINNER:  ; returns winner ( 0 = TIE, 1 = X, 2 = O ) in register a
+WINNER: ; returns winner ( 0 = TIE, 1 = X, 2 = O ) in register a
         ;  0 1 2
         ;  3 4 5
         ;  6 7 8
@@ -456,7 +467,7 @@ DISPLY:                             ; display null-terminated string pointed to 
         ldax    b
         cpi     0
         jz      DDONE
-        call    DISONE
+        call    DisplayOneCharacter
         inx     b
         jmp     DNEXT
 
@@ -466,7 +477,7 @@ DISPLY:                             ; display null-terminated string pointed to 
         pop     h
         ret
 
-NEGHL:                             ; negate hl via twos complement -- complement + 1
+NEGHL:                              ; negate hl via twos complement -- complement + 1
         mov     a, h
         cma
         mov     h, a
@@ -515,7 +526,7 @@ IF USEWINPROCS
 
 ; a = the proc to call 0..8
 ; b = the player who just took a move, O or X
-CALLSCOREPROC:
+CallScoreProc:
         add      a                  ; double the move position because function pointers are two bytes
         lxi      h, WINPROCS        ; load the pointer to the list of function pointers 0..8
         mov      e, a               ; prepare to add
@@ -761,7 +772,6 @@ proc8:
 WINPROCS: dw    proc0, proc1, proc2, proc3, proc4, proc5, proc6, proc7, proc8
 
 ENDIF
-
                                     
 NEGF:   db      0                   ; Space for negative flag
         db      '-00000'            
@@ -777,7 +787,6 @@ ALPHA:  db      0                   ; Alpha in a/b pruning
 BETA:   db      0                   ; Beta in a/b pruning. must be after ALPHA
 MOVES:  dw      0                   ; Count of moves examined (to validate the app)
 ITERS:  dw      0                   ; iterations of running the app
-
 
 end
 
