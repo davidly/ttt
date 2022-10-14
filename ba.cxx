@@ -99,6 +99,7 @@ vector<LineOfCode> g_linesOfCode;
 
 enum AssemblyTarget : int { x86Win, x64Win, arm64Mac, i8080CPM, arm32Linux, mos6502Apple1, i8086DOS };
 AssemblyTarget g_AssemblyTarget = x64Win;
+bool g_i386Target686 = true; // true for Pentium 686 cmovX instructions, false for generic 386
 
 enum Token : int { 
     VARIABLE, GOSUB, GOTO, PRINT, RETURN, END,                     // statements
@@ -443,6 +444,7 @@ static void Usage()
     printf( "                                  d -- Generate 16-bit 8086 DOS ml /AT /omf /c compatible assembler code to filename.asm\n" );
     printf( "                                  3 -- Generate 32-bit Linux arm32 armv8 'gcc / as' compatible assembler code to filename.s\n" );
     printf( "                                  i -- Generate 32-bit i386 (686) Windows x86 'ml' compatible assembler code to filename.asm\n" );
+    printf( "                                  I -- Generate 32-bit i386 (386) Windows 98 'ml' compatible assembler code to filename.asm\n" );
     printf( "                                  m -- Generate 64-bit Mac 'as -arch arm64' compatible assembler code to filename.s\n" );
     printf( "                                  x -- Generate 64-bit Windows x64 'ml64' compatible assembler code to filename.asm\n" );
     printf( "                 -e               Show execution count and time for each line\n" );
@@ -4311,15 +4313,29 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
     }
     else if ( x86Win == g_AssemblyTarget )
     {
-        fprintf( fp, "; Build on Windows in a Visual Studio vcvars32.bat cmd window using a .bat script like this:\n" );
-        fprintf( fp, "; ml /nologo %%1.asm /Fl /Zd /Zf /Zi /link /OPT:REF /nologo ^\n" );
-        fprintf( fp, ";        /subsystem:console ^\n" );
-        fprintf( fp, ";        /defaultlib:kernel32.lib ^\n" );
-        fprintf( fp, ";        /defaultlib:user32.lib ^\n" );
-        fprintf( fp, ";        /defaultlib:libucrt.lib ^\n" );
-        fprintf( fp, ";        /defaultlib:libcmt.lib ^\n" );
-        fprintf( fp, ";        /entry:mainCRTStartup\n" );
-        fprintf( fp, ".686       ; released by Intel in 1995. First Intel cpu to have cmovX instructions\n" );
+        if ( g_i386Target686 )
+        {
+            fprintf( fp, "; Build on Windows in a Visual Studio vcvars32.bat cmd window using a .bat script like this:\n" );
+            fprintf( fp, "; ml /nologo %%1.asm /Fl /Zd /Zf /Zi /link /OPT:REF /nologo ^\n" );
+            fprintf( fp, ";        /subsystem:console ^\n" );
+            fprintf( fp, ";        /defaultlib:kernel32.lib ^\n" );
+            fprintf( fp, ";        /defaultlib:user32.lib ^\n" );
+            fprintf( fp, ";        /defaultlib:libucrt.lib ^\n" );
+            fprintf( fp, ";        /defaultlib:libcmt.lib ^\n" );
+            fprintf( fp, ";        /defaultlib:legacy_stdio_definitions.lib ^\n" );
+            fprintf( fp, ";        /entry:mainCRTStartup\n" );
+            fprintf( fp, ".686       ; released by Intel in 1995. First Intel cpu to have cmovX instructions\n" );
+        }
+        else
+        {
+            fprintf( fp, "; Build on Windows 98 using ml 7.x like this:\n" );
+            fprintf( fp, ";   ml /c samplem.asm\n" );
+            fprintf( fp, ";   link sample.obj /defaultlib:msvcrt.lib /entry:mainCRTStartup\n" );
+            fprintf( fp, "; If you try to build on modern Windows, _printf will be unresolved.\n" );
+            fprintf( fp, ";    workaround: add /defaultlib:legacy_stdio_definitions.lib\n" );
+            fprintf( fp, ".386\n" );
+        }
+
         fprintf( fp, ".model flat, c\n" );
         fprintf( fp, "\n" );
         fprintf( fp, "extern QueryPerformanceCounter@4: PROC\n" );
@@ -4329,7 +4345,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "extern CloseHandle@4: PROC\n" );
         fprintf( fp, "extern GetLocalTime@4: PROC\n" );
         fprintf( fp, "\n" );
-        fprintf( fp, "includelib legacy_stdio_definitions.lib\n" );
+
         fprintf( fp, "extern printf: proc\n" );
         fprintf( fp, "extern exit: proc\n" );
         fprintf( fp, "data_segment SEGMENT 'DATA'\n" );
@@ -6617,6 +6633,7 @@ label_no_array_eq_optimization:
                 else if ( i8080CPM != g_AssemblyTarget &&
                           mos6502Apple1 != g_AssemblyTarget &&
                           i8086DOS != g_AssemblyTarget &&
+                          ( !( ( x86Win == g_AssemblyTarget ) && !g_i386Target686 ) ) &&
                           10 == vals.size() &&
                           4 == vals[ t ].value &&
                           Token::VARIABLE == vals[ t + 1 ].token &&
@@ -6945,12 +6962,28 @@ label_no_array_eq_optimization:
                     // token  13 EXPRESSION, value 2, strValue ''
                     // token  14 CONSTANT, value 9, strValue ''
 
-                    if ( x64Win == g_AssemblyTarget || x86Win == g_AssemblyTarget )
+                    if ( x64Win == g_AssemblyTarget )
                     {
                         fprintf( fp, "    mov      %s, %d\n", GenVariableReg( varmap, vals[ t + 5 ].strValue ) , vals[ t + 13 ].value );
                         fprintf( fp, "    mov      eax, %d\n", vals[ t + 8 ].value );
                         fprintf( fp, "    test     %s, 1\n", GenVariableReg( varmap, vals[ t + 1 ].strValue ) );
                         fprintf( fp, "    cmovnz   %s, eax\n", GenVariableReg( varmap, vals[ t + 5 ].strValue ) );
+                    }
+                    if ( x86Win == g_AssemblyTarget )
+                    {
+                        fprintf( fp, "    mov      %s, %d\n", GenVariableReg( varmap, vals[ t + 5 ].strValue ) , vals[ t + 13 ].value );
+                        fprintf( fp, "    test     %s, 1\n", GenVariableReg( varmap, vals[ t + 1 ].strValue ) );
+
+                        if ( g_i386Target686 )
+                        {
+                            fprintf( fp, "    mov      eax, %d\n", vals[ t + 8 ].value );
+                            fprintf( fp, "    cmovnz   %s, eax\n", GenVariableReg( varmap, vals[ t + 5 ].strValue ) );
+                        }
+                        else
+                        {
+                            fprintf( fp, "    jz       line_number_%zd\n", l + 1 );
+                            fprintf( fp, "    mov      %s, %d\n", GenVariableReg( varmap, vals[ t + 5 ].strValue ), vals[ t + 8 ].value );
+                        }
                     }
                     else if ( arm64Mac == g_AssemblyTarget )
                     {
@@ -7198,6 +7231,7 @@ label_no_array_eq_optimization:
                           mos6502Apple1 != g_AssemblyTarget &&
                           i8086DOS != g_AssemblyTarget &&
                           arm32Linux != g_AssemblyTarget &&
+                          ( !( ( x86Win == g_AssemblyTarget ) && !g_i386Target686 ) ) &&
                           11 == vals.size() &&
                           4 == vals[ t ].value &&
                           Token::VARIABLE == vals[ t + 1 ].token &&
@@ -10092,7 +10126,11 @@ extern int main( int argc, char *argv[] )
                 else if ( 'd' == a )
                     g_AssemblyTarget = i8086DOS;
                 else if ( 'i' == a )
+                {
                     g_AssemblyTarget = x86Win;
+                    if ( 'I' == parg[ 3 ] )
+                        g_i386Target686 = false;
+                }
                 else
                     Usage();
             }
