@@ -11,6 +11,8 @@
 ;        6 | 7 | 8
 ;
 ; Only first moves 0, 1, and 4 are solved since other first moves are reflections
+;
+; This prints elapsed time in two ways because Windows 98 produced different results
 
 iterations       equ     100000         ; # of times to solve the boards
 DEBUG            equ     0              ; 1 for debug tracing, 0 otherwise
@@ -29,8 +31,9 @@ extern QueryPerformanceFrequency@4: PROC
 extern CreateThread@24: PROC
 extern WaitForSingleObject@8: PROC
 extern CloseHandle@4: PROC
+extern GetTickCount@0: PROC
 
-includelib legacy_stdio_definitions.lib
+includelib kernel32.lib
 extern printf: proc
 
 maximum_score    equ     9              ; maximum score
@@ -73,9 +76,12 @@ data_ttt SEGMENT 'DATA'
 
     WINPROCS      dd     proc0, proc1, proc2, proc3, proc4, proc5, proc6, proc7, proc8
 
+    tickCountPrior dd    0
+    tickCountNow  dd     0
+    threadID      dd     0
     moveCount     dd     0
     moveStr       db     'moves: %d', 10, 13, 0
-
+    tickStr       db     'ticks: %d', 10, 13, 0
     iterStr       db     'for %d iterations', 10, 13, 0
     elapStr       db     '%d milliseconds', 10, 13, 0
 
@@ -93,9 +99,6 @@ main PROC ; linking with the C runtime, so main will be invoked
     push     edi
     push     esi
 
-    push     offset priorTicks
-    call     QueryPerformanceCounter@4
-
     push     offset perfFrequency
     call     QueryPerformanceFrequency@4
     mov      eax, DWORD PTR [perfFrequency]
@@ -104,6 +107,12 @@ main PROC ; linking with the C runtime, so main will be invoked
     div      ecx
     mov      DWORD PTR [perfFrequency], eax
 
+    call     GetTickCount@0
+    mov      DWORD PTR [tickCountPrior], eax
+
+    push     offset priorTicks
+    call     QueryPerformanceCounter@4
+
     push     0
     call     TTTThreadProc
     push     1
@@ -111,10 +120,28 @@ main PROC ; linking with the C runtime, so main will be invoked
     push     4
     call     TTTThreadProc
 
+    call     GetTickCount@0
+    sub      eax, DWORD PTR [tickCountPrior]
+    push     eax
+    push     offset tickStr
+    call     printf
+    add      esp, 8
+
     call     show_duration
     call     show_move_count
 
+    call     GetTickCount@0
+    mov      DWORD PTR [tickCountPrior], eax
+
     call     solve_threaded
+
+    call     GetTickCount@0
+    sub      eax, DWORD PTR [tickCountPrior]
+    push     eax
+    push     offset tickStr
+    call     printf
+    add      esp, 8
+
     call     show_duration
     call     show_move_count
 
@@ -192,7 +219,7 @@ solve_threaded PROC
     push     edi
     push     esi
 
-    push     0                          ; no thread id
+    push     offset threadID            ; win9x requires non-0 thread id pointer
     push     0                          ; no creation flags
     push     4                          ; argument to the call: board4
     push     offset TTTThreadProc       ; the function to call
@@ -201,7 +228,7 @@ solve_threaded PROC
     call     CreateThread@24
     mov      DWORD PTR [ ebp - 4 ], eax ; save the thread handle
 
-    push     0                          ; no thread id
+    push     offset threadID            ; win9x requires non-0 thread id pointer
     push     0                          ; no creation flags
     push     1                          ; argument to the call: board1
     push     offset TTTThreadProc       ; the function to call
