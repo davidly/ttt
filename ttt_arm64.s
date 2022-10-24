@@ -29,8 +29,6 @@
     moveCount:       .quad 0
     pthread1:        .quad 0
     pthread4:        .quad 0
-    threadattr1:     .quad 0
-    threadattr4:     .quad 0
     elapString:      .asciz "%lld microseconds (-6)\n"
     movecountString: .asciz "%d moves\n"
  
@@ -433,255 +431,255 @@ call_printf:
 .globl _pos0func
 .p2align 2
 _pos0func:
-	.cfi_startproc
-	ldrb	 w9, [x21, #1]
-	cmp      w0, w9
-	b.ne	 LBB3_2
-	ldrb	 w9, [x21, #2]
-	cmp      w0, w9
-	b.eq	 LBB3_7
+        .cfi_startproc
+        ldrb     w9, [x21, #1]
+        cmp      w0, w9
+        b.ne     LBB3_2
+        ldrb     w9, [x21, #2]
+        cmp      w0, w9
+        b.eq     LBB3_7
   LBB3_2:
-	ldrb	 w9, [x21, #3]
-	cmp      w0, w9
-	b.ne	 LBB3_4
-	ldrb	 w9, [x21, #6]
-	cmp      w0, w9
-	b.eq	 LBB3_7
+        ldrb     w9, [x21, #3]
+        cmp      w0, w9
+        b.ne     LBB3_4
+        ldrb     w9, [x21, #6]
+        cmp      w0, w9
+        b.eq     LBB3_7
   LBB3_4:
-	ldrb	 w9, [x21, #4]
-	cmp      w0, w9
-	b.ne	 LBB3_6
-	ldrb	 w8, [x21, #8]
-	cmp      w0, w8
-	b.eq	 LBB3_7
+        ldrb     w9, [x21, #4]
+        cmp      w0, w9
+        b.ne     LBB3_6
+        ldrb     w8, [x21, #8]
+        cmp      w0, w8
+        b.eq     LBB3_7
   LBB3_6:
-	mov      w0, #0
+        mov      w0, #0
   LBB3_7:
-	ret
-	.cfi_endproc
+        ret
+        .cfi_endproc
 
 .globl _pos1func
 .p2align 2
 _pos1func:
-	.cfi_startproc
-	ldrb	 w9, [x21]
-	cmp      w0, w9
-	b.ne	 LBB4_2
-	ldrb	 w9, [x21, #2]
-	cmp      w0, w9
-	b.eq	 LBB4_5
+        .cfi_startproc
+        ldrb     w9, [x21]
+        cmp      w0, w9
+        b.ne     LBB4_2
+        ldrb     w9, [x21, #2]
+        cmp      w0, w9
+        b.eq     LBB4_5
   LBB4_2:
-	ldrb     w9, [x21, #4]
-	cmp      w0, w9
-	b.ne	 LBB4_4
-	ldrb	 w8, [x21, #7]
-	cmp      w0, w8
-	b.eq	 LBB4_5
+        ldrb     w9, [x21, #4]
+        cmp      w0, w9
+        b.ne     LBB4_4
+        ldrb     w8, [x21, #7]
+        cmp      w0, w8
+        b.eq     LBB4_5
   LBB4_4:
-	mov      w0, #0
+        mov      w0, #0
   LBB4_5:
-	ret
-	.cfi_endproc
+        ret
+        .cfi_endproc
                      
 .globl _pos2func
 .p2align 2
 _pos2func:
-	.cfi_startproc
-	ldrb	 w9, [x21]
-	cmp      w0, w9
-	b.ne	 LBB5_2
-	ldrb	 w9, [x21, #1]
-	cmp      w0, w9
-	b.eq	 LBB5_7
+        .cfi_startproc
+        ldrb     w9, [x21]
+        cmp      w0, w9
+        b.ne     LBB5_2
+        ldrb     w9, [x21, #1]
+        cmp      w0, w9
+        b.eq     LBB5_7
   LBB5_2:
-	ldrb	 w9, [x21, #5]
-	cmp	     w0, w9
-	b.ne	 LBB5_4
-	ldrb 	 w9, [x21, #8]
-	cmp      w0, w9
-	b.eq	 LBB5_7
+        ldrb     w9, [x21, #5]
+        cmp          w0, w9
+        b.ne     LBB5_4
+        ldrb     w9, [x21, #8]
+        cmp      w0, w9
+        b.eq     LBB5_7
   LBB5_4:
-	ldrb	 w9, [x21, #4]
-	cmp      w0, w9
-	b.ne	 LBB5_6
-	ldrb	 w8, [x21, #6]
-	cmp      w0, w8
-	b.eq	 LBB5_7
+        ldrb     w9, [x21, #4]
+        cmp      w0, w9
+        b.ne     LBB5_6
+        ldrb     w8, [x21, #6]
+        cmp      w0, w8
+        b.eq     LBB5_7
   LBB5_6:
-	mov      w0, #0
+        mov      w0, #0
   LBB5_7:
-	ret
-	.cfi_endproc
+        ret
+        .cfi_endproc
                      
 .globl _pos3func
 .p2align 2
 _pos3func:
-	.cfi_startproc
-	ldrb	 w9, [x21, #4]
-	cmp      w0, w9
-	b.ne	 LBB6_2
-	ldrb	 w9, [x21, #5]
-	cmp      w0, w9
-	b.eq	 LBB6_5
+        .cfi_startproc
+        ldrb     w9, [x21, #4]
+        cmp      w0, w9
+        b.ne     LBB6_2
+        ldrb     w9, [x21, #5]
+        cmp      w0, w9
+        b.eq     LBB6_5
   LBB6_2:
-	ldrb	 w9, [x21]
-	cmp      w0, w9
-	b.ne	 LBB6_4
-	ldrb	 w8, [x21, #6]
-	cmp      w0, w8
-	b.eq	 LBB6_5
+        ldrb     w9, [x21]
+        cmp      w0, w9
+        b.ne     LBB6_4
+        ldrb     w8, [x21, #6]
+        cmp      w0, w8
+        b.eq     LBB6_5
   LBB6_4:
-	mov      w0, #0
+        mov      w0, #0
   LBB6_5:
-	ret
-	.cfi_endproc
+        ret
+        .cfi_endproc
 
 .globl _pos4func
 .p2align 2
 _pos4func:
-	.cfi_startproc
-	ldrb	 w9, [x21]
-	cmp      w0, w9
-	b.ne	 LBB7_2
-	ldrb	 w9, [x21, #8]
-	cmp      w0, w9
-	b.eq	 LBB7_9
+        .cfi_startproc
+        ldrb     w9, [x21]
+        cmp      w0, w9
+        b.ne     LBB7_2
+        ldrb     w9, [x21, #8]
+        cmp      w0, w9
+        b.eq     LBB7_9
   LBB7_2:
-	ldrb	 w9, [x21, #2]
-	cmp	     w0, w9
-	b.ne	 LBB7_4
-	ldrb	 w9, [x21, #6]
-	cmp      w0, w9
-	b.eq	 LBB7_9
+        ldrb     w9, [x21, #2]
+        cmp          w0, w9
+        b.ne     LBB7_4
+        ldrb     w9, [x21, #6]
+        cmp      w0, w9
+        b.eq     LBB7_9
   LBB7_4:
-	ldrb	 w9, [x21, #1]
-	cmp      w0, w9
-	b.ne	 LBB7_6
-	ldrb	 w9, [x21, #7]
-	cmp      w0, w9
-	b.eq	 LBB7_9
+        ldrb     w9, [x21, #1]
+        cmp      w0, w9
+        b.ne     LBB7_6
+        ldrb     w9, [x21, #7]
+        cmp      w0, w9
+        b.eq     LBB7_9
   LBB7_6:
-	ldrb	 w9, [x21, #3]
-	cmp      w0, w9
-	b.ne	 LBB7_8
-	ldrb	 w8, [x21, #5]
-	cmp      w0, w8
-	b.eq	 LBB7_9
+        ldrb     w9, [x21, #3]
+        cmp      w0, w9
+        b.ne     LBB7_8
+        ldrb     w8, [x21, #5]
+        cmp      w0, w8
+        b.eq     LBB7_9
   LBB7_8:
-	mov      w0, #0
+        mov      w0, #0
   LBB7_9:
-	ret
-	.cfi_endproc
+        ret
+        .cfi_endproc
 
 .globl _pos5func
 .p2align 2
 _pos5func:
-	.cfi_startproc
-	ldrb	 w9, [x21, #3]
-	cmp      w0, w9
-	b.ne	 LBB8_2
-	ldrb	 w9, [x21, #4]
-	cmp      w0, w9
-	b.eq	 LBB8_5
+        .cfi_startproc
+        ldrb     w9, [x21, #3]
+        cmp      w0, w9
+        b.ne     LBB8_2
+        ldrb     w9, [x21, #4]
+        cmp      w0, w9
+        b.eq     LBB8_5
   LBB8_2:
-	ldrb	 w9, [x21, #2]
-	cmp      w0, w9
-	b.ne	 LBB8_4
-	ldrb	 w8, [x21, #8]
-	cmp      w0, w8
-	b.eq	 LBB8_5
+        ldrb     w9, [x21, #2]
+        cmp      w0, w9
+        b.ne     LBB8_4
+        ldrb     w8, [x21, #8]
+        cmp      w0, w8
+        b.eq     LBB8_5
   LBB8_4:
-	mov      w0, #0
+        mov      w0, #0
   LBB8_5:
-	ret
-	.cfi_endproc
+        ret
+        .cfi_endproc
 
 .globl _pos6func
 .p2align 2
 _pos6func:
-	.cfi_startproc
-	ldrb	 w9, [x21, #7]
-	cmp      w0, w9
-	b.ne	 LBB9_2
-	ldrb	 w9, [x21, #8]
-	cmp      w0, w9
-	b.eq	 LBB9_7
+        .cfi_startproc
+        ldrb     w9, [x21, #7]
+        cmp      w0, w9
+        b.ne     LBB9_2
+        ldrb     w9, [x21, #8]
+        cmp      w0, w9
+        b.eq     LBB9_7
   LBB9_2:
-	ldrb	 w9, [x21]
-	cmp      w0, w9
-	b.ne	 LBB9_4
-	ldrb     w9, [x21, #3]
-	cmp      w0, w9
-	b.eq	 LBB9_7
+        ldrb     w9, [x21]
+        cmp      w0, w9
+        b.ne     LBB9_4
+        ldrb     w9, [x21, #3]
+        cmp      w0, w9
+        b.eq     LBB9_7
   LBB9_4:
-	ldrb	 w9, [x21, #4]
-	cmp      w0, w9
-	b.ne	 LBB9_6
-	ldrb	 w8, [x21, #2]
-	cmp      w0, w8
-	b.eq	 LBB9_7
+        ldrb     w9, [x21, #4]
+        cmp      w0, w9
+        b.ne     LBB9_6
+        ldrb     w8, [x21, #2]
+        cmp      w0, w8
+        b.eq     LBB9_7
   LBB9_6:
-	mov      w0, #0
+        mov      w0, #0
   LBB9_7:
-	ret
-	.cfi_endproc
+        ret
+        .cfi_endproc
                   
 .globl _pos7func
 .p2align 2
 _pos7func:
-	.cfi_startproc
-	ldrb	 w9, [x21, #6]
-	cmp      w0, w9
-	b.ne	 LBB10_2
-	ldrb	 w9, [x21, #8]
-	cmp      w0, w9
-	b.eq	 LBB10_5
+        .cfi_startproc
+        ldrb     w9, [x21, #6]
+        cmp      w0, w9
+        b.ne     LBB10_2
+        ldrb     w9, [x21, #8]
+        cmp      w0, w9
+        b.eq     LBB10_5
   LBB10_2:
-	ldrb	 w9, [x21, #1]
-	cmp      w0, w9
-	b.ne	 LBB10_4
-	ldrb	 w9, [x21, #4]
-	cmp      w0, w9
-	b.eq	 LBB10_5
+        ldrb     w9, [x21, #1]
+        cmp      w0, w9
+        b.ne     LBB10_4
+        ldrb     w9, [x21, #4]
+        cmp      w0, w9
+        b.eq     LBB10_5
   LBB10_4:
-	mov      w0, #0
+        mov      w0, #0
   LBB10_5:
-	ret
-	.cfi_endproc
+        ret
+        .cfi_endproc
 
 .globl _pos8func
 .p2align 2
 _pos8func:
-	.cfi_startproc
-	ldrb	 w9, [x21, #6]
-	cmp      w0, w9
-	b.ne	 LBB11_2
-	ldrb	 w9, [x21, #7]
-	cmp      w0, w9
-	b.eq	 LBB11_7
+        .cfi_startproc
+        ldrb     w9, [x21, #6]
+        cmp      w0, w9
+        b.ne     LBB11_2
+        ldrb     w9, [x21, #7]
+        cmp      w0, w9
+        b.eq     LBB11_7
   LBB11_2:
-	ldrb	 w9, [x21, #2]
-	cmp      w0, w9
-	b.ne	 LBB11_4
-	ldrb	 w9, [x21, #5]
-	cmp      w0, w9
-	b.eq	 LBB11_7
+        ldrb     w9, [x21, #2]
+        cmp      w0, w9
+        b.ne     LBB11_4
+        ldrb     w9, [x21, #5]
+        cmp      w0, w9
+        b.eq     LBB11_7
   LBB11_4:
-	ldrb	 w9, [x21]
-	cmp      w0, w9
-	b.ne	 LBB11_6
-	ldrb	 w8, [x21, #4]
-	cmp      w0, w8
-	b.eq	 LBB11_7
+        ldrb     w9, [x21]
+        cmp      w0, w9
+        b.ne     LBB11_6
+        ldrb     w8, [x21, #4]
+        cmp      w0, w8
+        b.eq     LBB11_7
   LBB11_6:
-	mov      w0, #0
+        mov      w0, #0
   LBB11_7:
-	ret
-	.cfi_endproc
+        ret
+        .cfi_endproc
 
 .section __DATA, __data
 .globl _winner_functions
-	.p2align 3
+        .p2align 3
 _winner_functions:
     .quad _pos0func
     .quad _pos1func
