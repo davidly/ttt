@@ -8,7 +8,7 @@ dos_write_char     equ   2h
 dos_get_systemtime equ   1ah
 dos_exit           equ   4ch
 
-iterations  equ     100   ; # of times to run (max 32767)
+iterations  equ     10000   ; # of times to run (max 32767)
 max_score   equ     9   ; maximum score
 min_score   equ     2   ; minimum score
 win_score   equ     6   ; winning score
@@ -69,6 +69,14 @@ again:
         int      21h
 
         mov      ax, ds: [MOVES]
+        call     printint
+        call     printcrlf
+
+        mov      ah, dos_write_string
+        mov      dx, offset itersmsg
+        int      21h
+
+        mov      ax, iterations
         call     printint
         call     printcrlf
 
@@ -837,6 +845,7 @@ proc8 ENDP
 crlfmsg    db      13,10,'$'
 secondsmsg db      ' seconds',13,10,'$'
 movesmsg   db      'moves: ','$'
+itersmsg   db      'iterations: ','$'
 commaspmsg db      ', ','$'
 board      db      0,0,0,0,0,0,0,0,0
 
