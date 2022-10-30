@@ -1,3 +1,6 @@
+// this version uses PPL and OpenMP. It's slower than ttt_all.cxx, which uses threads more directly. This version is obsolete.
+//
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
