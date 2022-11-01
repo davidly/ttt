@@ -3,6 +3,13 @@
 ;    link ttt_arm64.obj /nologo /defaultlib:libucrt.lib /defaultlib:libcmt.lib /defaultlib:kernel32.lib ^
 ;        /defaultlib:legacy_stdio_definitions.lib /entry:mainCRTStartup /subsystem:console
 ;
+; differences from the M1/Apple version:
+;     - printf varargs argument passing is different
+;     - Win32 CreateThread vs. posix pthread API
+;     - loading 64 bit constants and variable labels is different
+;     - directives for data/code segments, labels, proc start and end, data statements, equ statements, alignment fill semantics.
+; 
+;
 
       IMPORT |printf|
       IMPORT |CreateThread|
@@ -22,6 +29,7 @@ blank_piece equ 0
 
       AREA |.data|, DATA, align=6, codealign
   ; allocate separate boards for the 3 unique starting moves so multiple threads can solve in parallel
+  ; cache lines are 64 bytes, so put each on separate cache lines
   align 64
 board0 DCB 1,0,0,0,0,0,0,0,0
   align 64 
@@ -29,11 +37,9 @@ board1 DCB 0,1,0,0,0,0,0,0,0
   align 64
 board4 DCB 0,0,0,0,1,0,0,0,0
 
-  align 16
+  align 64
 priorTicks      dcq 0
 moveCount       dcq 0
-hthread1        dcq 0
-hthread4        dcq 0
 elapString      dcb "%lld microseconds (-6)\n", 0
 itersString     dcb "%d iterations\n", 0
 movecountString dcb "%d moves\n", 0
@@ -69,7 +75,7 @@ main PROC; linking with the C runtime, so main will be invoked
     ldr      x1, =iterations
     adrp     x0, itersString
     add      x0, x0, itersString
-    bl       call_printf
+    bl       printf
 
     mov      x0, 0
     ldp      x29, x30, [sp, #16]
@@ -95,7 +101,7 @@ _print_elapsed_time PROC
     udiv     x1, x1, x2
     adrp     x0, elapString
     add      x0, x0, elapString
-    bl       call_printf
+    bl       printf
     
     ldp      x29, x30, [sp, #16]
     add      sp, sp, #32
@@ -114,7 +120,7 @@ _print_movecount PROC
     str      xzr, [x0]                    ; reset moveCount to 0   
     adrp     x0, movecountString
     add      x0, x0, movecountString
-    bl       call_printf
+    bl       printf
 
     ldp      x29, x30, [sp, #16]
     add      sp, sp, #32
@@ -432,42 +438,30 @@ _minmax_min_done
     ENDP
 
   align 16
-call_printf PROC
-    sub      sp, sp, #32
-    stp      x29, x30, [sp, #16]
-    add      x29, sp, #16
-    str      x1, [sp]
-    bl       printf
-    ldp      x29, x30, [sp, #16]
-    add      sp, sp, #32
-    ret
-    ENDP
-
-  align 16
 _pos0func PROC
         ldrb     w9, [x21, #1]
         cmp      w0, w9
-        b.ne     LBB3_2
+        b.ne     LBB0_2
         ldrb     w9, [x21, #2]
         cmp      w0, w9
-        b.eq     LBB3_7
-LBB3_2
+        b.eq     LBB0_7
+LBB0_2
         ldrb     w9, [x21, #3]
         cmp      w0, w9
-        b.ne     LBB3_4
+        b.ne     LBB0_4
         ldrb     w9, [x21, #6]
         cmp      w0, w9
-        b.eq     LBB3_7
-LBB3_4
+        b.eq     LBB0_7
+LBB0_4
         ldrb     w9, [x21, #4]
         cmp      w0, w9
-        b.ne     LBB3_6
+        b.ne     LBB0_6
         ldrb     w8, [x21, #8]
         cmp      w0, w8
-        b.eq     LBB3_7
-LBB3_6
+        b.eq     LBB0_7
+LBB0_6
         mov      w0, #0
-LBB3_7
+LBB0_7
         ret
         ENDP
 
@@ -475,20 +469,20 @@ LBB3_7
 _pos1func PROC
         ldrb     w9, [x21]
         cmp      w0, w9
-        b.ne     LBB4_2
+        b.ne     LBB1_2
         ldrb     w9, [x21, #2]
         cmp      w0, w9
-        b.eq     LBB4_5
-LBB4_2
+        b.eq     LBB1_5
+LBB1_2
         ldrb     w9, [x21, #4]
         cmp      w0, w9
-        b.ne     LBB4_4
+        b.ne     LBB1_4
         ldrb     w8, [x21, #7]
         cmp      w0, w8
-        b.eq     LBB4_5
-LBB4_4
+        b.eq     LBB1_5
+LBB1_4
         mov      w0, #0
-LBB4_5
+LBB1_5
         ret
         ENDP
                      
@@ -496,27 +490,27 @@ LBB4_5
 _pos2func PROC
         ldrb     w9, [x21]
         cmp      w0, w9
-        b.ne     LBB5_2
+        b.ne     LBB2_2
         ldrb     w9, [x21, #1]
         cmp      w0, w9
-        b.eq     LBB5_7
-LBB5_2
+        b.eq     LBB2_7
+LBB2_2
         ldrb     w9, [x21, #5]
         cmp          w0, w9
-        b.ne     LBB5_4
+        b.ne     LBB2_4
         ldrb     w9, [x21, #8]
         cmp      w0, w9
-        b.eq     LBB5_7
-LBB5_4
+        b.eq     LBB2_7
+LBB2_4
         ldrb     w9, [x21, #4]
         cmp      w0, w9
-        b.ne     LBB5_6
+        b.ne     LBB2_6
         ldrb     w8, [x21, #6]
         cmp      w0, w8
-        b.eq     LBB5_7
-LBB5_6
+        b.eq     LBB2_7
+LBB2_6
         mov      w0, #0
-LBB5_7
+LBB2_7
         ret
         ENDP
                      
@@ -524,20 +518,20 @@ LBB5_7
 _pos3func PROC
         ldrb     w9, [x21, #4]
         cmp      w0, w9
-        b.ne     LBB6_2
+        b.ne     LBB3_2
         ldrb     w9, [x21, #5]
         cmp      w0, w9
-        b.eq     LBB6_5
-LBB6_2
+        b.eq     LBB3_5
+LBB3_2
         ldrb     w9, [x21]
         cmp      w0, w9
-        b.ne     LBB6_4
+        b.ne     LBB3_4
         ldrb     w8, [x21, #6]
         cmp      w0, w8
-        b.eq     LBB6_5
-LBB6_4
+        b.eq     LBB3_5
+LBB3_4
         mov      w0, #0
-LBB6_5
+LBB3_5
         ret
         ENDP
 
@@ -545,34 +539,34 @@ LBB6_5
 _pos4func PROC
         ldrb     w9, [x21]
         cmp      w0, w9
-        b.ne     LBB7_2
+        b.ne     LBB4_2
         ldrb     w9, [x21, #8]
         cmp      w0, w9
-        b.eq     LBB7_9
-LBB7_2
+        b.eq     LBB4_9
+LBB4_2
         ldrb     w9, [x21, #2]
         cmp          w0, w9
-        b.ne     LBB7_4
+        b.ne     LBB4_4
         ldrb     w9, [x21, #6]
         cmp      w0, w9
-        b.eq     LBB7_9
-LBB7_4
+        b.eq     LBB4_9
+LBB4_4
         ldrb     w9, [x21, #1]
         cmp      w0, w9
-        b.ne     LBB7_6
+        b.ne     LBB4_6
         ldrb     w9, [x21, #7]
         cmp      w0, w9
-        b.eq     LBB7_9
-LBB7_6
+        b.eq     LBB4_9
+LBB4_6
         ldrb     w9, [x21, #3]
         cmp      w0, w9
-        b.ne     LBB7_8
+        b.ne     LBB4_8
         ldrb     w8, [x21, #5]
         cmp      w0, w8
-        b.eq     LBB7_9
-LBB7_8
+        b.eq     LBB4_9
+LBB4_8
         mov      w0, #0
-LBB7_9
+LBB4_9
         ret
         ENDP
 
@@ -580,20 +574,20 @@ LBB7_9
 _pos5func PROC
         ldrb     w9, [x21, #3]
         cmp      w0, w9
-        b.ne     LBB8_2
+        b.ne     LBB5_2
         ldrb     w9, [x21, #4]
         cmp      w0, w9
-        b.eq     LBB8_5
-LBB8_2
+        b.eq     LBB5_5
+LBB5_2
         ldrb     w9, [x21, #2]
         cmp      w0, w9
-        b.ne     LBB8_4
+        b.ne     LBB5_4
         ldrb     w8, [x21, #8]
         cmp      w0, w8
-        b.eq     LBB8_5
-LBB8_4
+        b.eq     LBB5_5
+LBB5_4
         mov      w0, #0
-LBB8_5
+LBB5_5
         ret
         ENDP
 
@@ -601,27 +595,27 @@ LBB8_5
 _pos6func PROC
         ldrb     w9, [x21, #7]
         cmp      w0, w9
-        b.ne     LBB9_2
+        b.ne     LBB6_2
         ldrb     w9, [x21, #8]
         cmp      w0, w9
-        b.eq     LBB9_7
-LBB9_2
+        b.eq     LBB6_7
+LBB6_2
         ldrb     w9, [x21]
         cmp      w0, w9
-        b.ne     LBB9_4
+        b.ne     LBB6_4
         ldrb     w9, [x21, #3]
         cmp      w0, w9
-        b.eq     LBB9_7
-LBB9_4
+        b.eq     LBB6_7
+LBB6_4
         ldrb     w9, [x21, #4]
         cmp      w0, w9
-        b.ne     LBB9_6
+        b.ne     LBB6_6
         ldrb     w8, [x21, #2]
         cmp      w0, w8
-        b.eq     LBB9_7
-LBB9_6
+        b.eq     LBB6_7
+LBB6_6
         mov      w0, #0
-LBB9_7
+LBB6_7
         ret
         ENDP
                   
@@ -629,20 +623,20 @@ LBB9_7
 _pos7func PROC
         ldrb     w9, [x21, #6]
         cmp      w0, w9
-        b.ne     LBB10_2
+        b.ne     LBB7_2
         ldrb     w9, [x21, #8]
         cmp      w0, w9
-        b.eq     LBB10_5
-LBB10_2
+        b.eq     LBB7_5
+LBB7_2
         ldrb     w9, [x21, #1]
         cmp      w0, w9
-        b.ne     LBB10_4
+        b.ne     LBB7_4
         ldrb     w9, [x21, #4]
         cmp      w0, w9
-        b.eq     LBB10_5
-LBB10_4
+        b.eq     LBB7_5
+LBB7_4
         mov      w0, #0
-LBB10_5
+LBB7_5
         ret
         ENDP
 
@@ -650,41 +644,41 @@ LBB10_5
 _pos8func PROC
         ldrb     w9, [x21, #6]
         cmp      w0, w9
-        b.ne     LBB11_2
+        b.ne     LBB8_2
         ldrb     w9, [x21, #7]
         cmp      w0, w9
-        b.eq     LBB11_7
-LBB11_2
+        b.eq     LBB8_7
+LBB8_2
         ldrb     w9, [x21, #2]
         cmp      w0, w9
-        b.ne     LBB11_4
+        b.ne     LBB8_4
         ldrb     w9, [x21, #5]
         cmp      w0, w9
-        b.eq     LBB11_7
-LBB11_4
+        b.eq     LBB8_7
+LBB8_4
         ldrb     w9, [x21]
         cmp      w0, w9
-        b.ne     LBB11_6
+        b.ne     LBB8_6
         ldrb     w8, [x21, #4]
         cmp      w0, w8
-        b.eq     LBB11_7
-LBB11_6
+        b.eq     LBB8_7
+LBB8_6
         mov      w0, #0
-LBB11_7
+LBB8_7
         ret
         ENDP
 
     AREA |.data|, DATA
     align 16
 _winner_functions
-    DCQ _pos0func
-    DCQ _pos1func
-    DCQ _pos2func
-    DCQ _pos3func
-    DCQ _pos4func
-    DCQ _pos5func
-    DCQ _pos6func
-    DCQ _pos7func
-    DCQ _pos8func
+    dcq _pos0func
+    dcq _pos1func
+    dcq _pos2func
+    dcq _pos3func
+    dcq _pos4func
+    dcq _pos5func
+    dcq _pos6func
+    dcq _pos7func
+    dcq _pos8func
 
     END
