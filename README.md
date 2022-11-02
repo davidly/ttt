@@ -55,7 +55,7 @@ The BA version is faster than Python even when Python is using function pointers
 I'm not really proud of BA -- it was a very quickly written hack. But it shows that Python could benefit from some performance work.
 
 I added minimal support in BA to compile BASIC apps to x64 .asm files which can then be assembled into a Windows .exe file. 
-Afterwards I added codegen for Arm64 on Macs, Arm32 on Linux, MOS 6502 on the Apple 1, Intel 8080 on CP/M 2.2, 8086 on DOS, and 32-bit
+Afterwards I added codegen for Arm64 on Macs, Arm64 for Windows, Arm32 on Linux, MOS 6502 on the Apple 1, Intel 8080 on CP/M 2.2, 8086 on DOS, and 32-bit
 x86 on Windows. Use the -a:x flag in BA to generate the x64 .asm file, and ma.bat to create the .exe. For example:
 
     ba ttt_1dim.bas /x /a:x
@@ -135,7 +135,7 @@ To run ttt_trs80.asm on a TRS-80. (renamed as ttt.asm)
             On the trs-80, F8 to exit and say yes Y to disconnect, then f8 to go back to the root menu
             Run lt.ba, which loads t.do, converts it to binary in RAM, and executes the app
 	
-![image](https://user-images.githubusercontent.com/1497921/199140078-cf6e32c4-b477-497f-aeba-c62580eb2d11.png)
+![image](https://user-images.githubusercontent.com/1497921/199368524-8a02e248-f698-4f8d-aa25-1dd14e586109.png)
 
 
 
