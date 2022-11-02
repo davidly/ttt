@@ -4213,12 +4213,10 @@ string arm64MacEscape( string & str )
 
     for ( const char * p = str.c_str(); *p; p++ )
     {
-        result += *p;
         if ( '"' == *p )
-        {
             result += '\\';
-            result += *p;
-        }
+
+        result += *p;
     }
 
     return result;
