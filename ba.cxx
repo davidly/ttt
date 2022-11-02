@@ -272,32 +272,21 @@ char * my_strlwr( char * str )
     return str;
 }//my_strlwr
 
-void replace_all( string & s, string const & toReplace, string const & replaceWith )
+string UnescapeBASICString( string & str )
 {
-    ostringstream oss;
-    size_t pos = 0;
-    size_t prevPos = 0;
+    // change two consecutive quotes to one
 
-    do
+    string result;
+
+    for ( const char * p = str.c_str(); *p; p++ )
     {
-        prevPos = pos;
-        pos = s.find( toReplace, pos );
-        if (pos == string::npos )
-            break;
-        oss << s.substr( prevPos, pos - prevPos );
-        oss << replaceWith;
-        pos += toReplace.size();
-    } while( true );
+        result += *p;
 
-    oss << s.substr( prevPos );
-    s = oss.str();
-} //replace_all
+        if ( '"' == *p && '"' == * (p + 1) )
+            p++;
+    }
 
-string UnescapeBASICString( string & s )
-{
-    string str = s;
-    replace_all( str, "\"\"", "\"" );
-    return str;
+    return result;
 } //UnescapeBASICString
 
 struct Variable
@@ -4179,24 +4168,27 @@ std::string replace(const std::string& str, const std::string& searchStr,const s
 
 string singleQuoteEscape( string & str )
 {
-    // escape characters in an ml64 string constant. I think just a single-quote is the only one
-    // this is remarkably inefficient, but that's OK
+    string result;
 
-    string result( str );
-    replace_all( result, "'", "''" );
+    for ( const char * p = str.c_str(); *p; p++ )
+    {
+        if ( '\'' == *p )
+            result += *p;
+
+        result += *p;
+    }
+
     return result;
 } //singleQuoteEscape
 
 string arm64WinEscape( string & str )
 {
-    // escape characters in an ml64 string constant. I think just a single-quote is the only one
-    // this is remarkably inefficient, but that's OK
-
     string result;
 
     for ( const char * p = str.c_str(); *p; p++ )
     {
         result += *p;
+
         if ( '"' == *p || '$' == *p )
             result += *p;
     }
@@ -4206,9 +4198,6 @@ string arm64WinEscape( string & str )
 
 string arm64MacEscape( string & str )
 {
-    // escape characters in an ml64 string constant. I think just a single-quote is the only one
-    // this is remarkably inefficient, but that's OK
-
     string result;
 
     for ( const char * p = str.c_str(); *p; p++ )
@@ -4225,10 +4214,17 @@ string arm64MacEscape( string & str )
 string mos6502Escape( string & str )
 {
     // escape characters in a 6502 string constant. I think just a single-quote is the only one
-    // this is remarkably inefficient, but that's OK
 
-    string result( str );
-    replace_all( result, "'", "\\'" );
+    string result;
+
+    for ( const char * p = str.c_str(); *p; p++ )
+    {
+        if ( '\'' == *p )
+            result += '\\';
+
+        result += *p;
+    }
+
     return result;
 } //mos6502Escape
 
