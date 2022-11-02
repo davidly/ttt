@@ -8687,7 +8687,7 @@ label_no_if_optimization:
         fprintf( fp, "    sub      sp, sp, #32\n" );
         fprintf( fp, "    stp      x29, x30, [sp, #16]\n" );
         fprintf( fp, "    add      x29, sp, #16\n" );
-        fprintf( fp, "    str      x1, [sp]\n" );
+//        fprintf( fp, "    str      x1, [sp]\n" );     Only needed for Mac calling convention, not Windows
         fprintf( fp, "    bl       printf\n" );
         fprintf( fp, "    ldp      x29, x30, [sp, #16]\n" );
         fprintf( fp, "    add      sp, sp, #32\n" );
