@@ -21,8 +21,8 @@
 36 dim sa%(10)
 37 dim sb%(10)
 38 mc% = 0
-39 rem print "start time: "; time$
-40 for l% = 1 to 5
+39 print "start time: "; time$
+40 for l% = 1 to 10
 41 mc% = 0
 42 al% = 2
 43 be% = 9
@@ -41,8 +41,8 @@
 73 b%(4) = 0
 74 rem print "mc: "; mc%; "  l is "; l%
 80 next l%
-85 rem print elap$ ; " for 1000 iterations"
-86 rem print "end time for 1000 iterations "; time$
+85 print elap$ ; " for "; l% - 1; " iterations"
+86 print "end time: "; time$
 87 print "final move count "; mc%
 100 end
 
