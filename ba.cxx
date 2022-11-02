@@ -4302,9 +4302,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
 
         fprintf( fp, "  IMPORT |printf|\n" );
         fprintf( fp, "  IMPORT |exit|\n" );
-        fprintf( fp, "  IMPORT |time|\n" );
         fprintf( fp, "  IMPORT |_time64|\n" );
-        fprintf( fp, "  IMPORT |localtime|\n" );
         fprintf( fp, "  IMPORT |_localtime64|\n" );
         fprintf( fp, "  EXPORT |main|\n" );
         fprintf( fp, "  MACRO\n" );
@@ -4721,7 +4719,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "intString     dcb \"%%d\", 0\n" );
         fprintf( fp, "strString     dcb \"%%s\", 0\n" );
 
-        fprintf( fp, "  area .code, code, align=4\n" );
+        fprintf( fp, "  area .code, code, align=4, codealign\n" );
         fprintf( fp, "  align 16\n" );
         fprintf( fp, "main PROC\n" );
 
@@ -4947,8 +4945,13 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         if ( EnableTracing && g_Tracing )
             printf( "generating code for line %zd ====> %s\n", l, loc.sourceCode.c_str() );
 
-        if ( arm64Mac == g_AssemblyTarget && loc.goTarget )
-            fprintf( fp, ".p2align 2\n" ); // arm64 branch targets must be 4-byte aligned
+        if ( loc.goTarget )
+        {
+            if ( arm64Mac == g_AssemblyTarget  )
+                fprintf( fp, ".p2align 2\n" ); // arm64 branch targets must be 4-byte aligned
+            else if ( arm64Win == g_AssemblyTarget )
+                fprintf( fp, "  align 4\n" ); // arm64 branch targets must be 4-byte aligned
+        }
 
         if ( i8080CPM == g_AssemblyTarget )
             fprintf( fp, "  ln$%zd:   ; ===>>> %s\n", l, RemoveExclamations( loc.sourceCode.c_str() ) );
@@ -8589,7 +8592,6 @@ label_no_if_optimization:
         fprintf( fp, "    b        leave_execution\n" );
         
         fprintf( fp, ".p2align 2\n" );
-        fprintf( fp, "call_exit:\n" );
         fprintf( fp, "leave_execution:\n" );
         fprintf( fp, "    mov      r0, #0\n" );
         fprintf( fp, "    b        exit\n" );
@@ -8627,7 +8629,6 @@ label_no_if_optimization:
         fprintf( fp, "    b        leave_execution\n" );
         
         fprintf( fp, ".p2align 2\n" );
-        fprintf( fp, "call_exit:\n" );
         fprintf( fp, "leave_execution:\n" );
         fprintf( fp, "    ; OS system call to exit the app\n" );
         fprintf( fp, "    mov      x0, 0\n" );
@@ -8676,9 +8677,7 @@ label_no_if_optimization:
         fprintf( fp, "    b        leave_execution\n" );
         
         fprintf( fp, "  align 16\n" );
-        fprintf( fp, "call_exit\n" );
         fprintf( fp, "leave_execution\n" );
-        fprintf( fp, "    ; OS system call to exit the app\n" );
         fprintf( fp, "    bl       exit\n" );
 
         fprintf( fp, "  align 16\n" );
