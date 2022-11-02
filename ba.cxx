@@ -4204,6 +4204,26 @@ string arm64WinEscape( string & str )
     return result;
 } //arm64WinEscape
 
+string arm64MacEscape( string & str )
+{
+    // escape characters in an ml64 string constant. I think just a single-quote is the only one
+    // this is remarkably inefficient, but that's OK
+
+    string result;
+
+    for ( const char * p = str.c_str(); *p; p++ )
+    {
+        result += *p;
+        if ( '"' == *p )
+        {
+            result += '\\';
+            result += *p;
+        }
+    }
+
+    return result;
+} //arm64MacEscape
+
 string mos6502Escape( string & str )
 {
     // escape characters in a 6502 string constant. I think just a single-quote is the only one
@@ -4493,7 +4513,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                         fprintf( fp, "    str_%zd_%d   db  '%s', 0\n", l, t , strEscaped.c_str() );
                     else if ( arm64Mac == g_AssemblyTarget || arm32Linux == g_AssemblyTarget )
                     {
-                        string e = arm64WinEscape( vals[ t ].strValue );
+                        string e = arm64MacEscape( vals[ t ].strValue );
                         fprintf( fp, "    str_%zd_%d: .asciz \"%s\"\n", l, t, e.c_str() );
                     }
                     else if ( arm64Win == g_AssemblyTarget )
