@@ -9,8 +9,8 @@
 ; separating min/max codepaths, aligning loop jump targets: .0448
 ; separate loops for 3 boards instead of just one .0433
 ; better alignment, keep alpha/beta in registers: .0404
-; remove jumps, alternate WINPROCS_X and WINPROCS: .0353
-; use 3 cores: .0139
+; remove jumps, alternate WINPROCS_X and WINPROCS: .0350
+; use 3 cores: .0138
 ;
 ; Board: 0 | 1 | 2
 ;        ---------
@@ -37,7 +37,7 @@ WSCO    equ     6                        ; winning score
 TSCO    equ     5                        ; tie score
 LSCO    equ     4                        ; losing score
 XPIECE  equ     1                        ; X move piece
-OPIECE  equ     2                        ; Y move piece
+OPIECE  equ     2                        ; O move piece
                                          
 ; local variable offsets [rbp - X] where X = 1 to N where N is the number of QWORDS beyond 4 reserved at entry
 ; These are for the functions minmax_min and minmax_max
@@ -53,12 +53,13 @@ B_S_OFFSET      equ 8 * 3                ; beta
 
 data_ttt SEGMENT ALIGN( 4096 ) 'DATA'
     ; It's important to put each of these boards in separate 64-byte cache lines or multi-core performance is terrible
+    ; For some Intel CPUs 256 bytes is required, like the i5-2430M, i7-4770K, and i7-5820K
     BOARD0        db     1,0,0,0,0,0,0,0,0
-  align 64
+  align 256 ; 64
     BOARD1        db     0,1,0,0,0,0,0,0,0
-  align 64
+  align 256 ; 64
     BOARD4        db     0,0,0,0,1,0,0,0,0
-  align 64
+  align 256 ;
     ; using either _X or _O and WINPROCS is fastest. Using both _ versions or neither is slower. I don't know why
     WINPROCS_X    dq     proc0_X, proc1_X, proc2_X, proc3_X, proc4_X, proc5_X, proc6_X, proc7_X, proc8_X
   align 64
@@ -196,7 +197,7 @@ TTTThreadProc PROC
     mov     boardIndex$[rsp], rcx        ; again, make sure
 
   TTTThreadProc_for:
-    mov     r15, 10000                   ; # of iterations -- 10,000
+    mov     r15, 100000                   ; # of iterations -- 100,000
 
     align 16
   TTTThreadProc_loop:
