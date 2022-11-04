@@ -11,11 +11,13 @@
 ; 
 ;
 
-      IMPORT |printf|
-      IMPORT |CreateThread|
-      IMPORT |WaitForSingleObject|
-      IMPORT |CloseHandle|
-      EXPORT |main|
+  IMPORT |printf|
+  IMPORT |CreateThread|
+  IMPORT |WaitForSingleObject|
+  IMPORT |CloseHandle|
+  IMPORT |SetProcessAffinityMask|
+  IMPORT |GetCurrentProcess|
+  EXPORT |main|
 
 iterations equ 100000
 minimum_score equ 2
@@ -27,22 +29,22 @@ x_piece equ 1
 o_piece equ 2
 blank_piece equ 0
 
-      AREA |.data|, DATA, align=6, codealign
+    AREA |.data|, DATA, align=6, codealign
   ; allocate separate boards for the 3 unique starting moves so multiple threads can solve in parallel
   ; cache lines are 64 bytes, so put each on separate cache lines
   align 64
-board0 DCB 1,0,0,0,0,0,0,0,0
+board0 dcb 1,0,0,0,0,0,0,0,0
   align 64 
-board1 DCB 0,1,0,0,0,0,0,0,0
+board1 dcb 0,1,0,0,0,0,0,0,0
   align 64
-board4 DCB 0,0,0,0,1,0,0,0,0
+board4 dcb 0,0,0,0,1,0,0,0,0
 
   align 64
-priorTicks      dcq 0
-moveCount       dcq 0
-elapString      dcb "%lld microseconds (-6)\n", 0
-itersString     dcb "%d iterations\n", 0
-movecountString dcb "%d moves\n", 0
+priorTicks        dcq 0
+moveCount         dcq 0
+elapString        dcb "%lld microseconds (-6)\n", 0
+itersString       dcb "%d iterations\n", 0
+movecountString   dcb "%d moves\n", 0
 
   area |.code|, code, align=4
   align 16 
@@ -51,6 +53,11 @@ main PROC; linking with the C runtime, so main will be invoked
     sub      sp, sp, #32
     stp      x29, x30, [sp, #16]
     add      x29, sp, #16
+
+    ; set which cores the code will run on (optionally)
+    bl       GetCurrentProcess
+    mov      x1, 0x70     ; on the sq3, 0x7 is the slow 4 cores (efficiency) and 0x70 is the fast 4 cores (performance)
+    bl       SetProcessAffinityMask
 
     ; remember the starting tickcount
     adrp     x1, priorTicks
@@ -668,8 +675,8 @@ LBB8_7
         ret
         ENDP
 
-    AREA |.data|, DATA
-    align 16
+  AREA |.data|, DATA
+  align 16
 _winner_functions
     dcq _pos0func
     dcq _pos1func
