@@ -343,6 +343,12 @@ TTTThreadProc( void * param )
 
 int main( int argc, char * argv[] )
 {
+#ifdef _MSC_VER
+#ifdef _M_ARM64
+    SetProcessAffinityMask( GetCurrentProcess(), 0x70 ); // sq3: 0x7 efficiency cores, 0x70 performance cores
+#endif
+#endif
+
     ticktype startParallel = GetTicks();
 
 #ifdef _MSC_VER
