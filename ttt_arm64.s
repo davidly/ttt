@@ -13,18 +13,18 @@
 .set tie_score, 5
 .set x_piece, 1
 .set o_piece, 2
-.set blank_piece, 0
+.set blank_piece, 0                     ; the code below assumes this is 0
 
 .data
   ; allocate separate boards for the 3 unique starting moves so multiple threads can solve in parallel
-  .p2align 3
+  .p2align 4
     board0: .byte 1,0,0,0,0,0,0,0,0
-  .p2align 3 
+  .p2align 4 
     board1: .byte 0,1,0,0,0,0,0,0,0
-  .p2align 3 
+  .p2align 4 
     board4: .byte 0,0,0,0,1,0,0,0,0
 
-  .p2align 3
+  .p2align 4
     priorTicks:      .quad 0
     moveCount:       .quad 0
     pthread1:        .quad 0
@@ -79,11 +79,11 @@ _print_elapsed_time:
     sub      x1, x1, x0
     ldr      x4, =0xf4240               ; 1,000,000 (microseconds)
     mul      x1, x1, x4                 ; save precision by multiplying by a big number
-    mrs      x2, cntfrq_el0
+    mrs      x2, cntfrq_el0             ; get the divisor and divide
     udiv     x1, x1, x2
     adrp     x0, elapString@PAGE
     add      x0, x0, elapString@PAGEOFF
-    bl       call_printf
+    bl       call_printf                ; print the elapsed time
     
     ldp      x29, x30, [sp, #16]
     add      sp, sp, #32
@@ -268,13 +268,13 @@ _minmax_max:
 
   .p2align 2
   _minmax_max_top_of_loop:
-    add      x27, x27, 1
-    cmp      x27, 9
+    cmp      x27, 8                     ; check before the increment
     b.eq     _minmax_max_loadv_done
+    add      x27, x27, 1
 
     add      x1, x21, x27
     ldrb     w0, [x1]                   ; load the board piece at I in the loop
-    cmp      w0, blank_piece            ; is the space free?
+    cmp      w0, wzr                    ; is the space free? assumes blank_piece is 0
     b.ne     _minmax_max_top_of_loop
 
     mov      w2, x_piece                ; make the move
@@ -287,8 +287,7 @@ _minmax_max:
     bl       _minmax_min                ; recurse to the MIN
 
     add      x6, x21, x27               ; address of the board + move
-    mov      x7, blank_piece            ; load blank
-    strb     w7, [x6]                   ; store blank on the board
+    strb     wzr, [x6]                  ; store blank on the board. blank_piece is 0
 
     cmp      w0, win_score              ; winning score? 
     b.eq     _minmax_max_done           ; then return
@@ -369,13 +368,13 @@ _minmax_min:
 
   .p2align 2
   _minmax_min_top_of_loop:
-    add      x27, x27, 1
-    cmp      x27, 9
+    cmp      x27, 8
     b.eq     _minmax_min_loadv_done
+    add      x27, x27, 1
 
     add      x1, x21, x27               ; board + move is the address of the piece
     ldrb     w0, [x1]                   ; load the board piece at I in the loop
-    cmp      w0, blank_piece            ; is the space free?
+    cmp      w0, wzr                    ; is the space free? assumes blank_piece is 0
     b.ne     _minmax_min_top_of_loop
 
     mov      w2, o_piece                ; the move is O
@@ -388,8 +387,7 @@ _minmax_min:
     bl       _minmax_max                ; recurse to the MAX
 
     add      x6, x21, x27               ; address of the board + move
-    mov      x7, blank_piece            ; load blank
-    strb     w7, [x6]                   ; store blank on the board
+    strb     wzr, [x6]                  ; store blank on the board. blank_piece is 0
 
     cmp      w0, lose_score             ; losing score? 
     b.eq     _minmax_min_done           ; then return
@@ -453,7 +451,7 @@ _pos0func:
         cmp      w0, w8
         b.eq     LBB3_7
   LBB3_6:
-        mov      w0, #0
+        mov      w0, wzr
   LBB3_7:
         ret
         .cfi_endproc
@@ -476,7 +474,7 @@ _pos1func:
         cmp      w0, w8
         b.eq     LBB4_5
   LBB4_4:
-        mov      w0, #0
+        mov      w0, wzr
   LBB4_5:
         ret
         .cfi_endproc
@@ -506,7 +504,7 @@ _pos2func:
         cmp      w0, w8
         b.eq     LBB5_7
   LBB5_6:
-        mov      w0, #0
+        mov      w0, wzr
   LBB5_7:
         ret
         .cfi_endproc
@@ -529,7 +527,7 @@ _pos3func:
         cmp      w0, w8
         b.eq     LBB6_5
   LBB6_4:
-        mov      w0, #0
+        mov      w0, wzr
   LBB6_5:
         ret
         .cfi_endproc
@@ -566,7 +564,7 @@ _pos4func:
         cmp      w0, w8
         b.eq     LBB7_9
   LBB7_8:
-        mov      w0, #0
+        mov      w0, wzr
   LBB7_9:
         ret
         .cfi_endproc
@@ -589,7 +587,7 @@ _pos5func:
         cmp      w0, w8
         b.eq     LBB8_5
   LBB8_4:
-        mov      w0, #0
+        mov      w0, wzr
   LBB8_5:
         ret
         .cfi_endproc
@@ -619,7 +617,7 @@ _pos6func:
         cmp      w0, w8
         b.eq     LBB9_7
   LBB9_6:
-        mov      w0, #0
+        mov      w0, wzr
   LBB9_7:
         ret
         .cfi_endproc
@@ -642,7 +640,7 @@ _pos7func:
         cmp      w0, w9
         b.eq     LBB10_5
   LBB10_4:
-        mov      w0, #0
+        mov      w0, wzr
   LBB10_5:
         ret
         .cfi_endproc
@@ -672,7 +670,7 @@ _pos8func:
         cmp      w0, w8
         b.eq     LBB11_7
   LBB11_6:
-        mov      w0, #0
+        mov      w0, wzr
   LBB11_7:
         ret
         .cfi_endproc

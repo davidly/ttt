@@ -8,7 +8,6 @@
 ;     - Win32 CreateThread vs. posix pthread API
 ;     - loading 64 bit constants and variable labels is different
 ;     - directives for data/code segments, labels, proc start and end, data statements, equ statements, alignment fill semantics.
-; 
 ;
 
   IMPORT |printf|
@@ -19,15 +18,15 @@
   IMPORT |GetCurrentProcess|
   EXPORT |main|
 
-iterations equ 100000
+iterations    equ 100000
 minimum_score equ 2
 maximum_score equ 9
-win_score equ 6
-lose_score equ 4
-tie_score equ 5
-x_piece equ 1
-o_piece equ 2
-blank_piece equ 0
+win_score     equ 6
+lose_score    equ 4
+tie_score     equ 5
+x_piece       equ 1
+o_piece       equ 2
+blank_piece   equ 0                     ; not referenced in the code below, but it is assumed to be 0
 
     AREA |.data|, DATA, align=6, codealign
   ; allocate separate boards for the 3 unique starting moves so multiple threads can solve in parallel
@@ -46,7 +45,7 @@ elapString        dcb "%lld microseconds (-6)\n", 0
 itersString       dcb "%d iterations\n", 0
 movecountString   dcb "%d moves\n", 0
 
-  area |.code|, code, align=4
+  area |.code|, code, align=4, codealign
   align 16 
 main PROC; linking with the C runtime, so main will be invoked
     ; remember the caller's stack frame and return address
@@ -55,9 +54,9 @@ main PROC; linking with the C runtime, so main will be invoked
     add      x29, sp, #16
 
     ; set which cores the code will run on (optionally)
-    bl       GetCurrentProcess
-    mov      x1, 0x70     ; on the sq3, 0x7 is the slow 4 cores (efficiency) and 0x70 is the fast 4 cores (performance)
-    bl       SetProcessAffinityMask
+;    bl       GetCurrentProcess
+;    mov      x1, 0x70                   ; on the sq3, 0x7 are the slow 4 cores (efficiency) and 0x70 are the fast 4 cores (performance)
+;    bl       SetProcessAffinityMask
 
     ; remember the starting tickcount
     adrp     x1, priorTicks
@@ -104,11 +103,11 @@ _print_elapsed_time PROC
     sub      x1, x1, x0
     ldr      x4, =0xf4240               ; 1,000,000 (microseconds)
     mul      x1, x1, x4                 ; save precision by multiplying by a big number
-    mrs      x2, cntfrq_el0
+    mrs      x2, cntfrq_el0             ; get the divisor and divide
     udiv     x1, x1, x2
     adrp     x0, elapString
     add      x0, x0, elapString
-    bl       printf
+    bl       printf                     ; print the elapsed time
     
     ldp      x29, x30, [sp, #16]
     add      sp, sp, #32
@@ -136,7 +135,7 @@ _print_movecount PROC
 
   align 16
 _runmm PROC
-    ; the pthread infra needs many these registers to be saved (especially x20)
+    ; save all of these because they are all used
 
     stp      x26, x25, [sp, #-96]!      
     stp      x24, x23, [sp, #16]        
@@ -299,13 +298,13 @@ _minmax_max_skip_winner
     mov      x27, -1                    ; avoid a jump by starting the for loop I at -1
 
 _minmax_max_top_of_loop
-    add      x27, x27, 1
-    cmp      x27, 9
+    cmp      x27, 8                     ; check before the increment
     b.eq     _minmax_max_loadv_done
+    add      x27, x27, 1
 
     add      x1, x21, x27
     ldrb     w0, [x1]                   ; load the board piece at I in the loop
-    cmp      w0, blank_piece            ; is the space free?
+    cmp      w0, wzr                    ; is the space free? assumes blank_piece is 0
     b.ne     _minmax_max_top_of_loop
 
     mov      w2, x_piece                ; make the move
@@ -318,8 +317,7 @@ _minmax_max_top_of_loop
     bl       _minmax_min                ; recurse to the MIN
 
     add      x6, x21, x27               ; address of the board + move
-    mov      x7, blank_piece            ; load blank
-    strb     w7, [x6]                   ; store blank on the board
+    strb     wzr, [x6]                  ; store blank on the board. blank_piece is 0.
 
     cmp      w0, win_score              ; winning score? 
     b.eq     _minmax_max_done           ; then return
@@ -397,13 +395,13 @@ _minmax_min_skip_winner
     mov      x27, -1                    ; avoid a jump by starting the for loop I at -1
 
 _minmax_min_top_of_loop
-    add      x27, x27, 1
-    cmp      x27, 9
+    cmp      x27, 8                     ; check before the increment
     b.eq     _minmax_min_loadv_done
+    add      x27, x27, 1
 
     add      x1, x21, x27               ; board + move is the address of the piece
     ldrb     w0, [x1]                   ; load the board piece at I in the loop
-    cmp      w0, blank_piece            ; is the space free?
+    cmp      w0, wzr                    ; is the space free? assumes blank_piece is 0
     b.ne     _minmax_min_top_of_loop
 
     mov      w2, o_piece                ; the move is O
@@ -416,8 +414,7 @@ _minmax_min_top_of_loop
     bl       _minmax_max                ; recurse to the MAX
 
     add      x6, x21, x27               ; address of the board + move
-    mov      x7, blank_piece            ; load blank
-    strb     w7, [x6]                   ; store blank on the board
+    strb     wzr, [x6]                  ; store blank on the board. blank_piece is 0.
 
     cmp      w0, lose_score             ; losing score? 
     b.eq     _minmax_min_done           ; then return
@@ -467,7 +464,7 @@ LBB0_4
         cmp      w0, w8
         b.eq     LBB0_7
 LBB0_6
-        mov      w0, #0
+        mov      w0, wzr
 LBB0_7
         ret
         ENDP
@@ -488,7 +485,7 @@ LBB1_2
         cmp      w0, w8
         b.eq     LBB1_5
 LBB1_4
-        mov      w0, #0
+        mov      w0, wzr
 LBB1_5
         ret
         ENDP
@@ -516,7 +513,7 @@ LBB2_4
         cmp      w0, w8
         b.eq     LBB2_7
 LBB2_6
-        mov      w0, #0
+        mov      w0, wzr
 LBB2_7
         ret
         ENDP
@@ -537,7 +534,7 @@ LBB3_2
         cmp      w0, w8
         b.eq     LBB3_5
 LBB3_4
-        mov      w0, #0
+        mov      w0, wzr
 LBB3_5
         ret
         ENDP
@@ -572,7 +569,7 @@ LBB4_6
         cmp      w0, w8
         b.eq     LBB4_9
 LBB4_8
-        mov      w0, #0
+        mov      w0, wzr
 LBB4_9
         ret
         ENDP
@@ -593,7 +590,7 @@ LBB5_2
         cmp      w0, w8
         b.eq     LBB5_5
 LBB5_4
-        mov      w0, #0
+        mov      w0, wzr
 LBB5_5
         ret
         ENDP
@@ -621,7 +618,7 @@ LBB6_4
         cmp      w0, w8
         b.eq     LBB6_7
 LBB6_6
-        mov      w0, #0
+        mov      w0, wzr
 LBB6_7
         ret
         ENDP
@@ -642,7 +639,7 @@ LBB7_2
         cmp      w0, w9
         b.eq     LBB7_5
 LBB7_4
-        mov      w0, #0
+        mov      w0, wzr
 LBB7_5
         ret
         ENDP
@@ -670,7 +667,7 @@ LBB8_4
         cmp      w0, w8
         b.eq     LBB8_7
 LBB8_6
-        mov      w0, #0
+        mov      w0, wzr
 LBB8_7
         ret
         ENDP
