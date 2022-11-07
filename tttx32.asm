@@ -32,8 +32,11 @@ extern CreateThread@24: PROC
 extern WaitForSingleObject@8: PROC
 extern CloseHandle@4: PROC
 extern GetTickCount@0: PROC
+extern SetProcessAffinityMask@8: PROC
+extern GetCurrentProcess@0: PROC
 
 includelib kernel32.lib
+
 extern printf: proc
 
 maximum_score    equ     9              ; maximum score
@@ -45,10 +48,10 @@ x_piece          equ     1              ; X move piece
 o_piece          equ     2              ; O move piece
 blank_piece      equ     0              ; blank piece
 
-; minmax_x argument offsets [ebp + X] where X = 2 to N DWORDs passed on the stack
+; minmax_x argument offsets [ebp + X] where X = 2 to 1+N DWORDs passed on the stack
 
-ALPHA_OFFSET    equ 4 * 2
-BETA_OFFSET     equ 4 * 3
+ARG_ALPHA_OFFSET    equ 4 * 2
+ARG_BETA_OFFSET     equ 4 * 3
 
 ; minmax_x local variable offsets [ebp - X] where X = 1 to N where N is the number of DWORDs
 
@@ -99,14 +102,20 @@ main PROC ; linking with the C runtime, so main will be invoked
     push     edi
     push     esi
 
+    ;call     GetCurrentProcess@0
+    ;mov      ecx, eax
+    ;mov      edx, 7h                                       ; we only need 3 cores. 0x70 for the fast ones on ARM running x86 emulation
+    ;call     SetProcessAffinityMask@8
+
     push     offset perfFrequency
     call     QueryPerformanceFrequency@4
     mov      eax, DWORD PTR [perfFrequency]
-    mov      ecx, 1000000               ; get it down to milliseconds
+    mov      ecx, 1000000                                  ; get it down to milliseconds
     xor      edx, edx
     div      ecx
     mov      DWORD PTR [perfFrequency], eax
 
+    ; GetTickCount is more accurate by a lot on WinXP. QueryPerformanceCounter is more accurate by a lot elsewhere.
     call     GetTickCount@0
     mov      DWORD PTR [tickCountPrior], eax
 
@@ -215,38 +224,38 @@ show_move_count ENDP
 solve_threaded PROC
     push     ebp
     mov      ebp, esp
-    sub      esp, 4 * 2                 ; 2 local variables (the handles)
+    sub      esp, 4 * 2                                    ; 2 local variables (the handles)
     push     edi
     push     esi
 
-    push     offset threadID            ; win9x requires non-0 thread id pointer
-    push     0                          ; no creation flags
-    push     4                          ; argument to the call: board4
-    push     offset TTTThreadProc       ; the function to call
-    push     0                          ; default stack size
-    push     0                          ; no security attributes
+    push     offset threadID                               ; win9x requires non-0 thread id pointer
+    push     0                                             ; no creation flags
+    push     4                                             ; argument to the call: board4
+    push     offset TTTThreadProc                          ; the function to call
+    push     0                                             ; default stack size
+    push     0                                             ; no security attributes
     call     CreateThread@24
-    mov      DWORD PTR [ ebp - 4 ], eax ; save the thread handle
+    mov      DWORD PTR [ ebp - 4 ], eax                    ; save the thread handle
 
-    push     offset threadID            ; win9x requires non-0 thread id pointer
-    push     0                          ; no creation flags
-    push     1                          ; argument to the call: board1
-    push     offset TTTThreadProc       ; the function to call
-    push     0                          ; default stack size
-    push     0                          ; no security attributes
+    push     offset threadID                               ; win9x requires non-0 thread id pointer
+    push     0                                             ; no creation flags
+    push     1                                             ; argument to the call: board1
+    push     offset TTTThreadProc                          ; the function to call
+    push     0                                             ; default stack size
+    push     0                                             ; no security attributes
     call     CreateThread@24
-    mov      DWORD PTR [ ebp - 8 ], eax ; save the thread handle
+    mov      DWORD PTR [ ebp - 8 ], eax                    ; save the thread handle
 
-    push     0                          ; solve board0 on this thread
+    push     0                                             ; solve board0 on this thread
     call     TTTThreadProc
 
-    push     -1                         ; wait infinite
+    push     -1                                            ; wait infinite
     push     DWORD PTR [ ebp - 8 ]
     call     WaitForSingleObject@8
     push     DWORD PTR [ ebp - 8 ]
     call     CloseHandle@4
 
-    push     -1                         ; wait infinite
+    push     -1                                            ; wait infinite
     push     DWORD PTR [ ebp - 4 ]
     call     WaitForSingleObject@8
     push     DWORD PTR [ ebp - 4 ]
@@ -263,7 +272,7 @@ align 4
 TTTThreadProc PROC
     push     ebp
     mov      ebp, esp
-    sub      esp, 4 * 2                 ; 1 local variable
+    sub      esp, 4 * 2                                    ; 1 local variable
     push     edi
     push     esi
 
@@ -286,16 +295,16 @@ TTTThreadProc PROC
     lea      edi, board4
 
   TTTThreadProc_for:
-    mov      DWORD PTR [ebp - 8 ], eax         ; save the first move position
-    mov      DWORD PTR [ebp - 4], iterations   ; save the iterations
-    xor      esi, esi                          ; zero the thread-global move count
+    mov      DWORD PTR [ebp - 8 ], eax                     ; save the first move position
+    mov      DWORD PTR [ebp - 4], iterations               ; save the iterations
+    xor      esi, esi                                      ; zero the thread-global move count
 
   TTT_ThreadProc_loop:
-    mov      edx, DWORD PTR [ebp - 8]   ; first move position
-    xor      ecx, ecx                   ; depth (0)
-    push     maximum_score              ; beta
-    push     minimum_score              ; alpha
-    call     minmax_min                 ; x just moved, so miminimize now
+    mov      edx, DWORD PTR [ebp - 8]                      ; first move position
+    xor      ecx, ecx                                      ; depth (0)
+    push     maximum_score                                 ; beta
+    push     minimum_score                                 ; alpha
+    call     minmax_min                                    ; x just moved, so miminimize now
 
     dec      DWORD PTR [ebp - 4]
     cmp      DWORD PTR [ebp - 4], 0
@@ -314,9 +323,10 @@ align 4
 minmax_max PROC
     push     ebp
     mov      ebp, esp
-    sub      esp, 4 * 3                                ; 3 local variables
+    sub      esp, 4 * 3                                    ; 3 local variables
     ; don't save/restore esi and edi.
     ; registers usage:
+    ;     ebx: unused
     ;     ecx: depth 0..8
     ;     edx: move 0..8
     ;     esi: thread-global move count
@@ -324,14 +334,14 @@ minmax_max PROC
 
     inc esi
 
-    cmp      ecx, 3                                    ; only look for a winner if enough pieces are played
+    cmp      ecx, 3                                        ; only look for a winner if enough pieces are played
     jle      SHORT minmax_max_skip_winner
 
     mov      al, o_piece
     call     DWORD PTR [ winprocs + edx * 4 ]
 
-    cmp      al, o_piece                               ; check if o won and exit early
-    mov      eax, lose_score                           ; this mov may be wasted
+    cmp      al, o_piece                                   ; check if o won and exit early
+    mov      eax, lose_score                               ; this mov may be wasted
     je       SHORT minmax_max_done
 
   minmax_max_skip_winner:
@@ -342,54 +352,54 @@ minmax_max PROC
 
   minmax_max_top_of_loop:
     inc      DWORD PTR [ ebp - LOCAL_I_OFFSET ]
-    mov      edx, DWORD PTR [ ebp - LOCAL_I_OFFSET ]   ; overwrite the move passed to this function
-    cmp      edx, 9                                    ; done iterating all the moves?
+    mov      edx, DWORD PTR [ ebp - LOCAL_I_OFFSET ]       ; overwrite the move passed to this function
+    cmp      edx, 9                                        ; done iterating all the moves?
     je       SHORT minmax_max_loadv_done
 
-    cmp      BYTE PTR [ edi + edx ], 0                 ; is that move free on the board?
+    cmp      BYTE PTR [ edi + edx ], 0                     ; is that move free on the board?
     jne      SHORT minmax_max_top_of_loop
 
-    mov      BYTE PTR [ edi + edx ], x_piece           ; make the move
+    mov      BYTE PTR [ edi + edx ], x_piece               ; make the move
 
-    ;     edx already has the move
+    ; edx already has the move
     mov      ecx, DWORD PTR [ ebp - LOCAL_NEXT_DEPTH_OFFSET ]
-    push     DWORD PTR [ ebp + BETA_OFFSET ]           ; beta
-    push     DWORD PTR [ ebp + ALPHA_OFFSET ]          ; alpha
+    push     DWORD PTR [ ebp + ARG_BETA_OFFSET ]           ; beta
+    push     DWORD PTR [ ebp + ARG_ALPHA_OFFSET ]          ; alpha
     call     minmax_min
  
-    mov      edx, DWORD PTR [ ebp - LOCAL_I_OFFSET ]   ; restore the blank piece on the board
+    mov      edx, DWORD PTR [ ebp - LOCAL_I_OFFSET ]       ; restore the blank piece on the board
     mov      BYTE PTR [ edi + edx ], blank_piece
 
-    cmp      eax, win_score                            ; if we won, exit early
+    cmp      eax, win_score                                ; if we won, exit early
     je       SHORT minmax_max_done
 
-    mov      ebx, DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ] ; update value based on the score
-    cmp      eax, ebx
+    mov      ecx, DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ]   ; update value based on the score
+    cmp      eax, ecx
 
     IF USE686
-        cmovg    ebx, eax
-        mov      DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ], ebx
+        cmovg    ecx, eax
+        mov      DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ], ecx
     ELSE
         jle      minmax_max_no_v_update
-        mov      ebx, eax
-        mov      DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ], ebx
+        mov      ecx, eax
+        mov      DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ], ecx
         minmax_max_no_v_update:
     ENDIF
 
-    mov      eax, DWORD PTR [ ebp + ALPHA_OFFSET ]
-    cmp      eax, ebx
+    mov      eax, DWORD PTR [ ebp + ARG_ALPHA_OFFSET ]
+    cmp      eax, ecx
 
     IF USE686
-        cmovl    eax, ebx
+        cmovl    eax, ecx
     ELSE
         jge      minmax_max_no_alpha_update
-        mov      eax, ebx
+        mov      eax, ecx
         minmax_max_no_alpha_update:
     ENDIF
 
-    cmp      eax, DWORD PTR [ ebp + BETA_OFFSET ]      ; compare alpha with beta
-    jge      SHORT minmax_max_loadv_done               ; alpha prune
-    mov      DWORD PTR [ ebp + ALPHA_OFFSET ], eax     ; this may just update with the same value
+    cmp      eax, DWORD PTR [ ebp + ARG_BETA_OFFSET ]      ; compare alpha with beta
+    jge      SHORT minmax_max_loadv_done                   ; alpha prune
+    mov      DWORD PTR [ ebp + ARG_ALPHA_OFFSET ], eax     ; this may just update with the same value
 
     jmp      SHORT minmax_max_top_of_loop
 
@@ -406,9 +416,10 @@ align 4
 minmax_min PROC
     push     ebp
     mov      ebp, esp
-    sub      esp, 4 * 3                                ; 3 local variables
+    sub      esp, 4 * 3                                    ; 3 local variables
     ; don't save/restore esi and edi.
     ; registers usage:
+    ;     ebx: unused
     ;     ecx: depth 0..8
     ;     edx: move 0..8
     ;     esi: thread-global move count
@@ -416,18 +427,18 @@ minmax_min PROC
 
     inc esi
     
-    cmp      ecx, 3                                    ; only look for a winner if enough pieces are played
+    cmp      ecx, 3                                        ; only look for a winner if enough pieces are played
     jle      SHORT minmax_min_skip_winner
 
     mov      al, x_piece
     call     DWORD PTR [ winprocs + edx * 4 ]
     
-    cmp      al, x_piece                               ; check if x won and exit early
-    mov      eax, win_score                            ; this mov may be wasted
+    cmp      al, x_piece                                   ; check if x won and exit early
+    mov      eax, win_score                                ; this mov may be wasted
     je       SHORT minmax_min_done
 
-    cmp      ecx, 8                                    ; can we recurse further?
-    mov      eax, tie_score                            ; this mov may be wasted
+    cmp      ecx, 8                                        ; can we recurse further?
+    mov      eax, tie_score                                ; this mov may be wasted
     je       SHORT minmax_min_done
 
   minmax_min_skip_winner:
@@ -445,47 +456,47 @@ minmax_min PROC
     cmp      BYTE PTR [ edi + edx ], 0
     jne      SHORT minmax_min_top_of_loop
 
-    mov      BYTE PTR [ edi + edx ], o_piece           ; make the move
+    mov      BYTE PTR [ edi + edx ], o_piece               ; make the move
 
-    ;    edx already has the move
+    ; edx already has the move
     mov      ecx, DWORD PTR [ ebp - LOCAL_NEXT_DEPTH_OFFSET ]
-    push     DWORD PTR [ ebp + BETA_OFFSET ]           ; beta     
-    push     DWORD PTR [ ebp + ALPHA_OFFSET ]          ; alpha    
+    push     DWORD PTR [ ebp + ARG_BETA_OFFSET ]           ; beta     
+    push     DWORD PTR [ ebp + ARG_ALPHA_OFFSET ]          ; alpha    
     call     minmax_max                                           
     
-    mov      edx, DWORD PTR [ ebp - LOCAL_I_OFFSET ]   ; restore the blank piece on the board
+    mov      edx, DWORD PTR [ ebp - LOCAL_I_OFFSET ]       ; restore the blank piece on the board
     mov      BYTE PTR [ edi + edx ], blank_piece
 
-    cmp      eax, lose_score                           ; if we lost, exit early
+    cmp      eax, lose_score                               ; if we lost, exit early
     je       SHORT minmax_min_done
 
-    mov      ebx, DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ]   ; update value based on the score
-    cmp      eax, ebx
+    mov      ecx, DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ]   ; update value based on the score
+    cmp      eax, ecx
 
     IF USE686
-        cmovl    ebx, eax
-        mov      DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ], ebx
+        cmovl    ecx, eax
+        mov      DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ], ecx
     ELSE
         jge      minmax_min_no_v_update
-        mov      ebx, eax
-        mov      DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ], ebx
+        mov      ecx, eax
+        mov      DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ], ecx
         minmax_min_no_v_update:
     ENDIF
 
-    mov      eax, DWORD PTR [ ebp + BETA_OFFSET ]
-    cmp      eax, ebx
+    mov      eax, DWORD PTR [ ebp + ARG_BETA_OFFSET ]
+    cmp      eax, ecx
 
     IF USE686
-        cmovg    eax, ebx
+        cmovg    eax, ecx
     ELSE
         jle      minmax_min_no_beta_update
-        mov      eax, ebx
+        mov      eax, ecx
         minmax_min_no_beta_update:
     ENDIF
 
-    cmp      eax, DWORD PTR [ ebp + ALPHA_OFFSET ]     ; compare beta with alpha
-    jle      SHORT minmax_min_loadv_done               ; beta prune
-    mov      DWORD PTR [ ebp + BETA_OFFSET ], eax      ; this may just update with the same value
+    cmp      eax, DWORD PTR [ ebp + ARG_ALPHA_OFFSET ]     ; compare beta with alpha
+    jle      SHORT minmax_min_loadv_done                   ; beta prune
+    mov      DWORD PTR [ ebp + ARG_BETA_OFFSET ], eax      ; this may just update with the same value
 
     jmp      SHORT minmax_min_top_of_loop
 
