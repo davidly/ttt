@@ -54,9 +54,9 @@ main PROC; linking with the C runtime, so main will be invoked
     add      x29, sp, #16
 
     ; set which cores the code will run on (optionally)
-;    bl       GetCurrentProcess
-;    mov      x1, 0x70                   ; on the sq3, 0x7 are the slow 4 cores (efficiency) and 0x70 are the fast 4 cores (performance)
-;    bl       SetProcessAffinityMask
+    bl       GetCurrentProcess
+    mov      x1, 0x7                    ; on the sq3, 0x7 are the slow 4 cores (efficiency) and 0x70 are the fast 4 cores (performance)
+    bl       SetProcessAffinityMask
 
     ; remember the starting tickcount
     adrp     x1, priorTicks
@@ -444,231 +444,198 @@ _minmax_min_done
   align 16
 _pos0func PROC
         ldrb     w9, [x21, #1]
+        ldrb     w1, [x21, #2]
         cmp      w0, w9
-        b.ne     LBB0_2
-        ldrb     w9, [x21, #2]
-        cmp      w0, w9
-        b.eq     LBB0_7
-LBB0_2
+        ccmp     w0, w1, #0, eq
+        b.eq     pos0_return
+
         ldrb     w9, [x21, #3]
+        ldrb     w1, [x21, #6]
         cmp      w0, w9
-        b.ne     LBB0_4
-        ldrb     w9, [x21, #6]
-        cmp      w0, w9
-        b.eq     LBB0_7
-LBB0_4
+        ccmp     w0, w1, #0, eq
+        b.eq     pos0_return
+
         ldrb     w9, [x21, #4]
+        ldrb     w1, [x21, #8]
         cmp      w0, w9
-        b.ne     LBB0_6
-        ldrb     w8, [x21, #8]
-        cmp      w0, w8
-        b.eq     LBB0_7
-LBB0_6
-        mov      w0, wzr
-LBB0_7
+        ccmp     w0, w1, #0, eq
+        csel     w0, wzr, w0, ne
+
+pos0_return
         ret
         ENDP
 
   align 16
 _pos1func PROC
-        ldrb     w9, [x21]
+        ldrb     w9, [x21, #0]
+        ldrb     w1, [x21, #2]
         cmp      w0, w9
-        b.ne     LBB1_2
-        ldrb     w9, [x21, #2]
-        cmp      w0, w9
-        b.eq     LBB1_5
-LBB1_2
+        ccmp     w0, w1, #0, eq
+        b.eq     pos1_return
+
         ldrb     w9, [x21, #4]
+        ldrb     w1, [x21, #7]
         cmp      w0, w9
-        b.ne     LBB1_4
-        ldrb     w8, [x21, #7]
-        cmp      w0, w8
-        b.eq     LBB1_5
-LBB1_4
-        mov      w0, wzr
-LBB1_5
+        ccmp     w0, w1, #0, eq
+        csel     w0, wzr, w0, ne
+
+pos1_return
         ret
         ENDP
                      
   align 16
 _pos2func PROC
-        ldrb     w9, [x21]
+        ldrb     w9, [x21, #0]
+        ldrb     w1, [x21, #1]
         cmp      w0, w9
-        b.ne     LBB2_2
-        ldrb     w9, [x21, #1]
-        cmp      w0, w9
-        b.eq     LBB2_7
-LBB2_2
+        ccmp     w0, w1, #0, eq
+        b.eq     pos2_return
+
         ldrb     w9, [x21, #5]
-        cmp          w0, w9
-        b.ne     LBB2_4
-        ldrb     w9, [x21, #8]
+        ldrb     w1, [x21, #8]
         cmp      w0, w9
-        b.eq     LBB2_7
-LBB2_4
+        ccmp     w0, w1, #0, eq
+        b.eq     pos2_return
+
         ldrb     w9, [x21, #4]
+        ldrb     w1, [x21, #6]
         cmp      w0, w9
-        b.ne     LBB2_6
-        ldrb     w8, [x21, #6]
-        cmp      w0, w8
-        b.eq     LBB2_7
-LBB2_6
-        mov      w0, wzr
-LBB2_7
+        ccmp     w0, w1, #0, eq
+        csel     w0, wzr, w0, ne
+
+pos2_return
         ret
         ENDP
                      
   align 16
 _pos3func PROC
         ldrb     w9, [x21, #4]
+        ldrb     w1, [x21, #5]
         cmp      w0, w9
-        b.ne     LBB3_2
-        ldrb     w9, [x21, #5]
+        ccmp     w0, w1, #0, eq
+        b.eq     pos3_return
+
+        ldrb     w9, [x21, #0]
+        ldrb     w1, [x21, #6]
         cmp      w0, w9
-        b.eq     LBB3_5
-LBB3_2
-        ldrb     w9, [x21]
-        cmp      w0, w9
-        b.ne     LBB3_4
-        ldrb     w8, [x21, #6]
-        cmp      w0, w8
-        b.eq     LBB3_5
-LBB3_4
-        mov      w0, wzr
-LBB3_5
+        ccmp     w0, w1, #0, eq
+        csel     w0, wzr, w0, ne
+
+pos3_return
         ret
         ENDP
 
   align 16
 _pos4func PROC
-        ldrb     w9, [x21]
+        ldrb     w9, [x21, #0]
+        ldrb     w1, [x21, #8]
         cmp      w0, w9
-        b.ne     LBB4_2
-        ldrb     w9, [x21, #8]
-        cmp      w0, w9
-        b.eq     LBB4_9
-LBB4_2
+        ccmp     w0, w1, #0, eq
+        b.eq     pos4_return
+
         ldrb     w9, [x21, #2]
-        cmp          w0, w9
-        b.ne     LBB4_4
-        ldrb     w9, [x21, #6]
+        ldrb     w1, [x21, #6]
         cmp      w0, w9
-        b.eq     LBB4_9
-LBB4_4
+        ccmp     w0, w1, #0, eq
+        b.eq     pos4_return
+
         ldrb     w9, [x21, #1]
+        ldrb     w1, [x21, #7]
         cmp      w0, w9
-        b.ne     LBB4_6
-        ldrb     w9, [x21, #7]
-        cmp      w0, w9
-        b.eq     LBB4_9
-LBB4_6
+        ccmp     w0, w1, #0, eq
+        b.eq     pos4_return
+
         ldrb     w9, [x21, #3]
+        ldrb     w1, [x21, #5]
         cmp      w0, w9
-        b.ne     LBB4_8
-        ldrb     w8, [x21, #5]
-        cmp      w0, w8
-        b.eq     LBB4_9
-LBB4_8
-        mov      w0, wzr
-LBB4_9
+        ccmp     w0, w1, #0, eq
+        csel     w0, wzr, w0, ne
+
+pos4_return
         ret
         ENDP
 
   align 16
 _pos5func PROC
         ldrb     w9, [x21, #3]
+        ldrb     w1, [x21, #4]
         cmp      w0, w9
-        b.ne     LBB5_2
-        ldrb     w9, [x21, #4]
-        cmp      w0, w9
-        b.eq     LBB5_5
-LBB5_2
+        ccmp     w0, w1, #0, eq
+        b.eq     pos5_return
+
         ldrb     w9, [x21, #2]
+        ldrb     w1, [x21, #8]
         cmp      w0, w9
-        b.ne     LBB5_4
-        ldrb     w8, [x21, #8]
-        cmp      w0, w8
-        b.eq     LBB5_5
-LBB5_4
-        mov      w0, wzr
-LBB5_5
+        ccmp     w0, w1, #0, eq
+        csel     w0, wzr, w0, ne
+
+pos5_return
         ret
         ENDP
 
   align 16
 _pos6func PROC
         ldrb     w9, [x21, #7]
+        ldrb     w1, [x21, #8]
         cmp      w0, w9
-        b.ne     LBB6_2
-        ldrb     w9, [x21, #8]
+        ccmp     w0, w1, #0, eq
+        b.eq     pos6_return
+
+        ldrb     w9, [x21, #0]
+        ldrb     w1, [x21, #3]
         cmp      w0, w9
-        b.eq     LBB6_7
-LBB6_2
-        ldrb     w9, [x21]
-        cmp      w0, w9
-        b.ne     LBB6_4
-        ldrb     w9, [x21, #3]
-        cmp      w0, w9
-        b.eq     LBB6_7
-LBB6_4
+        ccmp     w0, w1, #0, eq
+        b.eq     pos6_return
+
         ldrb     w9, [x21, #4]
+        ldrb     w1, [x21, #2]
         cmp      w0, w9
-        b.ne     LBB6_6
-        ldrb     w8, [x21, #2]
-        cmp      w0, w8
-        b.eq     LBB6_7
-LBB6_6
-        mov      w0, wzr
-LBB6_7
+        ccmp     w0, w1, #0, eq
+        csel     w0, wzr, w0, ne
+
+pos6_return
         ret
         ENDP
                   
   align 16
 _pos7func PROC
         ldrb     w9, [x21, #6]
+        ldrb     w1, [x21, #8]
         cmp      w0, w9
-        b.ne     LBB7_2
-        ldrb     w9, [x21, #8]
-        cmp      w0, w9
-        b.eq     LBB7_5
-LBB7_2
+        ccmp     w0, w1, #0, eq
+        b.eq     pos7_return
+
         ldrb     w9, [x21, #1]
+        ldrb     w1, [x21, #4]
         cmp      w0, w9
-        b.ne     LBB7_4
-        ldrb     w9, [x21, #4]
-        cmp      w0, w9
-        b.eq     LBB7_5
-LBB7_4
-        mov      w0, wzr
-LBB7_5
+        ccmp     w0, w1, #0, eq
+        csel     w0, wzr, w0, ne
+
+pos7_return
         ret
         ENDP
 
   align 16
 _pos8func PROC
         ldrb     w9, [x21, #6]
+        ldrb     w1, [x21, #7]
         cmp      w0, w9
-        b.ne     LBB8_2
-        ldrb     w9, [x21, #7]
-        cmp      w0, w9
-        b.eq     LBB8_7
-LBB8_2
+        ccmp     w0, w1, #0, eq
+        b.eq     pos8_return
+
         ldrb     w9, [x21, #2]
+        ldrb     w1, [x21, #5]
         cmp      w0, w9
-        b.ne     LBB8_4
-        ldrb     w9, [x21, #5]
+        ccmp     w0, w1, #0, eq
+        b.eq     pos8_return
+
+        ldrb     w9, [x21, #0]
+        ldrb     w1, [x21, #4]
         cmp      w0, w9
-        b.eq     LBB8_7
-LBB8_4
-        ldrb     w9, [x21]
-        cmp      w0, w9
-        b.ne     LBB8_6
-        ldrb     w8, [x21, #4]
-        cmp      w0, w8
-        b.eq     LBB8_7
-LBB8_6
-        mov      w0, wzr
-LBB8_7
+        ccmp     w0, w1, #0, eq
+        csel     w0, wzr, w0, ne
+
+pos8_return
         ret
         ENDP
 
