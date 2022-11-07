@@ -252,8 +252,7 @@ _minmax_max:
 
     ; call the winner function for the most recent move
     mov      x0, o_piece                ; the piece just played
-    lsl      x3, x3, 3                  ; each function pointer takes 8 bytes (move is trashed)
-    add      x3, x20, x3                ; table + function offset
+    add      x3, x20, x3, lsl #3        ; table + function offset
     ldr      x3, [x3]                   ; grab the function pointer
     blr      x3                         ; call it
 
@@ -348,8 +347,7 @@ _minmax_min:
 
     ; call the winner function for the most recent move
     mov      x0, x_piece                ; the piece just played
-    lsl      x3, x3, 3                  ; each function pointer takes 8 bytes (move is trashed)
-    add      x3, x20, x3                ; table + function offset
+    add      x3, x20, x3, lsl #3        ; table + function offset
     ldr      x3, [x3]                   ; grab the function pointer
     blr      x3                         ; call it
 
