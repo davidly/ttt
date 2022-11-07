@@ -2796,9 +2796,8 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
                 }
                 else if ( arm64Mac == g_AssemblyTarget || arm64Win == g_AssemblyTarget )
                 {
-                    fprintf( fp, "    lsl      x0, x0, 2\n" );
                     LoadArm64Address( fp, "x1", varname );
-                    fprintf( fp, "    add      x1, x1, x0\n" );
+                    fprintf( fp, "    add      x1, x1, x0, lsl #2\n" );
                     fprintf( fp, "    ldr      w0, [x1], 0\n" );
                 }
                 else if ( i8080CPM == g_AssemblyTarget )
@@ -2917,9 +2916,8 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
                     LoadArm64Constant( fp, "x2", pvar->dims[ 1 ] );
                     fprintf( fp, "    mul      x1, x1, x2\n" );
                     fprintf( fp, "    add      x0, x0, x1\n" );
-                    fprintf( fp, "    lsl      x0, x0, 2\n" );
                     LoadArm64Address( fp, "x1", varname );
-                    fprintf( fp, "    add      x1, x1, x0\n" );
+                    fprintf( fp, "    add      x1, x1, x0, lsl #2\n" );
                     fprintf( fp, "    ldr      w0, [x1], 0\n" );
                 }
                 else if ( i8080CPM == g_AssemblyTarget )
@@ -3957,8 +3955,7 @@ void GenerateOptimizedExpression( FILE * fp, map<string, Variable> const & varma
             else if ( arm64Mac == g_AssemblyTarget || arm64Win == g_AssemblyTarget )
             {
                 LoadArm64Address( fp, "x1", varname );
-                fprintf( fp, "    lsl      x0, x0, #2\n" );
-                fprintf( fp, "    add      x1, x1, x0\n" );
+                fprintf( fp, "    add      x1, x1, x0, lsl #2\n" );
                 fprintf( fp, "    ldr      w0, [x1]\n" );
             }
             else if ( mos6502Apple1 == g_AssemblyTarget )
@@ -5198,16 +5195,14 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                             {
                                 if ( IsVariableInReg( varmap, vararray ) )
                                 {
-                                    fprintf( fp, "    lsl      w2, %s, 2\n", GenVariableReg( varmap, vals[ t + 4 ].strValue ) );
-                                    fprintf( fp, "    add      x1, %s, x2\n", GenVariableReg64( varmap, vararray ) );
+                                    fprintf( fp, "    add      x1, %s, %s, lsl #2\n", GenVariableReg64( varmap, vararray ), GenVariableReg64( varmap, vals[ t + 4 ].strValue ) );
                                     fprintf( fp, "    ldr      %s, [x1]\n", GenVariableReg( varmap, varname ) );
                                 }
                                 else
                                 {
                                     LoadArm64Address( fp, "x1", varmap, vararray );
 
-                                    fprintf( fp, "    lsl      w2, %s, 2\n", GenVariableReg( varmap, vals[ t + 4 ].strValue ) );
-                                    fprintf( fp, "    add      x1, x1, x2\n" );
+                                    fprintf( fp, "    add      x1, x1, %s, lsl #2\n", GenVariableReg64( varmap, vals[ t + 4 ].strValue ) );
                                     fprintf( fp, "    ldr      %s, [x1]\n", GenVariableReg( varmap, varname ) );
                                 }
                             }
@@ -5509,8 +5504,7 @@ label_no_eq_optimization:
                         //   6 EXPRESSION, value 2, strValue ''
                         //   7 CONSTANT, value 0, strValue ''
 
-                        fprintf( fp, "    lsl      w1, %s, 2\n", GenVariableReg( varmap, vals[ t + 1 ].strValue ) );
-                        fprintf( fp, "    add      x1, %s, x1\n", GenVariableReg64( varmap, vals[ variableToken ].strValue ) );
+                        fprintf( fp, "    add      x1, %s, %s, lsl #2\n", GenVariableReg64( varmap, vals[ variableToken ].strValue ), GenVariableReg64( varmap, vals[ t + 1 ].strValue ) );
                         
                         if ( 0 == vals[ t + 5 ].value )
                             fprintf( fp, "    str      wzr, [x1]\n" );
@@ -5542,15 +5536,13 @@ label_no_eq_optimization:
 
                         if ( IsVariableInReg( varmap, vararray ) )
                         {
-                            fprintf( fp, "    lsl      w0, %s, 2\n", GenVariableReg( varmap, vals[ t + 1 ].strValue ) );
-                            fprintf( fp, "    add      x2, %s, x0\n", GenVariableReg64( varmap, vararray ) );
+                            fprintf( fp, "    add      x2, %s, %s, lsl #2\n", GenVariableReg64( varmap, vararray ), GenVariableReg64( varmap, vals[ t + 1 ].strValue ) );
                             fprintf( fp, "    str      %s, [x2]\n", GenVariableReg( varmap, vals[ t + 5 ].strValue ) );
                         }
                         else
                         {
                             LoadArm64Address( fp, "x2", varmap, vals[ variableToken ].strValue );
-                            fprintf( fp, "    lsl      w0, %s, 2\n", GenVariableReg( varmap, vals[ t + 1 ].strValue ) );
-                            fprintf( fp, "    add      x2, x2, x0\n" );
+                            fprintf( fp, "    add      x2, x2, %s, lsl #2\n", GenVariableReg64( varmap, vals[ t + 1 ].strValue )  );
                             fprintf( fp, "    str      %s, [x2]\n", GenVariableReg( varmap, vals[ t + 5 ].strValue ) );
                         }
 
@@ -5786,9 +5778,8 @@ label_no_array_eq_optimization:
                         }
                         else if ( arm64Mac == g_AssemblyTarget || arm64Win == g_AssemblyTarget )
                         {
-                            fprintf( fp, "    lsl      x0, x0, 2\n" );
                             LoadArm64Address( fp, "x1", varmap, varname );
-                            fprintf( fp, "    add      x1, x1, x0\n" );
+                            fprintf( fp, "    add      x1, x1, x0, lsl #2\n" );
                         }
                         else if ( i8080CPM == g_AssemblyTarget )
                         {
@@ -7379,14 +7370,12 @@ label_no_array_eq_optimization:
                     }
                     else if ( arm64Mac == g_AssemblyTarget || arm64Win == g_AssemblyTarget )
                     {
-                        fprintf( fp, "    lsl      w4, %s, 2\n", GenVariableReg( varmap, vals[ t + 8 ].strValue ) );
-                        
                         if ( IsVariableInReg( varmap, vals[ t + 5 ].strValue ) )
-                            fprintf( fp, "    add      x3, %s, x4\n", GenVariableReg64( varmap, vals[ t + 5 ].strValue ) );
+                            fprintf( fp, "    add      x3, %s, %s, lsl #2\n", GenVariableReg64( varmap, vals[ t + 5 ].strValue ), GenVariableReg64( varmap, vals[ t + 8 ].strValue ) );
                         else
                         {
                             LoadArm64Address( fp, "x3", varmap, vals[ t + 5 ].strValue );
-                            fprintf( fp, "    add      x3, x3, x4\n" );
+                            fprintf( fp, "    add      x3, x3, %s, lsl #2\n", GenVariableReg64( varmap, vals[ t + 8 ].strValue ) );
                         }
 
                         LoadArm64Constant( fp, "x0", vals[ t + 12 ].value );
@@ -7520,14 +7509,12 @@ label_no_array_eq_optimization:
                     }
                     else if ( arm64Mac == g_AssemblyTarget || arm64Win == g_AssemblyTarget )
                     {
-                        fprintf( fp, "    lsl      w1, %s, 2\n", GenVariableReg( varmap, vals[ t + 4 ].strValue ) );
-
                         if ( IsVariableInReg( varmap, vals[ t + 1 ].strValue ) )
-                            fprintf( fp, "    add      x1, x1, %s\n", GenVariableReg64( varmap, vals[ t + 1 ].strValue ) );
+                            fprintf( fp, "    add      x1, %s, %s, lsl #2\n", GenVariableReg64( varmap, vals[ t + 1 ].strValue ), GenVariableReg64( varmap, vals[ t + 4 ].strValue ) );
                         else
                         {
                             LoadArm64Address( fp, "x2", vals[ t + 1 ].strValue );
-                            fprintf( fp, "    add      x1, x1, x2\n" );
+                            fprintf( fp, "    add      x1, x2, %s, lsl #2\n", GenVariableReg64( varmap, vals[ t + 4 ].strValue ) );
                         }
 
                         fprintf( fp, "    ldr      w0, [x1]\n" );
