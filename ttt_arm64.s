@@ -234,7 +234,7 @@ _minmax_max:
     ; x25: depth
     ; x26: value: local variable
     ; x27: for loop local variable I
-    ; x28: unused
+    ; x28: the move to make (X)
 
     stp      x26, x25, [sp, #-64]!      
     stp      x24, x23, [sp, #16]        
@@ -263,6 +263,7 @@ _minmax_max:
 
   .p2align 2
   _minmax_max_skip_winner:
+    mov      w28, x_piece               ; making X moves below
     mov      w26, minimum_score         ; the value is minimum because we're maximizing
     mov      x27, -1                    ; avoid a jump by starting the for loop I at -1
 
@@ -277,8 +278,7 @@ _minmax_max:
     cmp      w0, wzr                    ; is the space free? assumes blank_piece is 0
     b.ne     _minmax_max_top_of_loop
 
-    mov      w2, x_piece                ; make the move
-    strb     w2, [x1]
+    strb     w28, [x1]                  ; make the move
 
     mov      x0, x23                    ; alpha
     mov      x1, x24                    ; beta
@@ -330,7 +330,7 @@ _minmax_min:
     ; x25: depth
     ; x26: value: local variable
     ; x27: for loop local variable I
-    ; x28: unused
+    ; x28: the move to make (O)
 
     stp      x26, x25, [sp, #-64]!      
     stp      x24, x23, [sp, #16]        
@@ -363,6 +363,7 @@ _minmax_min:
 
   .p2align 2
   _minmax_min_skip_winner:
+    mov      w28, o_piece               ; the move to make below
     mov      w26, maximum_score         ; the value is maximum because we're minimizing
     mov      x27, -1                    ; avoid a jump by starting the for loop I at -1
 
@@ -377,8 +378,7 @@ _minmax_min:
     cmp      w0, wzr                    ; is the space free? assumes blank_piece is 0
     b.ne     _minmax_min_top_of_loop
 
-    mov      w2, o_piece                ; the move is O
-    strb     w2, [x1]                   ; store the move on the board
+    strb     w28, [x1]                  ; store the move on the board
 
     mov      x0, x23                    ; alpha
     mov      x1, x24                    ; beta

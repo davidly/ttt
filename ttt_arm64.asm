@@ -54,9 +54,9 @@ main PROC; linking with the C runtime, so main will be invoked
     add      x29, sp, #16
 
     ; set which cores the code will run on (optionally)
-    bl       GetCurrentProcess
-    mov      x1, 0x7                    ; on the sq3, 0x7 are the slow 4 cores (efficiency) and 0x70 are the fast 4 cores (performance)
-    bl       SetProcessAffinityMask
+    ;bl       GetCurrentProcess
+    ;mov      x1, 0x7                    ; on the sq3, 0x7 are the slow 4 cores (efficiency) and 0x70 are the fast 4 cores (performance)
+    ;bl       SetProcessAffinityMask
 
     ; remember the starting tickcount
     adrp     x1, priorTicks
@@ -266,7 +266,7 @@ _minmax_max PROC
     ; x25: depth
     ; x26: value: local variable
     ; x27: for loop local variable I
-    ; x28: unused
+    ; x28: the piece to move
 
     stp      x26, x25, [sp, #-64]!      
     stp      x24, x23, [sp, #16]        
@@ -294,6 +294,7 @@ _minmax_max PROC
     b.eq     _minmax_max_done
 
 _minmax_max_skip_winner
+    mov      w28, x_piece               ; making X moves below
     mov      w26, minimum_score         ; the value is minimum because we're maximizing
     mov      x27, -1                    ; avoid a jump by starting the for loop I at -1
 
@@ -307,8 +308,7 @@ _minmax_max_top_of_loop
     cmp      w0, wzr                    ; is the space free? assumes blank_piece is 0
     b.ne     _minmax_max_top_of_loop
 
-    mov      w2, x_piece                ; make the move
-    strb     w2, [x1]
+    strb     w28, [x1]                  ; make the move
 
     mov      x0, x23                    ; alpha
     mov      x1, x24                    ; beta
@@ -359,7 +359,7 @@ _minmax_min PROC
     ; x25: depth
     ; x26: value: local variable
     ; x27: for loop local variable I
-    ; x28: unused
+    ; x28: the piece to move
 
     stp      x26, x25, [sp, #-64]!      
     stp      x24, x23, [sp, #16]        
@@ -391,6 +391,7 @@ _minmax_min PROC
     b.eq     _minmax_min_done
 
 _minmax_min_skip_winner
+    mov      w28, o_piece               ; making O moves below
     mov      w26, maximum_score         ; the value is maximum because we're minimizing
     mov      x27, -1                    ; avoid a jump by starting the for loop I at -1
 
@@ -404,8 +405,7 @@ _minmax_min_top_of_loop
     cmp      w0, wzr                    ; is the space free? assumes blank_piece is 0
     b.ne     _minmax_min_top_of_loop
 
-    mov      w2, o_piece                ; the move is O
-    strb     w2, [x1]                   ; store the move on the board
+    strb     w28, [x1]                  ; make the move
 
     mov      x0, x23                    ; alpha
     mov      x1, x24                    ; beta
