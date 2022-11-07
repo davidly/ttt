@@ -299,9 +299,9 @@ _minmax_max:
     csel     w23, w26, w23, lt          ; update alpha if alpha is < value
 
     cmp      w23, w24                   ; compare alpha with beta
-    b.ge     _minmax_max_loadv_done     ; alpha pruning if alpha >= beta
- 
-    b        _minmax_max_top_of_loop    ; loop to the next board position 0..8
+    b.lt     _minmax_max_top_of_loop    ; loop to the next board position 0..8
+
+    ; fall through for alpha pruning if alpha >= beta
 
   .p2align 2
   _minmax_max_loadv_done:
@@ -399,9 +399,9 @@ _minmax_min:
     csel     w24, w26, w24, lt          ; update beta if value < beta
 
     cmp      w24, w23                   ; compare beta with alpha
-    b.le     _minmax_min_loadv_done     ; beta pruning if beta <= alpha
- 
-    b        _minmax_min_top_of_loop    ; loop to the next board position 0..8
+    b.gt     _minmax_min_top_of_loop    ; loop to the next board position 0..8
+
+    ; fall through for beta pruning if beta <= alpha
 
   .p2align 2
   _minmax_min_loadv_done:
