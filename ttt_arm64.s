@@ -431,28 +431,24 @@ call_printf:
 _pos0func:
         .cfi_startproc
         ldrb     w9, [x21, #1]
+        ldrb     w1, [x21, #2]
         cmp      w0, w9
-        b.ne     LBB3_2
-        ldrb     w9, [x21, #2]
-        cmp      w0, w9
-        b.eq     LBB3_7
-  LBB3_2:
+        ccmp     w0, w1, #0, eq
+        b.eq     pos0_return
+
         ldrb     w9, [x21, #3]
+        ldrb     w1, [x21, #6]
         cmp      w0, w9
-        b.ne     LBB3_4
-        ldrb     w9, [x21, #6]
-        cmp      w0, w9
-        b.eq     LBB3_7
-  LBB3_4:
+        ccmp     w0, w1, #0, eq
+        b.eq     pos0_return
+
         ldrb     w9, [x21, #4]
+        ldrb     w1, [x21, #8]
         cmp      w0, w9
-        b.ne     LBB3_6
-        ldrb     w8, [x21, #8]
-        cmp      w0, w8
-        b.eq     LBB3_7
-  LBB3_6:
-        mov      w0, wzr
-  LBB3_7:
+        ccmp     w0, w1, #0, eq
+        csel     w0, wzr, w0, ne
+
+pos0_return:
         ret
         .cfi_endproc
 
@@ -460,22 +456,19 @@ _pos0func:
 .p2align 2
 _pos1func:
         .cfi_startproc
-        ldrb     w9, [x21]
+        ldrb     w9, [x21, #0]
+        ldrb     w1, [x21, #2]
         cmp      w0, w9
-        b.ne     LBB4_2
-        ldrb     w9, [x21, #2]
-        cmp      w0, w9
-        b.eq     LBB4_5
-  LBB4_2:
+        ccmp     w0, w1, #0, eq
+        b.eq     pos1_return
+
         ldrb     w9, [x21, #4]
+        ldrb     w1, [x21, #7]
         cmp      w0, w9
-        b.ne     LBB4_4
-        ldrb     w8, [x21, #7]
-        cmp      w0, w8
-        b.eq     LBB4_5
-  LBB4_4:
-        mov      w0, wzr
-  LBB4_5:
+        ccmp     w0, w1, #0, eq
+        csel     w0, wzr, w0, ne
+
+pos1_return:
         ret
         .cfi_endproc
                      
@@ -483,29 +476,25 @@ _pos1func:
 .p2align 2
 _pos2func:
         .cfi_startproc
-        ldrb     w9, [x21]
+        ldrb     w9, [x21, #0]
+        ldrb     w1, [x21, #1]
         cmp      w0, w9
-        b.ne     LBB5_2
-        ldrb     w9, [x21, #1]
-        cmp      w0, w9
-        b.eq     LBB5_7
-  LBB5_2:
+        ccmp     w0, w1, #0, eq
+        b.eq     pos2_return
+
         ldrb     w9, [x21, #5]
-        cmp          w0, w9
-        b.ne     LBB5_4
-        ldrb     w9, [x21, #8]
+        ldrb     w1, [x21, #8]
         cmp      w0, w9
-        b.eq     LBB5_7
-  LBB5_4:
+        ccmp     w0, w1, #0, eq
+        b.eq     pos2_return
+
         ldrb     w9, [x21, #4]
+        ldrb     w1, [x21, #6]
         cmp      w0, w9
-        b.ne     LBB5_6
-        ldrb     w8, [x21, #6]
-        cmp      w0, w8
-        b.eq     LBB5_7
-  LBB5_6:
-        mov      w0, wzr
-  LBB5_7:
+        ccmp     w0, w1, #0, eq
+        csel     w0, wzr, w0, ne
+
+pos2_return:
         ret
         .cfi_endproc
                      
@@ -514,21 +503,18 @@ _pos2func:
 _pos3func:
         .cfi_startproc
         ldrb     w9, [x21, #4]
+        ldrb     w1, [x21, #5]
         cmp      w0, w9
-        b.ne     LBB6_2
-        ldrb     w9, [x21, #5]
+        ccmp     w0, w1, #0, eq
+        b.eq     pos3_return
+
+        ldrb     w9, [x21, #0]
+        ldrb     w1, [x21, #6]
         cmp      w0, w9
-        b.eq     LBB6_5
-  LBB6_2:
-        ldrb     w9, [x21]
-        cmp      w0, w9
-        b.ne     LBB6_4
-        ldrb     w8, [x21, #6]
-        cmp      w0, w8
-        b.eq     LBB6_5
-  LBB6_4:
-        mov      w0, wzr
-  LBB6_5:
+        ccmp     w0, w1, #0, eq
+        csel     w0, wzr, w0, ne
+
+pos3_return:
         ret
         .cfi_endproc
 
@@ -536,36 +522,31 @@ _pos3func:
 .p2align 2
 _pos4func:
         .cfi_startproc
-        ldrb     w9, [x21]
+        ldrb     w9, [x21, #0]
+        ldrb     w1, [x21, #8]
         cmp      w0, w9
-        b.ne     LBB7_2
-        ldrb     w9, [x21, #8]
-        cmp      w0, w9
-        b.eq     LBB7_9
-  LBB7_2:
+        ccmp     w0, w1, #0, eq
+        b.eq     pos4_return
+
         ldrb     w9, [x21, #2]
-        cmp          w0, w9
-        b.ne     LBB7_4
-        ldrb     w9, [x21, #6]
+        ldrb     w1, [x21, #6]
         cmp      w0, w9
-        b.eq     LBB7_9
-  LBB7_4:
+        ccmp     w0, w1, #0, eq
+        b.eq     pos4_return
+
         ldrb     w9, [x21, #1]
+        ldrb     w1, [x21, #7]
         cmp      w0, w9
-        b.ne     LBB7_6
-        ldrb     w9, [x21, #7]
-        cmp      w0, w9
-        b.eq     LBB7_9
-  LBB7_6:
+        ccmp     w0, w1, #0, eq
+        b.eq     pos4_return
+
         ldrb     w9, [x21, #3]
+        ldrb     w1, [x21, #5]
         cmp      w0, w9
-        b.ne     LBB7_8
-        ldrb     w8, [x21, #5]
-        cmp      w0, w8
-        b.eq     LBB7_9
-  LBB7_8:
-        mov      w0, wzr
-  LBB7_9:
+        ccmp     w0, w1, #0, eq
+        csel     w0, wzr, w0, ne
+
+pos4_return:
         ret
         .cfi_endproc
 
@@ -574,21 +555,18 @@ _pos4func:
 _pos5func:
         .cfi_startproc
         ldrb     w9, [x21, #3]
+        ldrb     w1, [x21, #4]
         cmp      w0, w9
-        b.ne     LBB8_2
-        ldrb     w9, [x21, #4]
-        cmp      w0, w9
-        b.eq     LBB8_5
-  LBB8_2:
+        ccmp     w0, w1, #0, eq
+        b.eq     pos5_return
+
         ldrb     w9, [x21, #2]
+        ldrb     w1, [x21, #8]
         cmp      w0, w9
-        b.ne     LBB8_4
-        ldrb     w8, [x21, #8]
-        cmp      w0, w8
-        b.eq     LBB8_5
-  LBB8_4:
-        mov      w0, wzr
-  LBB8_5:
+        ccmp     w0, w1, #0, eq
+        csel     w0, wzr, w0, ne
+
+pos5_return:
         ret
         .cfi_endproc
 
@@ -597,28 +575,24 @@ _pos5func:
 _pos6func:
         .cfi_startproc
         ldrb     w9, [x21, #7]
+        ldrb     w1, [x21, #8]
         cmp      w0, w9
-        b.ne     LBB9_2
-        ldrb     w9, [x21, #8]
+        ccmp     w0, w1, #0, eq
+        b.eq     pos6_return
+
+        ldrb     w9, [x21, #0]
+        ldrb     w1, [x21, #3]
         cmp      w0, w9
-        b.eq     LBB9_7
-  LBB9_2:
-        ldrb     w9, [x21]
-        cmp      w0, w9
-        b.ne     LBB9_4
-        ldrb     w9, [x21, #3]
-        cmp      w0, w9
-        b.eq     LBB9_7
-  LBB9_4:
+        ccmp     w0, w1, #0, eq
+        b.eq     pos6_return
+
         ldrb     w9, [x21, #4]
+        ldrb     w1, [x21, #2]
         cmp      w0, w9
-        b.ne     LBB9_6
-        ldrb     w8, [x21, #2]
-        cmp      w0, w8
-        b.eq     LBB9_7
-  LBB9_6:
-        mov      w0, wzr
-  LBB9_7:
+        ccmp     w0, w1, #0, eq
+        csel     w0, wzr, w0, ne
+
+pos6_return:
         ret
         .cfi_endproc
                   
@@ -627,21 +601,18 @@ _pos6func:
 _pos7func:
         .cfi_startproc
         ldrb     w9, [x21, #6]
+        ldrb     w1, [x21, #8]
         cmp      w0, w9
-        b.ne     LBB10_2
-        ldrb     w9, [x21, #8]
-        cmp      w0, w9
-        b.eq     LBB10_5
-  LBB10_2:
+        ccmp     w0, w1, #0, eq
+        b.eq     pos7_return
+
         ldrb     w9, [x21, #1]
+        ldrb     w1, [x21, #4]
         cmp      w0, w9
-        b.ne     LBB10_4
-        ldrb     w9, [x21, #4]
-        cmp      w0, w9
-        b.eq     LBB10_5
-  LBB10_4:
-        mov      w0, wzr
-  LBB10_5:
+        ccmp     w0, w1, #0, eq
+        csel     w0, wzr, w0, ne
+
+pos7_return:
         ret
         .cfi_endproc
 
@@ -650,29 +621,26 @@ _pos7func:
 _pos8func:
         .cfi_startproc
         ldrb     w9, [x21, #6]
+        ldrb     w1, [x21, #7]
         cmp      w0, w9
-        b.ne     LBB11_2
-        ldrb     w9, [x21, #7]
-        cmp      w0, w9
-        b.eq     LBB11_7
-  LBB11_2:
+        ccmp     w0, w1, #0, eq
+        b.eq     pos8_return
+
         ldrb     w9, [x21, #2]
+        ldrb     w1, [x21, #5]
         cmp      w0, w9
-        b.ne     LBB11_4
-        ldrb     w9, [x21, #5]
+        ccmp     w0, w1, #0, eq
+        b.eq     pos8_return
+
+        ldrb     w9, [x21, #0]
+        ldrb     w1, [x21, #4]
         cmp      w0, w9
-        b.eq     LBB11_7
-  LBB11_4:
-        ldrb     w9, [x21]
-        cmp      w0, w9
-        b.ne     LBB11_6
-        ldrb     w8, [x21, #4]
-        cmp      w0, w8
-        b.eq     LBB11_7
-  LBB11_6:
-        mov      w0, wzr
-  LBB11_7:
+        ccmp     w0, w1, #0, eq
+        csel     w0, wzr, w0, ne
+
+pos8_return:
         ret
+
         .cfi_endproc
 
 .section __DATA, __data
