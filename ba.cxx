@@ -2789,9 +2789,8 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
                 }
                 else if ( arm32Linux == g_AssemblyTarget )
                 {
-                    fprintf( fp, "    lsl      r0, r0, #2\n" );
                     LoadArm32Address( fp, "r1", varname );
-                    fprintf( fp, "    add      r1, r1, r0\n" );
+                    fprintf( fp, "    add      r1, r1, r0, lsl #2\n" );
                     fprintf( fp, "    ldr      r0, [r1], #0\n" );
                 }
                 else if ( arm64Mac == g_AssemblyTarget || arm64Win == g_AssemblyTarget )
@@ -2905,9 +2904,8 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
                     LoadArm32Constant( fp, "r2", pvar->dims[ 1 ] );
                     fprintf( fp, "    mul      r1, r1, r2\n" );
                     fprintf( fp, "    add      r0, r0, r1\n" );
-                    fprintf( fp, "    lsl      r0, r0, #2\n" );
                     LoadArm32Address( fp, "r1", varname );
-                    fprintf( fp, "    add      r1, r1, r0\n" );
+                    fprintf( fp, "    add      r1, r1, r0, lsl #2\n" );
                     fprintf( fp, "    ldr      r0, [r1], #0\n" );
                 }
                 else if ( arm64Mac == g_AssemblyTarget || arm64Win == g_AssemblyTarget )
@@ -5132,8 +5130,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                             else
                             {
                                 LoadArm32Address( fp, "r1", varmap, vararray );
-                                fprintf( fp, "    lsl      r2, %s, #2\n", GenVariableReg( varmap, vals[ t + 4 ].strValue ) );
-                                fprintf( fp, "    add      r1, r1, r2\n" );
+                                fprintf( fp, "    add      r1, r1, %s, lsl #2\n", GenVariableReg( varmap, vals[ t + 4 ].strValue ) );
                                 fprintf( fp, "    ldr      %s, [r1]\n", GenVariableReg( varmap, varname ) );
                             }
                         }
@@ -5772,9 +5769,8 @@ label_no_array_eq_optimization:
                         }
                         else if ( arm32Linux == g_AssemblyTarget )
                         {
-                            fprintf( fp, "    lsl      r0, r0, #2\n" );
                             LoadArm32Address( fp, "r1", varmap, varname );
-                            fprintf( fp, "    add      r1, r1, r0\n" );
+                            fprintf( fp, "    add      r1, r1, r0, lsl #2\n" );
                         }
                         else if ( arm64Mac == g_AssemblyTarget || arm64Win == g_AssemblyTarget )
                         {
