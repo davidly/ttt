@@ -28,6 +28,8 @@ extern ResumeThread: PROC
 extern WaitForSingleObject: PROC
 extern WaitForMultipleObjects: PROC
 extern CloseHandle: PROC
+extern GetCurrentProcess: PROC
+extern SetProcessAffinityMask: PROC
 
 ; these short/terrible names are to support portability of names to 8085
 
@@ -60,15 +62,8 @@ data_ttt SEGMENT ALIGN( 4096 ) 'DATA'
   align 256 ; 64
     BOARD4        db     0,0,0,0,1,0,0,0,0
   align 256 ;
-    ; using either _X or _O and WINPROCS is fastest. Using both _ versions or neither is slower. I don't know why
-    WINPROCS_X    dq     proc0_X, proc1_X, proc2_X, proc3_X, proc4_X, proc5_X, proc6_X, proc7_X, proc8_X
-  align 64
-    WINPROCS_O    dq     proc0_O, proc1_O, proc2_O, proc3_O, proc4_O, proc5_O, proc6_O, proc7_O, proc8_O
-  align 64
-    WINPROCS_NJ   dq     proc0_nj, proc1_nj, proc2_nj, proc3_nj, proc4_nj, proc5_nj, proc6_nj, proc7_nj, proc8_nj ; nj for No Jump when no win
-  align 64
     WINPROCS      dq     proc0, proc1, proc2, proc3, proc4, proc5, proc6, proc7, proc8
-  align 64
+  align 128
     runTime       db     'runtime in microseconds (-6): %lld', 10, 13, 0
     caption       db     'Hello world!', 0
     fmtStr        db     'Format string int %I64d %I64d %I64d %I64d %I64d %s', 0
@@ -79,7 +74,7 @@ data_ttt SEGMENT ALIGN( 4096 ) 'DATA'
     donewith      db     'done with: %d', 10, 13, 0
     dbgcw         db     'calling winner', 10, 13, 0
     CRLF          db     10, 13, 0
-  align 64
+  align 128
     startTime     dq     0
     endTime       dq     0
     perfFrequency dq     0
@@ -103,6 +98,11 @@ main PROC ; linking with the C runtime, so main will be invoked
 ;    lea    rbx, [caption]
 ;    mov    [rsp + 8 * 6 ], rbx
 ;    call   printf
+
+    ;call     GetCurrentProcess
+    ;mov      rcx, rax
+    ;mov      rdx, 070h                   ; we only need 3 cores. 0x70 for the fast ones on ARM running x64
+    ;call     SetProcessAffinityMask
 
     ; solve for the 3 unique starting board positions in serial
 
@@ -355,7 +355,7 @@ minmax_max PROC
     ; the win procs expect the board in r10
     xor     rax, rax                        ; the win procs expect rax to be 0
     mov     rbx, OPIECE                     ; and rbx to contain the player with the latest move
-    lea     rsi, [WINPROCS_NJ]               
+    lea     rsi, [WINPROCS]               
     call    QWORD PTR [rsi + r9 * 8]        ; call the proc that checks for wins starting with last piece added
 
     cmp     rax, OPIECE                     ; did O win?
@@ -368,14 +368,13 @@ minmax_max PROC
     mov     [rbp + B_S_OFFSET], rdx         ; beta saved in the spill location
 
     mov     r14, NSCO                       ; minimum possible score. maximizing, so find a score higher than this
-    xor     r9, r9                          ; r9 is I in the for loop 0..8
-    dec     r9                              ; avoid a jump by starting at -1
+    mov     r9, -1                          ; r9 is I in the for loop 0..8. avoid a jump by starting at -1
 
     align   16
   minmax_max_top_of_loop:
-    inc     r9
-    cmp     r9, 9                           ; 9 because the board is 0..8
+    cmp     r9, 8                           ; 8 because the board is 0..8. check before incrementing
     je      SHORT minmax_max_loadv_done
+    inc     r9
 
     cmp     BYTE PTR [r10 + r9], 0          ; is the board position free?
     jne     SHORT minmax_max_top_of_loop    ; move to the next spot on the board
@@ -451,7 +450,7 @@ minmax_min PROC
     ; the win procs expect the board in r10
     xor     rax, rax                        ; the win procs expect rax to be 0
     mov     rbx, XPIECE                     ; and rbx to contain the player with the latest move
-    lea     rsi, [WINPROCS_X]
+    lea     rsi, [WINPROCS]
     call    QWORD PTR [rsi + r9 * 8]        ; call the proc that checks for wins starting with last piece added
 
     cmp     rax, XPIECE                     ; did X win? 
@@ -468,14 +467,13 @@ minmax_min PROC
     mov     [rbp + B_S_OFFSET], rdx         ; beta saved in the spill location
  
     mov     r14, XSCO                       ; maximum possible score; minimizing, so find a score lower than this
-    xor     r9, r9                          ; r9 is I in the for loop 0..8
-    dec     r9                              ; avoid a jump by starting at -1
+    mov     r9, -1                          ; r9 is I in the for loop 0..8. avoid a jump by starting at -1
 
     align   16
   minmax_min_top_of_loop:
-    inc     r9
-    cmp     r9, 9                           ; 9 because the board is 0..8
+    cmp     r9, 8                           ; 8 because the board is 0..8. check before incrementing
     je      SHORT minmax_min_loadv_done
+    inc     r9
 
     cmp     BYTE PTR [r10 + r9], 0          ; is the board position free?
     jne     SHORT minmax_min_top_of_loop    ; move to the next spot on the board
@@ -524,952 +522,168 @@ minmax_min ENDP
 
 align 16
 proc0 PROC
-    cmp     bl, [r10 + 1]
-    jne     SHORT proc0_next_win
-    cmp     bl, [r10 + 2]
-    je      SHORT proc0_yes
+    mov     al, bl
+    and     al, [r10 + 1]
+    and     al, [r10 + 2]
+    jnz     SHORT proc0_yes
 
-  proc0_next_win:
-    cmp     bl, [r10 + 3]
-    jne     SHORT proc0_next_win2
-    cmp     bl, [r10 + 6]
-    je      SHORT proc0_yes
+    mov     al, bl
+    and     al, [r10 + 3]
+    and     al, [r10 + 6]
+    jnz     SHORT proc0_yes
 
-  proc0_next_win2:
-    cmp     bl, [r10 + 4]
-    jne     SHORT proc0_no
-    cmp     bl, [r10 + 8]
-    je      SHORT proc0_yes
-
-  proc0_no:
-    ret
+    mov     al, bl
+    and     al, [r10 + 4]
+    and     al, [r10 + 8]
 
   proc0_yes:
-    mov     rax, rbx
     ret
 proc0 ENDP
 
 align 16
-proc0_nj PROC
-    cmp     bl, [r10 + 1]
-    je      SHORT proc0_top_row2
-
-  proc0_left_column:
-    cmp     bl, [r10 + 3]
-    je      SHORT proc0_left_column2
-
-  proc0_diagonal:
-    cmp     bl, [r10 + 4]
-    je      SHORT proc0_diagonal2
-    ret
-
-  proc0_top_row2:
-    cmp     bl, [r10 + 2]
-    jne     proc0_left_column
-    mov     rax, rbx
-    ret
-
-  proc0_left_column2:
-    cmp     bl, [r10 + 6]
-    jne     proc0_diagonal
-    mov     rax, rbx
-    ret
-
-  proc0_diagonal2:
-    cmp     bl, [r10 + 8]
-    cmove   rax, rbx
-    ret
-proc0_nj ENDP
-
-align 16
 proc1 PROC
-    cmp     bl, [r10 + 0]
-    jne     SHORT proc1_next_win
-    cmp     bl, [r10 + 2]
-    je      SHORT proc1_yes
+    mov     al, bl
+    and     al, [r10 + 0]
+    and     al, [r10 + 2]
+    jnz     SHORT proc1_yes
 
-  proc1_next_win:
-    cmp     bl, [r10 + 4]
-    jne     SHORT proc1_no
-    cmp     bl, [r10 + 7]
-    je      SHORT proc1_yes
-
-  proc1_no:
-    ret
+    mov     al, bl
+    and     al, [r10 + 4]
+    and     al, [r10 + 7]
 
   proc1_yes:
-    mov     rax, rbx
     ret
 proc1 ENDP
 
 align 16
-proc1_nj PROC
-    cmp     bl, [r10 + 0]
-    je      SHORT proc1_top_row2
-
-  proc1_center_column:
-    cmp     bl, [r10 + 4]
-    je      SHORT proc1_center_column2
-    ret
-
-  proc1_top_row2:
-    cmp     bl, [r10 + 2]
-    jne     SHORT proc1_center_column
-    mov     rax, rbx
-    ret
-
-  proc1_center_column2:
-    cmp     bl, [r10 + 7]
-    cmove   rax, rbx
-    ret
-proc1_nj ENDP
-
-align 16
 proc2 PROC
-    cmp     bl, [r10 + 0]
-    jne     SHORT proc2_next_win
-    cmp     bl, [r10 + 1]
-    je      SHORT proc2_yes
+    mov     al, bl
+    and     al, [r10 + 0]
+    and     al, [r10 + 1]
+    jnz     SHORT proc2_yes
 
-  proc2_next_win:
-    cmp     bl, [r10 + 5]
-    jne     SHORT proc2_next_win2
-    cmp     bl, [r10 + 8]
-    je      SHORT proc2_yes
+    mov     al, bl
+    and     al, [r10 + 5]
+    and     al, [r10 + 8]
+    jnz     SHORT proc2_yes
 
-  proc2_next_win2:
-    cmp     bl, [r10 + 4]
-    jne     SHORT proc2_no
-    cmp     bl, [r10 + 6]
-    je      SHORT proc2_yes
-
-  proc2_no:
-    ret
+    mov     al, bl
+    and     al, [r10 + 4]
+    and     al, [r10 + 6]
 
   proc2_yes:
-    mov     rax, rbx
     ret
 proc2 ENDP
 
 align 16
-proc2_nj PROC
-    cmp     bl, [r10 + 0]
-    je      SHORT proc2_top_row2
-
-  proc2_right_column:
-    cmp     bl, [r10 + 5]
-    je      SHORT proc2_right_column2
-
-  proc2_diagonal:
-    cmp     bl, [r10 + 4]
-    je      SHORT proc2_diagonal2
-    ret
-
-  proc2_top_row2:
-    cmp     bl, [r10 + 1]
-    jne     proc2_right_column
-    mov     rax, rbx
-    ret
-
-  proc2_right_column2:
-    cmp     bl, [r10 + 8]
-    jne     proc2_diagonal
-    mov     rax, rbx
-    ret
-
-  proc2_diagonal2:
-    cmp     bl, [r10 + 6]
-    cmove   rax, rbx
-    ret
-proc2_nj ENDP
-
-align 16
 proc3 PROC
-    cmp     bl, [r10 + 0]
-    jne     SHORT proc3_next_win
-    cmp     bl, [r10 + 6]
-    je      SHORT proc3_yes
+    mov     al, bl
+    and     al, [r10 + 0]
+    and     al, [r10 + 6]
+    jnz     SHORT proc3_yes
 
-  proc3_next_win:
-    cmp     bl, [r10 + 4]
-    jne     SHORT proc3_no
-    cmp     bl, [r10 + 5]
-    je      SHORT proc3_yes
-
-  proc3_no:
-    ret
+    mov     al, bl
+    and     al, [r10 + 4]
+    and     al, [r10 + 5]
 
   proc3_yes:
-    mov     rax, rbx
     ret
 proc3 ENDP
 
 align 16
-proc3_nj PROC
-    cmp     bl, [r10 + 4]
-    je      SHORT proc3_center_row2
-
-  proc3_left_column:
-    cmp     bl, [r10 + 0]
-    je      SHORT proc3_left_column2
-    ret
-
-  proc3_center_row2:
-    cmp     bl, [r10 + 5]
-    jne     SHORT proc3_left_column
-    mov     rax, rbx
-    ret
-
-  proc3_left_column2:
-    cmp     bl, [r10 + 6]
-    cmove   rax, rbx
-    ret
-proc3_nj ENDP
-
-align 16
 proc4 PROC
-    cmp     bl, [r10 + 0]
-    jne     SHORT proc4_next_win
-    cmp     bl, [r10 + 8]
-    je      SHORT proc4_yes
+    mov     al, bl
+    and     al, [r10 + 0]
+    and     al, [r10 + 8]
+    jnz     SHORT proc4_yes
 
-  proc4_next_win:
-    cmp     bl, [r10 + 2]
-    jne     SHORT proc4_next_win2
-    cmp     bl, [r10 + 6]
-    je      SHORT proc4_yes
+    mov     al, bl
+    and     al, [r10 + 2]
+    and     al, [r10 + 6]
+    jnz     SHORT proc4_yes
 
-  proc4_next_win2:
-    cmp     bl, [r10 + 1]
-    jne     SHORT proc4_next_win3
-    cmp     bl, [r10 + 7]
-    je      SHORT proc4_yes
+    mov     al, bl
+    and     al, [r10 + 1]
+    and     al, [r10 + 7]
+    jnz     SHORT proc4_yes
 
-  proc4_next_win3:
-    cmp     bl, [r10 + 3]
-    jne     SHORT proc4_no
-    cmp     bl, [r10 + 5]
-    je      SHORT proc4_yes
-
-  proc4_no:
-    ret
+    mov     al, bl
+    and     al, [r10 + 3]
+    and     al, [r10 + 5]
 
   proc4_yes:
-    mov     rax, rbx
     ret
 proc4 ENDP
 
 align 16
-proc4_nj PROC
-    cmp     bl, [r10 + 1]
-    je      SHORT proc4_center_column2
-
-  proc4_center_row:
-    cmp     bl, [r10 + 3]
-    je      SHORT proc4_center_row2
-
-  proc4_diagonal:
-    cmp     bl, [r10 + 0]
-    je      SHORT proc4_diagonal2
-
-  proc4_diagonalB:
-    cmp     bl, [r10 + 2]
-    je      SHORT proc4_diagonalB2
-    ret
-
-  proc4_center_column2:
-    cmp     bl, [r10 + 7]
-    jne     proc4_center_row
-    mov     rax, rbx
-    ret
-
-  proc4_center_row2:
-    cmp     bl, [r10 + 5]
-    jne     proc4_diagonal
-    mov     rax, rbx
-    ret
-
-  proc4_diagonal2:
-    cmp     bl, [r10 + 8]
-    jne     proc4_diagonalB
-    mov     rax, rbx
-    ret
-
-  proc4_diagonalB2:
-    cmp     bl, [r10 + 6]
-    cmove   rax, rbx
-    ret
-proc4_nj ENDP
-
-align 16
 proc5 PROC
-    cmp     bl, [r10 + 3]
-    jne     SHORT proc5_next_win
-    cmp     bl, [r10 + 4]
-    je      SHORT proc5_yes
+    mov     al, bl
+    and     al, [r10 + 3]
+    and     al, [r10 + 4]
+    jnz     SHORT proc5_yes
 
-  proc5_next_win:
-    cmp     bl, [r10 + 2]
-    jne     SHORT proc5_no
-    cmp     bl, [r10 + 8]
-    je      SHORT proc5_yes
-
-  proc5_no:
-    ret
+    mov     al, bl
+    and     al, [r10 + 2]
+    and     al, [r10 + 8]
 
   proc5_yes:
-    mov     rax, rbx
     ret
 proc5 ENDP
 
 align 16
-proc5_nj PROC
-    cmp     bl, [r10 + 4]
-    je      SHORT proc5_center_row2
-
-  proc5_right_column:
-    cmp     bl, [r10 + 2]
-    je      SHORT proc5_right_column2
-    ret
-
-  proc5_center_row2:
-    cmp     bl, [r10 + 3]
-    jne     SHORT proc5_right_column
-    mov     rax, rbx
-    ret
-
-  proc5_right_column2:
-    cmp     bl, [r10 + 8]
-    cmove   rax, rbx
-    ret
-proc5_nj ENDP
-
-align 16
 proc6 PROC
-    cmp     bl, [r10 + 4]
-    jne     SHORT proc6_next_win
-    cmp     bl, [r10 + 2]
-    je      SHORT proc6_yes
+    mov     al, bl
+    and     al, [r10 + 4]
+    and     al, [r10 + 2]
+    jnz     SHORT proc6_yes
 
-  proc6_next_win:
-    cmp     bl, [r10 + 0]
-    jne     SHORT proc6_next_win2
-    cmp     bl, [r10 + 3]
-    je      SHORT proc6_yes
+    mov     al, bl
+    and     al, [r10 + 0]
+    and     al, [r10 + 3]
+    jnz     SHORT proc6_yes
 
-  proc6_next_win2:
-    cmp     bl, [r10 + 7]
-    jne     SHORT proc6_no
-    cmp     bl, [r10 + 8]
-    je      SHORT proc6_yes
-
-  proc6_no:
-    ret
+    mov     al, bl
+    and     al, [r10 + 7]
+    and     al, [r10 + 8]
 
   proc6_yes:
-    mov     rax, rbx
     ret
 proc6 ENDP
 
 align 16
-proc6_nj PROC
-    cmp     bl, [r10 + 0]
-    je      SHORT proc6_left_column2
-
-  proc6_bottom_row:
-    cmp     bl, [r10 + 7]
-    je      SHORT proc6_bottom_row2
-
-  proc6_diagonal:
-    cmp     bl, [r10 + 4]
-    je      SHORT proc6_diagonal2
-    ret
-
-  proc6_left_column2:
-    cmp     bl, [r10 + 3]
-    jne     proc6_bottom_row
-    mov     rax, rbx
-    ret
-
-  proc6_bottom_row2:
-    cmp     bl, [r10 + 8]
-    jne     proc6_diagonal
-    mov     rax, rbx
-    ret
-
-  proc6_diagonal2:
-    cmp     bl, [r10 + 2]
-    cmove   rax, rbx
-    ret
-proc6_nj ENDP
-
-align 16
 proc7 PROC
-    cmp     bl, [r10 + 1]
-    jne     SHORT proc7_next_win
-    cmp     bl, [r10 + 4]
-    je      SHORT proc7_yes
+    mov     al, bl
+    and     al, [r10 + 1]
+    and     al, [r10 + 4]
+    jnz     SHORT proc7_yes
 
-  proc7_next_win:
-    cmp     bl, [r10 + 6]
-    jne     SHORT proc7_no
-    cmp     bl, [r10 + 8]
-    je      SHORT proc7_yes
-
-  proc7_no:
-    ret
+    mov     al, bl
+    and     al, [r10 + 6]
+    and     al, [r10 + 8]
 
   proc7_yes:
-    mov     rax, rbx
     ret
 proc7 ENDP
 
 align 16
-proc7_nj PROC
-    cmp     bl, [r10 + 6]
-    je      SHORT proc7_bottom_row2
-
-  proc7_center_column:
-    cmp     bl, [r10 + 1]
-    je      SHORT proc7_center_column2
-    ret
-
-  proc7_bottom_row2:
-    cmp     bl, [r10 + 8]
-    jne     SHORT proc7_center_column
-    mov     rax, rbx
-    ret
-
-  proc7_center_column2:
-    cmp     bl, [r10 + 4]
-    cmove   rax, rbx
-    ret
-proc7_nj ENDP
-
-align 16
 proc8 PROC
-    cmp     bl, [r10 + 0]
-    jne     SHORT proc8_next_win
-    cmp     bl, [r10 + 4]
-    je      SHORT proc8_yes
+    mov     al, bl
+    and     al, [r10 + 0]
+    and     al, [r10 + 4]
+    jnz     SHORT proc8_yes
 
-  proc8_next_win:
-    cmp     bl, [r10 + 2]
-    jne     SHORT proc8_next_win2
-    cmp     bl, [r10 + 5]
-    je      SHORT proc8_yes
+    mov     al, bl
+    and     al, [r10 + 2]
+    and     al, [r10 + 5]
+    jnz     SHORT proc8_yes
 
-  proc8_next_win2:
-    cmp     bl, [r10 + 6]
-    jne     SHORT proc8_no
-    cmp     bl, [r10 + 7]
-    je      SHORT proc8_yes
-
-  proc8_no:
-    ret
+    mov     al, bl
+    and     al, [r10 + 6]
+    and     al, [r10 + 7]
 
   proc8_yes:
-    mov     rax, rbx
     ret
 proc8 ENDP
-
-align 16
-proc8_nj PROC
-    cmp     bl, [r10 + 2]
-    je      SHORT proc8_right_column2
-
-  proc8_bottom_row:
-    cmp     bl, [r10 + 6]
-    je      SHORT proc8_bottom_row2
-
-  proc8_diagonal:
-    cmp     bl, [r10 + 4]
-    je      SHORT proc8_diagonal2
-    ret
-
-  proc8_right_column2:
-    cmp     bl, [r10 + 5]
-    jne     proc8_bottom_row
-    mov     rax, rbx
-    ret
-
-  proc8_bottom_row2:
-    cmp     bl, [r10 + 7]
-    jne     proc8_diagonal
-    mov     rax, rbx
-    ret
-
-  proc8_diagonal2:
-    cmp     bl, [r10 + 0]
-    cmove   rax, rbx
-    ret
-proc8_nj ENDP
-
-align 16
-proc0_O PROC
-    mov     rdi, [r10]                 ; rdi should have the first 8 bytes of the board
-    mov     rsi, rdi                   ; saved for later
-    mov     r12, 020202h               ; top row OOO
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc0_yes
-
-    mov     rdi, rsi
-    mov     r12, 02000002000002h       ; left column OOO
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc0_yes
-
-    cmp     bl, [r10 + 4]              ; diagnol top left to bottom right
-    jne     SHORT proc0_no
-    cmp     bl, [r10 + 8]
-    cmove   rax, rbx
-
-  proc0_no:
-    ret
-
-  proc0_yes:
-    mov     rax, rbx
-    ret
-proc0_O ENDP
-
-align 16
-proc1_O PROC
-    mov     rdi, [r10]                 ; rdi should have the first 8 bytes of the board
-    mov     rsi, rdi                   ; saved for later
-    mov     r12, 020202h               ; top row OOO
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc1_yes
-
-    mov     rdi, rsi
-    mov     r12, 0200000200000200h     ; middle column
-    and     rdi, r12
-    cmp     rdi, r12
-    cmove   rax, rbx
-    ret
-
-  proc1_yes:
-    mov     rax, rbx
-    ret
-proc1_O ENDP
-
-align 16
-proc2_O PROC
-    mov     rdi, [r10]                 ; rdi should have the first 8 bytes of the board
-    mov     rsi, rdi                   ; saved for later
-    mov     r12, 020202h               ; top row OOO
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc2_yes
-
-    mov     rdi, rsi
-    mov     r12, 02000200020000h       ; diagonal top right to bottom left
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc2_yes
-
-    cmp     bl, [r10 + 5]              ; right column
-    jne     SHORT proc2_no
-    cmp     bl, [r10 + 8]
-    cmove   rax, rbx
-
-  proc2_no:
-    ret
-
-  proc2_yes:
-    mov     rax, rbx
-    ret
-proc2_O ENDP
-
-align 16
-proc3_O PROC
-    mov     rdi, [r10]                 ; rdi should have the first 8 bytes of the board
-    mov     rsi, rdi                   ; saved for later
-    mov     r12, 02000002000002h       ; left column
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc3_yes
-
-    mov     rdi, rsi
-    mov     r12, 020202000000h         ; middle row
-    and     rdi, r12
-    cmp     rdi, r12
-    cmove   rax, rbx
-    ret
-
-  proc3_yes:
-    mov     rax, rbx
-    ret
-proc3_O ENDP
-
-align 16
-proc4_O PROC
-    mov     rdi, [r10]                 ; rdi should have the first 8 bytes of the board
-    mov     rsi, rdi                   ; saved for later
-    mov     r12, 020202000000h         ; middle row
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc4_yes
-
-    mov     rdi, rsi
-    mov     r12, 02000200020000h       ; diagonal top right to bottom left
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc4_yes
-
-    mov     rdi, rsi
-    mov     r12, 0200000200000200h     ; middle column
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc4_yes
-
-    cmp     bl, [r10 + 0]              ; diagonal top left to bottom right
-    jne     SHORT proc4_no
-    cmp     bl, [r10 + 8]
-    cmove   rax, rbx
-
-  proc4_no:
-    ret
-
-  proc4_yes:
-    mov     rax, rbx
-    ret
-proc4_O ENDP
-
-align 16
-proc5_O PROC
-    mov     rdi, [r10]                 ; rdi should have the first 8 bytes of the board
-    mov     rsi, rdi                   ; saved for later
-    mov     r12, 020202000000h         ; middle row
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc5_yes
-
-    cmp     bl, [r10 + 2]              ; right column
-    jne     SHORT proc5_no
-    cmp     bl, [r10 + 8]
-    cmove   rax, rbx
-
-  proc5_no:
-    ret
-
-  proc5_yes:
-    mov     rax, rbx
-    ret
-proc5_O ENDP
-
-align 16
-proc6_O PROC
-    mov     rdi, [r10]                 ; rdi should have the first 8 bytes of the board
-    mov     rsi, rdi                   ; saved for later
-    mov     r12, 02000002000002h       ; left column
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc6_yes
-
-    mov     rdi, rsi
-    mov     r12, 02000200020000h       ; diagonal top right to bottom left
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc6_yes
-
-    cmp     bl, [r10 + 7]              ; bottom row
-    jne     SHORT proc6_no
-    cmp     bl, [r10 + 8]
-    cmove   rax, rbx
-
-  proc6_no:
-    ret
-
-  proc6_yes:
-    mov     rax, rbx
-    ret
-proc6_O ENDP
-
-align 16
-proc7_O PROC
-    mov     rdi, [r10]                 ; rdi should have the first 8 bytes of the board
-    mov     rsi, rdi                   ; saved for later
-    mov     r12, 0200000200000200h     ; middle column
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc7_yes
-
-    cmp     bl, [r10 + 6]              ; bottom row
-    jne     SHORT proc7_no
-    cmp     bl, [r10 + 8]
-    cmove   rax, rbx
-
-  proc7_no:
-    ret
-
-  proc7_yes:
-    mov     rax, rbx
-    ret
-proc7_O ENDP
-
-align 16
-proc8_O PROC
-    ; for 8, ignore the byte beyond the qword because we know its value
-
-    mov     rdi, [r10]                 ; rdi should have the first 8 bytes of the board
-    mov     rsi, rdi                   ; saved for later
-    mov     r12, 020000020000h         ; right column
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc8_yes
-
-    mov     rdi, rsi
-    mov     r12, 0200000002h           ; diagonal top left to bottom right
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc8_yes
-
-    mov     rdi, rsi
-    mov     r12, 0202000000000000h     ; bottom row
-    and     rdi, r12
-    cmp     rdi, r12
-    cmove   rax, rbx
-    ret
-
-  proc8_yes:
-    mov     rax, rbx
-    ret
-proc8_O ENDP
-
-align 16
-proc0_X PROC
-    mov     rdi, [r10]                 ; rdi should have the first 8 bytes of the board
-    mov     rsi, rdi                   ; saved for later
-    mov     r12, 010101h               ; top row XXX
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc0_yes
-
-    mov     rdi, rsi
-    mov     r12, 01000001000001h       ; left column XXX
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc0_yes
-
-    cmp     bl, [r10 + 4]              ; diagnol top left to bottom right
-    jne     SHORT proc0_no
-    cmp     bl, [r10 + 8]
-    cmove   rax, rbx
-
-  proc0_no:
-    ret
-
-  proc0_yes:
-    mov     rax, rbx
-    ret
-proc0_X ENDP
-
-align 16
-proc1_X PROC
-    mov     rdi, [r10]                 ; rdi should have the first 8 bytes of the board
-    mov     rsi, rdi                   ; saved for later
-    mov     r12, 010101h               ; top row XXX
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc1_yes
-
-    mov     rdi, rsi
-    mov     r12, 0100000100000100h     ; middle column
-    and     rdi, r12
-    cmp     rdi, r12
-    cmove   rax, rbx
-    ret
-
-  proc1_yes:
-    mov     rax, rbx
-    ret
-proc1_X ENDP
-
-align 16
-proc2_X PROC
-    mov     rdi, [r10]                 ; rdi should have the first 8 bytes of the board
-    mov     rsi, rdi                   ; saved for later
-    mov     r12, 010101h               ; top row XXX
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc2_yes
-
-    mov     rdi, rsi
-    mov     r12, 01000100010000h       ; diagonal top right to bottom left
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc2_yes
-
-    cmp     bl, [r10 + 5]              ; right column
-    jne     SHORT proc2_no
-    cmp     bl, [r10 + 8]
-    cmove   rax, rbx
-
-  proc2_no:
-    ret
-
-  proc2_yes:
-    mov     rax, rbx
-    ret
-proc2_X ENDP
-
-align 16
-proc3_X PROC
-    mov     rdi, [r10]                 ; rdi should have the first 8 bytes of the board
-    mov     rsi, rdi                   ; saved for later
-    mov     r12, 01000001000001h       ; left column
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc3_yes
-
-    mov     rdi, rsi
-    mov     r12, 010101000000h         ; middle row
-    and     rdi, r12
-    cmp     rdi, r12
-    cmove   rax, rbx
-    ret
-
-  proc3_yes:
-    mov     rax, rbx
-    ret
-proc3_X ENDP
-
-align 16
-proc4_X PROC
-    mov     rdi, [r10]                 ; rdi should have the first 8 bytes of the board
-    mov     rsi, rdi                   ; saved for later
-    mov     r12, 010101000000h         ; middle row
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc4_yes
-
-    mov     rdi, rsi
-    mov     r12, 01000100010000h       ; diagonal top right to bottom left
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc4_yes
-
-    mov     rdi, rsi
-    mov     r12, 0100000100000100h     ; middle column
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc4_yes
-
-    cmp     bl, [r10 + 0]              ; diagonal top left to bottom right
-    jne     SHORT proc4_no
-    cmp     bl, [r10 + 8]
-    cmove   rax, rbx
-
-  proc4_no:
-    ret
-
-  proc4_yes:
-    mov     rax, rbx
-    ret
-proc4_X ENDP
-
-align 16
-proc5_X PROC
-    mov     rdi, [r10]                 ; rdi should have the first 8 bytes of the board
-    mov     rsi, rdi                   ; saved for later
-    mov     r12, 010101000000h         ; middle row
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc5_yes
-
-    cmp     bl, [r10 + 2]              ; right column
-    jne     SHORT proc5_no
-    cmp     bl, [r10 + 8]
-    cmove   rax, rbx
-
-  proc5_no:
-    ret
-
-  proc5_yes:
-    mov     rax, rbx
-    ret
-proc5_X ENDP
-
-align 16
-proc6_X PROC
-    mov     rdi, [r10]                 ; rdi should have the first 8 bytes of the board
-    mov     rsi, rdi                   ; saved for later
-    mov     r12, 01000001000001h       ; left column
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc6_yes
-
-    mov     rdi, rsi
-    mov     r12, 01000100010000h       ; diagonal top right to bottom left
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc6_yes
-
-    cmp     bl, [r10 + 7]              ; bottom row
-    jne     SHORT proc6_no
-    cmp     bl, [r10 + 8]
-    cmove   rax, rbx
-
-  proc6_no:
-    ret
-
-  proc6_yes:
-    mov     rax, rbx
-    ret
-proc6_X ENDP
-
-align 16
-proc7_X PROC
-    mov     rdi, [r10]                 ; rdi should have the first 8 bytes of the board
-    mov     rsi, rdi                   ; saved for later
-    mov     r12, 0100000100000100h     ; middle column
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc7_yes
-
-    cmp     bl, [r10 + 6]              ; bottom row
-    jne     SHORT proc7_no
-    cmp     bl, [r10 + 8]
-    cmove   rax, rbx
-
-  proc7_no:
-    ret
-
-  proc7_yes:
-    mov     rax, rbx
-    ret
-proc7_X ENDP
-
-align 16
-proc8_X PROC
-    mov     rdi, [r10]                 ; rdi should have the first 8 bytes of the board
-    mov     rsi, rdi                   ; saved for later
-    ; for 8, ignore the byte beyond the qword because we know its value
-
-    mov     r12, 010000010000h         ; right column
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc8_yes
-
-    mov     rdi, rsi
-    mov     r12, 0100000001h           ; diagonal top left to bottom right
-    and     rdi, r12
-    cmp     rdi, r12
-    je      proc8_yes
-
-    mov     rdi, rsi
-    mov     r12, 0101000000000000h     ; bottom row
-    and     rdi, r12
-    cmp     rdi, r12
-    cmove   rax, rbx
-    ret
-
-  proc8_yes:
-    mov     rax, rbx
-    ret
-proc8_X ENDP
 
 code_ttt ENDS
 END
