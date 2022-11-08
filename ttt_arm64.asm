@@ -28,7 +28,7 @@ x_piece       equ 1
 o_piece       equ 2
 blank_piece   equ 0                     ; not referenced in the code below, but it is assumed to be 0
 
-    AREA |.data|, DATA, align=6, codealign
+  area |.data|, data, align=6, codealign
   ; allocate separate boards for the 3 unique starting moves so multiple threads can solve in parallel
   ; cache lines are 64 bytes, so put each on separate cache lines
   align 64
@@ -146,7 +146,7 @@ _runmm PROC
     add      x29, sp, #80               
 
     mov      x19, 0                              ; x19 is the move count
-    mov      x23, x0                             ; x23 is the initial move    
+    mov      x27, x0                             ; x27 is the initial move    
     adrp     x20, _winner_functions              ; x20 holds the function table
     add      x20, x20, _winner_functions
 
@@ -167,7 +167,7 @@ _runmm_try1
 _runmm_try4
     ; force the move to be 4 at this point
     mov      x0, 4
-    mov      x23, 4
+    mov      x27, 4
     adrp     x21, board4
     add      x21, x21, board4
 
@@ -175,10 +175,10 @@ _runmm_for
     ldr      x22, =iterations           ; x22 is the iteration for loop counter. ldr not mov because it's large
 
 _runmm_loop
-    mov      x0, minimum_score          ; alpha
-    mov      x1, maximum_score          ; beta
+    mov      x23, minimum_score         ; alpha
+    mov      x24, maximum_score         ; beta
     mov      x2, 0                      ; depth
-    mov      x3, x23                    ; move (0..8)
+    mov      x3, x27                    ; move (0..8)
     bl       _minmax_min
     sub      x22, x22, 1
     cmp      x22, 0
@@ -253,16 +253,16 @@ _solve_threaded PROC
 
   align 16
 _minmax_max PROC
-    ; x0: alpha. keep in register x23
-    ; x1: beta. keep in register x24
+    ; x0: unused (first argument is in x23)
+    ; x1: unused (second argument is in x24)
     ; x2: depth. keep in register x25
     ; x3: move: position of last piece added 0..8. Keep in register for a bit then it's overwritten
     ; x19: global move count for this thread
     ; x20: winner function table
     ; x21: the board for this thread
     ; x22: global iteration count
-    ; x23: alpha
-    ; x24: beta
+    ; x23: alpha (argument)
+    ; x24: beta (argument)
     ; x25: depth
     ; x26: value: local variable
     ; x27: for loop local variable I
@@ -274,8 +274,6 @@ _minmax_max PROC
     stp      x29, x30, [sp, #48]        
     add      x29, sp, #48               
 
-    mov      x23, x0                    ; alpha
-    mov      x24, x1                    ; beta
     mov      x25, x2                    ; depth
     add      x19, x19, 1                ; increment global move count
 
@@ -302,21 +300,19 @@ _minmax_max_top_of_loop
     b.eq     _minmax_max_loadv_done
     add      x27, x27, 1
 
-    add      x1, x21, x27
+    add      x1, x21, x27               ; save board position in x1 for now and later
     ldrb     w0, [x1]                   ; load the board piece at I in the loop
     cmp      w0, wzr                    ; is the space free? assumes blank_piece is 0
     b.ne     _minmax_max_top_of_loop
 
     strb     w28, [x1]                  ; make the move
 
-    mov      x0, x23                    ; alpha
-    mov      x1, x24                    ; beta
+    ; x23 and x24 arguments are ready to go with alpha and beta
     add      x2, x25, 1                 ; depth++
     mov      x3, x27                    ; move
     bl       _minmax_min                ; recurse to the MIN
 
-    add      x6, x21, x27               ; address of the board + move
-    strb     wzr, [x6]                  ; store blank on the board. blank_piece is 0.
+    strb     wzr, [x21, x27]            ; store blank on the board. blank_piece is 0.
 
     cmp      w0, win_score              ; winning score? 
     b.eq     _minmax_max_done           ; then return
@@ -345,16 +341,16 @@ _minmax_max_done
 
   align 16
 _minmax_min PROC
-    ; x0: alpha. keep in register x23
-    ; x1: beta. keep in register x24
+    ; x0: unused (first argument is in x23)
+    ; x1: unused (second argument is in x24)
     ; x2: depth. keep in register x25
     ; x3: move: position of last piece added 0..8. Keep in register for a bit then it's overwritten
     ; x19: global move count for this thread
     ; x20: winner function table
     ; x21: the board for this thread
     ; x22: global iteration count
-    ; x23: alpha
-    ; x24: beta
+    ; x23: alpha (argument)
+    ; x24: beta (argument)
     ; x25: depth
     ; x26: value: local variable
     ; x27: for loop local variable I
@@ -366,8 +362,6 @@ _minmax_min PROC
     stp      x29, x30, [sp, #48]       
     add      x29, sp, #48               
 
-    mov      x23, x0                    ; alpha
-    mov      x24, x1                    ; beta
     mov      x25, x2                    ; depth
     add      x19, x19, 1                ; update global move count
 
@@ -398,21 +392,19 @@ _minmax_min_top_of_loop
     b.eq     _minmax_min_loadv_done
     add      x27, x27, 1
 
-    add      x1, x21, x27               ; board + move is the address of the piece
+    add      x1, x21, x27               ; save board position in x1 for now and later
     ldrb     w0, [x1]                   ; load the board piece at I in the loop
     cmp      w0, wzr                    ; is the space free? assumes blank_piece is 0
     b.ne     _minmax_min_top_of_loop
 
     strb     w28, [x1]                  ; make the move
 
-    mov      x0, x23                    ; alpha
-    mov      x1, x24                    ; beta
+    ; x23 and x24 arguments are ready to go with alpha and beta
     add      x2, x25, 1                 ; depth + 1
     mov      x3, x27                    ; move
     bl       _minmax_max                ; recurse to the MAX
 
-    add      x6, x21, x27               ; address of the board + move
-    strb     wzr, [x6]                  ; store blank on the board. blank_piece is 0.
+    strb     wzr, [x21, x27]            ; store blank on the board. blank_piece is 0.
 
     cmp      w0, lose_score             ; losing score? 
     b.eq     _minmax_min_done           ; then return
