@@ -511,25 +511,19 @@ minmax_min ENDP
 
 align 4
 proc0 PROC
-    cmp     al, [edi + 1]
-    jne     SHORT proc0_next_win
-    cmp     al, [edi + 2]
-    je      SHORT proc0_yes
+    mov     bl, al
+    and     al, [edi + 1]
+    and     al, [edi + 2]
+    jnz     SHORT proc0_yes
 
-  proc0_next_win:
-    cmp     al, [edi + 3]
-    jne     SHORT proc0_next_win2
-    cmp     al, [edi + 6]
-    je      SHORT proc0_yes
+    mov     al, bl
+    and     al, [edi + 3]
+    and     al, [edi + 6]
+    jnz     SHORT proc0_yes
 
-  proc0_next_win2:
-    cmp     al, [edi + 4]
-    jne     SHORT proc0_no
-    cmp     al, [edi + 8]
-    je      SHORT proc0_yes
-
-  proc0_no:
-    xor     eax, eax
+    mov     al, bl
+    and     al, [edi + 4]
+    and     al, [edi + 8]
 
   proc0_yes:
     ret
@@ -537,20 +531,14 @@ proc0 ENDP
 
 align 4
 proc1 PROC
-    cmp     al, [edi + 0]
-    jne     SHORT proc1_next_win
-    cmp     al, [edi + 2]
-    je      SHORT proc1_yes
+    mov     bl, al
+    and     al, [edi + 0]
+    and     al, [edi + 2]
+    jnz     SHORT proc1_yes
 
-  proc1_next_win:
-    cmp     al, [edi + 4]
-    jne     SHORT proc1_no
-    cmp     al, [edi + 7]
-    je      SHORT proc1_yes
-
-  proc1_no:
-    xor     eax, eax
-    ret
+    mov     al, bl
+    and     al, [edi + 4]
+    and     al, [edi + 7]
 
   proc1_yes:
     ret
@@ -558,26 +546,19 @@ proc1 ENDP
 
 align 4
 proc2 PROC
-    cmp     al, [edi + 0]
-    jne     SHORT proc2_next_win
-    cmp     al, [edi + 1]
-    je      SHORT proc2_yes
+    mov     bl, al
+    and     al, [edi + 0]
+    and     al, [edi + 1]
+    jnz     SHORT proc2_yes
 
-  proc2_next_win:
-    cmp     al, [edi + 5]
-    jne     SHORT proc2_next_win2
-    cmp     al, [edi + 8]
-    je      SHORT proc2_yes
+    mov     al, bl
+    and     al, [edi + 5]
+    and     al, [edi + 8]
+    jnz     SHORT proc2_yes
 
-  proc2_next_win2:
-    cmp     al, [edi + 4]
-    jne     SHORT proc2_no
-    cmp     al, [edi + 6]
-    je      SHORT proc2_yes
-
-  proc2_no:
-    xor      eax, eax
-    ret
+    mov     al, bl
+    and     al, [edi + 4]
+    and     al, [edi + 6]
 
   proc2_yes:
     ret
@@ -585,20 +566,14 @@ proc2 ENDP
 
 align 4
 proc3 PROC
-    cmp     al, [edi + 0]
-    jne     SHORT proc3_next_win
-    cmp     al, [edi + 6]
-    je      SHORT proc3_yes
+    mov     bl, al
+    and     al, [edi + 0]
+    and     al, [edi + 6]
+    jnz     SHORT proc3_yes
 
-  proc3_next_win:
-    cmp     al, [edi + 4]
-    jne     SHORT proc3_no
-    cmp     al, [edi + 5]
-    je      SHORT proc3_yes
-
-  proc3_no:
-    xor     eax, eax
-    ret
+    mov     al, bl
+    and     al, [edi + 4]
+    and     al, [edi + 5]
 
   proc3_yes:
     ret
@@ -606,32 +581,24 @@ proc3 ENDP
 
 align 4
 proc4 PROC
-    cmp     al, [edi + 0]
-    jne     SHORT proc4_next_win
-    cmp     al, [edi + 8]
-    je      SHORT proc4_yes
+    mov     bl, al
+    and     al, [edi + 0]
+    and     al, [edi + 8]
+    jnz     SHORT proc4_yes
 
-  proc4_next_win:
-    cmp     al, [edi + 2]
-    jne     SHORT proc4_next_win2
-    cmp     al, [edi + 6]
-    je      SHORT proc4_yes
+    mov     al, bl
+    and     al, [edi + 2]
+    and     al, [edi + 6]
+    jnz     SHORT proc4_yes
 
-  proc4_next_win2:
-    cmp     al, [edi + 1]
-    jne     SHORT proc4_next_win3
-    cmp     al, [edi + 7]
-    je      SHORT proc4_yes
+    mov     al, bl
+    and     al, [edi + 1]
+    and     al, [edi + 7]
+    jnz     SHORT proc4_yes
 
-  proc4_next_win3:
-    cmp     al, [edi + 3]
-    jne     SHORT proc4_no
-    cmp     al, [edi + 5]
-    je      SHORT proc4_yes
-
-  proc4_no:
-    xor     eax, eax
-    ret
+    mov     al, bl
+    and     al, [edi + 3]
+    and     al, [edi + 5]
 
   proc4_yes:
     ret
@@ -639,20 +606,14 @@ proc4 ENDP
 
 align 4
 proc5 PROC
-    cmp     al, [edi + 3]
-    jne     SHORT proc5_next_win
-    cmp     al, [edi + 4]
-    je      SHORT proc5_yes
+    mov     bl, al
+    and     al, [edi + 3]
+    and     al, [edi + 4]
+    jnz     SHORT proc5_yes
 
-  proc5_next_win:
-    cmp     al, [edi + 2]
-    jne     SHORT proc5_no
-    cmp     al, [edi + 8]
-    je      SHORT proc5_yes
-
-  proc5_no:
-    xor      eax, eax
-    ret
+    mov     al, bl
+    and     al, [edi + 2]
+    and     al, [edi + 8]
 
   proc5_yes:
     ret
@@ -660,26 +621,19 @@ proc5 ENDP
 
 align 4
 proc6 PROC
-    cmp     al, [edi + 4]
-    jne     SHORT proc6_next_win
-    cmp     al, [edi + 2]
-    je      SHORT proc6_yes
+    mov     bl, al
+    and     al, [edi + 4]
+    and     al, [edi + 2]
+    jnz     SHORT proc6_yes
 
-  proc6_next_win:
-    cmp     al, [edi + 0]
-    jne     SHORT proc6_next_win2
-    cmp     al, [edi + 3]
-    je      SHORT proc6_yes
+    mov     al, bl
+    and     al, [edi + 0]
+    and     al, [edi + 3]
+    jnz     SHORT proc6_yes
 
-  proc6_next_win2:
-    cmp     al, [edi + 7]
-    jne     SHORT proc6_no
-    cmp     al, [edi + 8]
-    je      SHORT proc6_yes
-
-  proc6_no:
-    xor      eax, eax
-    ret
+    mov     al, bl
+    and     al, [edi + 7]
+    and     al, [edi + 8]
 
   proc6_yes:
     ret
@@ -687,20 +641,14 @@ proc6 ENDP
 
 align 4
 proc7 PROC
-    cmp     al, [edi + 1]
-    jne     SHORT proc7_next_win
-    cmp     al, [edi + 4]
-    je      SHORT proc7_yes
+    mov     bl, al
+    and     al, [edi + 1]
+    and     al, [edi + 4]
+    jnz     SHORT proc7_yes
 
-  proc7_next_win:
-    cmp     al, [edi + 6]
-    jne     SHORT proc7_no
-    cmp     al, [edi + 8]
-    je      SHORT proc7_yes
-
-  proc7_no:
-    xor     eax, eax
-    ret
+    mov     al, bl
+    and     al, [edi + 6]
+    and     al, [edi + 8]
 
   proc7_yes:
     ret
@@ -708,26 +656,19 @@ proc7 ENDP
 
 align 4
 proc8 PROC
-    cmp     al, [edi + 0]
-    jne     SHORT proc8_next_win
-    cmp     al, [edi + 4]
-    je      SHORT proc8_yes
+    mov     bl, al
+    and     al, [edi + 0]
+    and     al, [edi + 4]
+    jnz     SHORT proc8_yes
 
-  proc8_next_win:
-    cmp     al, [edi + 2]
-    jne     SHORT proc8_next_win2
-    cmp     al, [edi + 5]
-    je      SHORT proc8_yes
+    mov     al, bl
+    and     al, [edi + 2]
+    and     al, [edi + 5]
+    jnz     SHORT proc8_yes
 
-  proc8_next_win2:
-    cmp     al, [edi + 6]
-    jne     SHORT proc8_no
-    cmp     al, [edi + 7]
-    je      SHORT proc8_yes
-
-  proc8_no:
-    xor      eax, eax
-    ret
+    mov     al, bl
+    and     al, [edi + 6]
+    and     al, [edi + 7]
 
   proc8_yes:
     ret
