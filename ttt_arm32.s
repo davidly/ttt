@@ -45,13 +45,13 @@
     timespecPriorNSec:  .int 0
     timespecCurSec:     .int 0
     timespecCurNSec:    .int 0
-    elapString:      .asciz "%s %u milliseconds\n"
-    movecountString: .asciz "%d moves\n"
-    serialString:    .asciz "serial:   "
-    parallelString:  .asciz "parallel: "
-    debugString:     .asciz "%d, %d, %d, %d, "
-    intString:       .asciz "%d\n"
-    justintString:   .asciz "%d"
+    elapString:         .asciz "%s %u milliseconds\n"
+    movecountString:    .asciz "%d moves\n"
+    serialString:       .asciz "serial:   "
+    parallelString:     .asciz "parallel: "
+    debugString:        .asciz "%d, %d, %d, %d, "
+    intString:          .asciz "%d\n"
+    justintString:      .asciz "%d"
 
 .global _winner_functions
     .p2align 3
@@ -414,8 +414,7 @@ _minmax_max:
 
     @ call the winner function for the most recent move
     mov      r0, #o_piece               @ the piece just played
-    lsl      r3, r3, #2                 @ each function pointer takes 4 bytes (move is trashed)
-    add      r1, r11, r3                @ table + function offset
+    add      r1, r11, r3, lsl #2        @ table + function offset
     ldr      r1, [r1]                   @ grab the function pointer
     blx      r1                         @ call it
 
@@ -508,8 +507,7 @@ _minmax_min:
 
     @ call the winner function for the most recent move
     mov      r0, #x_piece               @ the piece just played
-    lsl      r3, r3, #2                 @ each function pointer takes 4 bytes (move is trashed)
-    add      r1, r11, r3                @ table + function offset
+    add      r1, r11, r3, lsl #2        @ table + function offset
     ldr      r1, [r1]                   @ grab the function pointer
     blx      r1                         @ call it
 
@@ -559,7 +557,7 @@ _minmax_min:
     movlt    r4, r0                     @ update value if score is < value
 
     cmp      r4, r8                     @ compare value with beta
-    movlt      r8, r4                   @ update beta if value < beta
+    movlt    r8, r4                   @ update beta if value < beta
 
     cmp      r8, r7                     @ compare beta with alpha
     bgt      _minmax_min_top_of_loop    @ loop to the next board position 0..8
