@@ -11,6 +11,7 @@
 ; better alignment, keep alpha/beta in registers: .0404
 ; remove jumps, alternate WINPROCS_X and WINPROCS: .0350
 ; use 3 cores: .0138
+; use 'and' instruction in scoring procs: .0129
 ;
 ; Board: 0 | 1 | 2
 ;        ---------
@@ -40,6 +41,8 @@ TSCO    equ     5                        ; tie score
 LSCO    equ     4                        ; losing score
 XPIECE  equ     1                        ; X move piece
 OPIECE  equ     2                        ; O move piece
+
+Iterations equ  100000
                                          
 ; local variable offsets [rbp - X] where X = 1 to N where N is the number of QWORDS beyond 4 reserved at entry
 ; These are for the functions minmax_min and minmax_max
@@ -73,6 +76,7 @@ data_ttt SEGMENT ALIGN( 4096 ) 'DATA'
     moveStr       db     'moves: %d', 10, 13, 0
     donewith      db     'done with: %d', 10, 13, 0
     dbgcw         db     'calling winner', 10, 13, 0
+    iterStr       db     'iterations: %d', 10, 13, 0
     CRLF          db     10, 13, 0
   align 128
     startTime     dq     0
@@ -99,10 +103,10 @@ main PROC ; linking with the C runtime, so main will be invoked
 ;    mov    [rsp + 8 * 6 ], rbx
 ;    call   printf
 
-    ;call     GetCurrentProcess
-    ;mov      rcx, rax
-    ;mov      rdx, 070h                   ; we only need 3 cores. 0x70 for the fast ones on ARM running x64
-    ;call     SetProcessAffinityMask
+    call     GetCurrentProcess
+    mov      rcx, rax
+    mov      rdx, 0150h                  ; use every other proc to avoid hyperthreaded ones
+    call     SetProcessAffinityMask
 
     ; solve for the 3 unique starting board positions in serial
 
@@ -130,6 +134,10 @@ main PROC ; linking with the C runtime, so main will be invoked
     call    solvethreaded
 
     call    showstats
+
+    lea     rcx, [iterStr]
+    mov     rdx, Iterations
+    call    printf
 
     xor     rax, rax
     leave
@@ -197,7 +205,7 @@ TTTThreadProc PROC
     mov     boardIndex$[rsp], rcx        ; again, make sure
 
   TTTThreadProc_for:
-    mov     r15, 100000                   ; # of iterations -- 100,000
+    mov     r15, Iterations
 
     align 16
   TTTThreadProc_loop:
@@ -353,8 +361,7 @@ minmax_max PROC
     jle     SHORT minmax_max_skip_winner    ; if too few moves, there can't be a winner yet
 
     ; the win procs expect the board in r10
-    xor     rax, rax                        ; the win procs expect rax to be 0
-    mov     rbx, OPIECE                     ; and rbx to contain the player with the latest move
+    mov     rax, OPIECE                     ; rax contains the player with the latest move on input
     lea     rsi, [WINPROCS]               
     call    QWORD PTR [rsi + r9 * 8]        ; call the proc that checks for wins starting with last piece added
 
@@ -448,8 +455,7 @@ minmax_min PROC
     jle     SHORT minmax_min_skip_winner    ; if too few moves, there can't be a winner yet
 
     ; the win procs expect the board in r10
-    xor     rax, rax                        ; the win procs expect rax to be 0
-    mov     rbx, XPIECE                     ; and rbx to contain the player with the latest move
+    mov     rax, XPIECE                     ; rax contains the player with the latest move on input
     lea     rsi, [WINPROCS]
     call    QWORD PTR [rsi + r9 * 8]        ; call the proc that checks for wins starting with last piece added
 
@@ -522,7 +528,7 @@ minmax_min ENDP
 
 align 16
 proc0 PROC
-    mov     al, bl
+    mov     bl, al
     and     al, [r10 + 1]
     and     al, [r10 + 2]
     jnz     SHORT proc0_yes
@@ -542,7 +548,7 @@ proc0 ENDP
 
 align 16
 proc1 PROC
-    mov     al, bl
+    mov     bl, al
     and     al, [r10 + 0]
     and     al, [r10 + 2]
     jnz     SHORT proc1_yes
@@ -557,7 +563,7 @@ proc1 ENDP
 
 align 16
 proc2 PROC
-    mov     al, bl
+    mov     bl, al
     and     al, [r10 + 0]
     and     al, [r10 + 1]
     jnz     SHORT proc2_yes
@@ -577,7 +583,7 @@ proc2 ENDP
 
 align 16
 proc3 PROC
-    mov     al, bl
+    mov     bl, al
     and     al, [r10 + 0]
     and     al, [r10 + 6]
     jnz     SHORT proc3_yes
@@ -592,7 +598,7 @@ proc3 ENDP
 
 align 16
 proc4 PROC
-    mov     al, bl
+    mov     bl, al
     and     al, [r10 + 0]
     and     al, [r10 + 8]
     jnz     SHORT proc4_yes
@@ -617,7 +623,7 @@ proc4 ENDP
 
 align 16
 proc5 PROC
-    mov     al, bl
+    mov     bl, al
     and     al, [r10 + 3]
     and     al, [r10 + 4]
     jnz     SHORT proc5_yes
@@ -632,7 +638,7 @@ proc5 ENDP
 
 align 16
 proc6 PROC
-    mov     al, bl
+    mov     bl, al
     and     al, [r10 + 4]
     and     al, [r10 + 2]
     jnz     SHORT proc6_yes
@@ -652,7 +658,7 @@ proc6 ENDP
 
 align 16
 proc7 PROC
-    mov     al, bl
+    mov     bl, al
     and     al, [r10 + 1]
     and     al, [r10 + 4]
     jnz     SHORT proc7_yes
@@ -667,7 +673,7 @@ proc7 ENDP
 
 align 16
 proc8 PROC
-    mov     al, bl
+    mov     bl, al
     and     al, [r10 + 0]
     and     al, [r10 + 4]
     jnz     SHORT proc8_yes
