@@ -57,9 +57,21 @@ _start:
  
     bl       _print_elapsed_time        ; show how long it took in serial
     bl       _print_movecount           ; show # of moves, a multiple of 6493
+
+    ; reset the starting tickcount
+    adrp     x1, priorTicks@PAGE
+    add      x1, x1, priorTicks@PAGEOFF
+    mrs      x0, cntvct_el0
+    str      x0, [x1]
+
     bl       _solve_threaded            ; now do it in parallel
     bl       _print_elapsed_time        ; show how long it took in parallel
     bl       _print_movecount           ; show # of moves, a multiple of 6493
+
+    ldr      x1, =iterations
+    adrp     x0, itersString@PAGE
+    add      x0, x0, itersString@PAGEOFF
+    bl       call_printf
 
     mov      x0, 0
     ldp      x29, x30, [sp, #16]
@@ -86,11 +98,6 @@ _print_elapsed_time:
     add      x0, x0, elapString@PAGEOFF
     bl       call_printf                ; print the elapsed time
     
-    ldr      x1, =iterations
-    adrp     x0, itersString@PAGE
-    add      x0, x0, itersString@PAGEOFF
-    bl       call_printf
-
     ldp      x29, x30, [sp, #16]
     add      sp, sp, #32
     ret
@@ -125,8 +132,10 @@ _runmm:
     stp      x29, x30, [sp, #80]       
     add      x29, sp, #80               
 
+    mov      x27, x0                             ; x27 is the initial move. it's local to this function
+
+    ; x19 and x20 are thread-global
     mov      x19, 0                              ; x19 is the move count
-    mov      x27, x0                             ; x27 is the initial move    
     adrp     x20, _winner_functions@PAGE         ; x20 holds the function table
     add      x20, x20, _winner_functions@PAGEOFF
 
@@ -248,10 +257,9 @@ _minmax_max:
     stp      x29, x30, [sp, #48]        
     add      x29, sp, #48               
 
-    mov      x25, x2                    ; depth
     add      x19, x19, 1                ; increment global move count
 
-    cmp      x25, 3                     ; if fewer that 5 moves played, no winner
+    cmp      x2, 3                      ; if fewer that 5 moves played, no winner
     b.le     _minmax_max_skip_winner
 
     ; call the winner function for the most recent move
@@ -266,6 +274,7 @@ _minmax_max:
 
   .p2align 2
   _minmax_max_skip_winner:
+    add      x25, x2, 1                 ; next depth
     mov      w28, x_piece               ; making X moves below
     mov      w26, minimum_score         ; the value is minimum because we're maximizing
     mov      x27, -1                    ; avoid a jump by starting the for loop I at -1
@@ -284,7 +293,7 @@ _minmax_max:
     strb     w28, [x1]                  ; make the move
 
     ; x23 and x24 arguments are ready to go with alpha and beta
-    add      x2, x25, 1                 ; depth++
+    mov      x2, x25                    ; depth++
     mov      x3, x27                    ; move
     bl       _minmax_min                ; recurse to the MIN
 
@@ -339,10 +348,9 @@ _minmax_min:
     stp      x29, x30, [sp, #48]       
     add      x29, sp, #48               
 
-    mov      x25, x2                    ; depth
     add      x19, x19, 1                ; update global move count
 
-    cmp      x25, 3                     ; can't be a winner if < 5 moves
+    cmp      x2, 3                      ; can't be a winner if < 5 moves
     b.le     _minmax_min_skip_winner
 
     ; call the winner function for the most recent move
@@ -355,12 +363,13 @@ _minmax_min:
     mov      w0, win_score              ; move this regardless of the result
     b.eq     _minmax_min_done
 
-    cmp      x25, 8                     ; recursion can only go 8 deep
+    cmp      x2, 8                      ; recursion can only go 8 deep
     mov      x0, tie_score
     b.eq     _minmax_min_done
 
   .p2align 2
   _minmax_min_skip_winner:
+    add      x25, x2, 1                 ; next depth
     mov      w28, o_piece               ; the move to make below
     mov      w26, maximum_score         ; the value is maximum because we're minimizing
     mov      x27, -1                    ; avoid a jump by starting the for loop I at -1
@@ -379,7 +388,7 @@ _minmax_min:
     strb     w28, [x1]                  ; store the move on the board
 
     ; x23 and x24 arguments are ready to go with alpha and beta
-    add      x2, x25, 1                 ; depth + 1
+    mov      x2, x25                    ; depth++
     mov      x3, x27                    ; move
     bl       _minmax_max                ; recurse to the MAX
 
