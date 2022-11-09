@@ -145,8 +145,10 @@ _runmm PROC
     stp      x29, x30, [sp, #80]       
     add      x29, sp, #80               
 
+    mov      x27, x0                             ; x27 is the initial move. it's local to this function
+
+    ; x19 and x20 are thread-global
     mov      x19, 0                              ; x19 is the move count
-    mov      x27, x0                             ; x27 is the initial move    
     adrp     x20, _winner_functions              ; x20 holds the function table
     add      x20, x20, _winner_functions
 
@@ -274,10 +276,9 @@ _minmax_max PROC
     stp      x29, x30, [sp, #48]        
     add      x29, sp, #48               
 
-    mov      x25, x2                    ; depth
     add      x19, x19, 1                ; increment global move count
 
-    cmp      x25, 3                     ; if fewer that 5 moves played, no winner
+    cmp      x2, 3                      ; if fewer that 5 moves played, no winner
     b.le     _minmax_max_skip_winner
 
     ; call the winner function for the most recent move
@@ -291,6 +292,7 @@ _minmax_max PROC
     b.eq     _minmax_max_done
 
 _minmax_max_skip_winner
+    add      x25, x2, 1                 ; next depth
     mov      w28, x_piece               ; making X moves below
     mov      w26, minimum_score         ; the value is minimum because we're maximizing
     mov      x27, -1                    ; avoid a jump by starting the for loop I at -1
@@ -308,7 +310,7 @@ _minmax_max_top_of_loop
     strb     w28, [x1]                  ; make the move
 
     ; x23 and x24 arguments are ready to go with alpha and beta
-    add      x2, x25, 1                 ; depth++
+    mov      x2, x25                    ; depth++
     mov      x3, x27                    ; move
     bl       _minmax_min                ; recurse to the MIN
 
@@ -362,10 +364,9 @@ _minmax_min PROC
     stp      x29, x30, [sp, #48]       
     add      x29, sp, #48               
 
-    mov      x25, x2                    ; depth
     add      x19, x19, 1                ; update global move count
 
-    cmp      x25, 3                     ; can't be a winner if < 5 moves
+    cmp      x2, 3                      ; can't be a winner if < 5 moves
     b.le     _minmax_min_skip_winner
 
     ; call the winner function for the most recent move
@@ -378,11 +379,12 @@ _minmax_min PROC
     mov      w0, win_score              ; move this regardless of the result
     b.eq     _minmax_min_done
 
-    cmp      x25, 8                     ; recursion can only go 8 deep
+    cmp      x2, 8                      ; recursion can only go 8 deep
     mov      x0, tie_score
     b.eq     _minmax_min_done
 
 _minmax_min_skip_winner
+    add      x25, x2, 1                 ; next depth
     mov      w28, o_piece               ; making O moves below
     mov      w26, maximum_score         ; the value is maximum because we're minimizing
     mov      x27, -1                    ; avoid a jump by starting the for loop I at -1
@@ -400,7 +402,7 @@ _minmax_min_top_of_loop
     strb     w28, [x1]                  ; make the move
 
     ; x23 and x24 arguments are ready to go with alpha and beta
-    add      x2, x25, 1                 ; depth + 1
+    mov      x2, x25                    ; depth++
     mov      x3, x27                    ; move
     bl       _minmax_max                ; recurse to the MAX
 
