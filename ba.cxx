@@ -6183,8 +6183,15 @@ label_no_array_eq_optimization:
                 // not worth the runtime check for return without gosub?
                 //fprintf( fp, "    inc      [gosubCount]\n" );
 
-                if ( x64Win == g_AssemblyTarget|| x86Win == g_AssemblyTarget )
+                if ( x64Win == g_AssemblyTarget )
+                {
+                    fprintf( fp, "    lea      rax, line_number_%d\n", vals[ t ].value );
+                    fprintf( fp, "    call     label_gosub\n" );
+                }
+                else if ( x86Win == g_AssemblyTarget )
+                {
                     fprintf( fp, "    call     line_number_%d\n", vals[ t ].value );
+                }
                 else if ( arm32Linux == g_AssemblyTarget )
                 {
                     LoadArm32LineNumber( fp, "r0", vals[ t ].value );
@@ -8427,7 +8434,12 @@ label_no_if_optimization:
         // fprintf( fp, "    dec      [gosubCount]\n" );   // should we protect against return without gosub?
         // fprintf( fp, "    cmp      [gosubCount], 0\n" );
         // fprintf( fp, "    jl       error_exit\n" );
+        fprintf( fp, "    pop      rax\n" ); // rax is thrown away; it was pushed to keep 16-byte alignment
         fprintf( fp, "    ret\n" );
+
+        fprintf( fp, "label_gosub:\n" );
+        fprintf( fp, "    push     rax\n" );  // keep the stack 16-byte aligned; save not needed
+        fprintf( fp, "    jmp      rax\n" );
 
         fprintf( fp, "  error_exit:\n" );
         fprintf( fp, "    lea      rcx, [errorString]\n" );
@@ -8441,7 +8453,7 @@ label_no_if_optimization:
         fprintf( fp, "  leave_execution:\n" );
         fprintf( fp, "    xor      rcx, rcx\n" );
         fprintf( fp, "    call     call_exit\n" );
-        fprintf( fp, "    ret\n" ); // should never get here...
+        fprintf( fp, "    ret    ; should never get here\n" );
         fprintf( fp, "main ENDP\n" );
 
         // These stubs are required to setup stack frame spill locations for printf when in a gosub/return statement.
@@ -8532,7 +8544,7 @@ label_no_if_optimization:
         fprintf( fp, "    mov      rbp, rsp\n" );
         fprintf( fp, "    sub      rsp, 32\n" );
         fprintf( fp, "    call     exit\n" );
-        fprintf( fp, "    leave\n" );
+        fprintf( fp, "    leave   ; should never get here\n" );
         fprintf( fp, "    ret\n" );
         fprintf( fp, "call_exit ENDP\n" );
 
