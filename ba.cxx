@@ -8446,9 +8446,12 @@ label_no_if_optimization:
 
         // These stubs are required to setup stack frame spill locations for printf when in a gosub/return statement.
         // They are also required so that volatile registers are persisted (r9, r10, r11).
+        // Also push r8 to keep the stack 16-byte aligned, which is required for newer versions of the C++
+        // runtime that use instructions like movdqa with stack pointers, which require 16-byte alignment
 
         fprintf( fp, "align 16\n" );
         fprintf( fp, "printElap PROC\n" );
+        fprintf( fp, "    push     r8\n" );
         fprintf( fp, "    push     r9\n" );
         fprintf( fp, "    push     r10\n" ); 
         fprintf( fp, "    push     r11\n" ); 
@@ -8474,11 +8477,13 @@ label_no_if_optimization:
         fprintf( fp, "    pop      r11\n" );
         fprintf( fp, "    pop      r10\n" );
         fprintf( fp, "    pop      r9\n" );
+        fprintf( fp, "    pop      r8\n" );
         fprintf( fp, "    ret\n" );
         fprintf( fp, "printElap ENDP\n" );
 
         fprintf( fp, "align 16\n" );
         fprintf( fp, "printTime PROC\n" );
+        fprintf( fp, "    push     r8\n" );
         fprintf( fp, "    push     r9\n" );
         fprintf( fp, "    push     r10\n" ); 
         fprintf( fp, "    push     r11\n" ); 
@@ -8499,11 +8504,13 @@ label_no_if_optimization:
         fprintf( fp, "    pop      r11\n" );
         fprintf( fp, "    pop      r10\n" );
         fprintf( fp, "    pop      r9\n" );
+        fprintf( fp, "    pop      r8\n" );
         fprintf( fp, "    ret\n" );
         fprintf( fp, "printTime ENDP\n" );
 
         fprintf( fp, "align 16\n" );
         fprintf( fp, "call_printf PROC\n" );
+        fprintf( fp, "    push     r8\n" );
         fprintf( fp, "    push     r9\n" );
         fprintf( fp, "    push     r10\n" ); 
         fprintf( fp, "    push     r11\n" ); 
@@ -8515,6 +8522,7 @@ label_no_if_optimization:
         fprintf( fp, "    pop      r11\n" );
         fprintf( fp, "    pop      r10\n" );
         fprintf( fp, "    pop      r9\n" );
+        fprintf( fp, "    pop      r8\n" );
         fprintf( fp, "    ret\n" );
         fprintf( fp, "call_printf ENDP\n" );
 
@@ -8530,6 +8538,7 @@ label_no_if_optimization:
 
         fprintf( fp, "align 16\n" );
         fprintf( fp, "call_QueryPerformanceCounter PROC\n" );
+        fprintf( fp, "    push     r8\n" );
         fprintf( fp, "    push     r9\n" );   
         fprintf( fp, "    push     r10\n" ); 
         fprintf( fp, "    push     r11\n" ); 
@@ -8541,11 +8550,13 @@ label_no_if_optimization:
         fprintf( fp, "    pop      r11\n" );
         fprintf( fp, "    pop      r10\n" );
         fprintf( fp, "    pop      r9\n" );
+        fprintf( fp, "    pop      r8\n" );
         fprintf( fp, "    ret\n" );
         fprintf( fp, "call_QueryPerformanceCounter ENDP\n" );
 
         fprintf( fp, "align 16\n" );
         fprintf( fp, "call_GetLocalTime PROC\n" );
+        fprintf( fp, "    push     r8\n" );
         fprintf( fp, "    push     r9\n" );   
         fprintf( fp, "    push     r10\n" ); 
         fprintf( fp, "    push     r11\n" ); 
@@ -8557,6 +8568,7 @@ label_no_if_optimization:
         fprintf( fp, "    pop      r11\n" );
         fprintf( fp, "    pop      r10\n" );
         fprintf( fp, "    pop      r9\n" );
+        fprintf( fp, "    pop      r8\n" );
         fprintf( fp, "    ret\n" );
         fprintf( fp, "call_GetLocalTime ENDP\n" );
 
