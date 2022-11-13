@@ -32,17 +32,15 @@ extern CloseHandle: PROC
 extern GetCurrentProcess: PROC
 extern SetProcessAffinityMask: PROC
 
-; these short/terrible names are to support portability of names to 8085
-
-XSCO    equ     9                        ; maximum score
-NSCO    equ     2                        ; minimum score
-WSCO    equ     6                        ; winning score
-TSCO    equ     5                        ; tie score
-LSCO    equ     4                        ; losing score
-XPIECE  equ     1                        ; X move piece
-OPIECE  equ     2                        ; O move piece
-
-Iterations equ  100000
+iterations    equ 100000
+minimum_score equ 2
+maximum_score equ 9
+win_score     equ 6
+lose_score    equ 4
+tie_score     equ 5
+x_piece       equ 1
+o_piece       equ 2
+blank_piece   equ 0                      ; not referenced in the code below, but it is assumed to be 0
                                          
 ; local variable offsets [rbp - X] where X = 1 to N where N is the number of QWORDS beyond 4 reserved at entry
 ; These are for the functions minmax_min and minmax_max
@@ -53,8 +51,8 @@ I_OFFSET      equ 8 * 2                  ; i in the for loop 0..8
 ; these registers can be spilled: rcx, rdx, r8, r9
 ; Locations 0 (prior rbp) and 1 (return address) are reserved.
 ; These are for the functions minmax_min and minmax_max
-A_S_OFFSET      equ 8 * 2                ; alpha
-B_S_OFFSET      equ 8 * 3                ; beta
+A_SPILL_OFFSET    equ 8 * 2              ; alpha
+B_SPILL_OFFSET    equ 8 * 3              ; beta
 
 data_ttt SEGMENT ALIGN( 4096 ) 'DATA'
     ; It's important to put each of these boards in separate 64-byte cache lines or multi-core performance is terrible
@@ -72,7 +70,6 @@ data_ttt SEGMENT ALIGN( 4096 ) 'DATA'
     fmtStr        db     'Format string int %I64d %I64d %I64d %I64d %I64d %s', 0
     pieceS        db     '%d', 0
     intS          db     '%d ', 0
-    STRWIN        db     'winner: %d', 10, 13, 0
     moveStr       db     'moves: %d', 10, 13, 0
     donewith      db     'done with: %d', 10, 13, 0
     dbgcw         db     'calling winner', 10, 13, 0
@@ -105,8 +102,11 @@ main PROC ; linking with the C runtime, so main will be invoked
 
     call     GetCurrentProcess
     mov      rcx, rax
-    mov      rdx, 0150h                  ; use every other proc to avoid hyperthreaded ones
-    call     SetProcessAffinityMask
+    ; 0111h:  performance cores on i7-1280P
+    ; 07000h: efficiency cores on i7-1280P
+    ; 0111h:  3 random good cores on 5950x
+    mov      rdx, 0ffh                   ; use every other proc to avoid hyperthreaded ones
+    ;call     SetProcessAffinityMask
 
     ; solve for the 3 unique starting board positions in serial
 
@@ -136,7 +136,7 @@ main PROC ; linking with the C runtime, so main will be invoked
     call    showstats
 
     lea     rcx, [iterStr]
-    mov     rdx, Iterations
+    mov     rdx, iterations
     call    printf
 
     xor     rax, rax
@@ -205,12 +205,12 @@ TTTThreadProc PROC
     mov     boardIndex$[rsp], rcx        ; again, make sure
 
   TTTThreadProc_for:
-    mov     r15, Iterations
+    mov     r15, iterations
 
     align 16
   TTTThreadProc_loop:
-    mov     rcx, NSCO                    ; alpha -- minimum score
-    mov     rdx, XSCO                    ; beta -- maximum score
+    mov     rcx, minimum_score           ; alpha -- minimum score
+    mov     rdx, maximum_score           ; beta -- maximum score
     xor     r8, r8                       ; depth is 0
     mov     r9, boardIndex$[rsp]         ; position of last board update
 
@@ -265,10 +265,10 @@ solvethreaded PROC
     call    TTTThreadProc
 
     ; wait for the 2 created threads to complete
-    mov     rcx, 2                        ; # of handles to wait for
-    lea     rdx, aHandles$[rsp]           ; location of the handles
-    mov     r8d, 1                        ; wait for all (true)
-    mov     r9, -1                        ; wait forever, INFINITE
+    mov     rcx, 2                       ; # of handles to wait for
+    lea     rdx, aHandles$[rsp]          ; location of the handles
+    mov     r8d, 1                       ; wait for all (true)
+    mov     r9, -1                       ; wait forever, INFINITE
     call    WaitForMultipleObjects
 
     ; close the thread handles
@@ -361,20 +361,20 @@ minmax_max PROC
     jle     SHORT minmax_max_skip_winner    ; if too few moves, there can't be a winner yet
 
     ; the win procs expect the board in r10
-    mov     rax, OPIECE                     ; rax contains the player with the latest move on input
+    mov     rax, o_piece                    ; rax contains the player with the latest move on input
     lea     rsi, [WINPROCS]               
     call    QWORD PTR [rsi + r9 * 8]        ; call the proc that checks for wins starting with last piece added
 
-    cmp     rax, OPIECE                     ; did O win?
-    mov     rax, LSCO                       ; wasted mov if not equal, but it often saves a jump. no cmov for loading register with constant
+    cmp     rax, o_piece                    ; did O win?
+    mov     rax, lose_score                 ; wasted mov if not equal, but it often saves a jump. no cmov for loading register with constant
     je      minmax_max_done
 
     align   16
   minmax_max_skip_winner:
-    mov     [rbp + A_S_OFFSET], rcx         ; alpha saved in the spill location
-    mov     [rbp + B_S_OFFSET], rdx         ; beta saved in the spill location
+    mov     [rbp + A_SPILL_OFFSET], rcx     ; alpha saved in the spill location
+    mov     [rbp + B_SPILL_OFFSET], rdx     ; beta saved in the spill location
 
-    mov     r14, NSCO                       ; minimum possible score. maximizing, so find a score higher than this
+    mov     r14, minimum_score              ; minimum possible score. maximizing, so find a score higher than this
     mov     r9, -1                          ; r9 is I in the for loop 0..8. avoid a jump by starting at -1
 
     align   16
@@ -386,7 +386,7 @@ minmax_max PROC
     cmp     BYTE PTR [r10 + r9], 0          ; is the board position free?
     jne     SHORT minmax_max_top_of_loop    ; move to the next spot on the board
 
-    mov     BYTE PTR [r10 + r9], XPIECE     ; make the move
+    mov     BYTE PTR [r10 + r9], x_piece    ; make the move
 
     ; prepare arguments for recursing. rcx (alpha) and rdx (beta) are already set
     inc     r8                              ; next depth 1..8
@@ -400,19 +400,19 @@ minmax_max PROC
     mov     r9, [rbp - I_OFFSET]            ; restore i
     mov     BYTE PTR [r10 + r9], 0          ; Restore the move on the board to 0 from X
 
-    cmp     rax, WSCO
+    cmp     rax, win_score
     je      SHORT minmax_max_done           ; can't do better than winning score when maximizing
 
     mov     r14, [rbp - V_OFFSET]           ; load V
     cmp     rax, r14                        ; compare SC with V
     cmovg   r14, rax                        ; keep latest V in r14
 
-    lea     rdi, [rbp + A_S_OFFSET]         ; save address of alpha
+    lea     rdi, [rbp + A_SPILL_OFFSET]     ; save address of alpha
     mov     rcx, [rdi]                      ; load alpha
     cmp     rcx, r14                        ; compare alpha with V
     cmovl   rcx, r14                        ; only update alpha if alpha is less than V
 
-    mov     rdx, [rbp + B_S_OFFSET]         ; load beta
+    mov     rdx, [rbp + B_SPILL_OFFSET]     ; load beta
     cmp     rcx, rdx                        ; compare alpha (rcx) with beta (rdx)
     jge     SHORT minmax_max_loadv_done     ; alpha pruning if alpha >= beta
     mov     [rdi], rcx                      ; update alpha with V or the same alpha value (to avoid a jump). no cmov for writing to memory
@@ -455,24 +455,24 @@ minmax_min PROC
     jle     SHORT minmax_min_skip_winner    ; if too few moves, there can't be a winner yet
 
     ; the win procs expect the board in r10
-    mov     rax, XPIECE                     ; rax contains the player with the latest move on input
+    mov     rax, x_piece                    ; rax contains the player with the latest move on input
     lea     rsi, [WINPROCS]
     call    QWORD PTR [rsi + r9 * 8]        ; call the proc that checks for wins starting with last piece added
 
-    cmp     rax, XPIECE                     ; did X win? 
-    mov     rax, WSCO                       ; wasted mov, but it often saves a jump. no cmov for loading constant to register
+    cmp     rax, x_piece                    ; did X win? 
+    mov     rax, win_score                  ; wasted mov, but it often saves a jump. no cmov for loading constant to register
     je      minmax_min_done
 
     cmp     r8, 8                           ; recursion can only go 8 deep before the board is full
-    mov     rax, TSCO                       ; wasted mov, but it often saves a jump
+    mov     rax, tie_score                  ; wasted mov, but it often saves a jump
     je      minmax_min_done
 
     align   16
   minmax_min_skip_winner:
-    mov     [rbp + A_S_OFFSET], rcx         ; alpha saved in the spill location
-    mov     [rbp + B_S_OFFSET], rdx         ; beta saved in the spill location
+    mov     [rbp + A_SPILL_OFFSET], rcx     ; alpha saved in the spill location
+    mov     [rbp + B_SPILL_OFFSET], rdx     ; beta saved in the spill location
  
-    mov     r14, XSCO                       ; maximum possible score; minimizing, so find a score lower than this
+    mov     r14, maximum_score              ; maximum possible score; minimizing, so find a score lower than this
     mov     r9, -1                          ; r9 is I in the for loop 0..8. avoid a jump by starting at -1
 
     align   16
@@ -484,7 +484,7 @@ minmax_min PROC
     cmp     BYTE PTR [r10 + r9], 0          ; is the board position free?
     jne     SHORT minmax_min_top_of_loop    ; move to the next spot on the board
 
-    mov     BYTE PTR [r10 + r9], OPIECE     ; make the move
+    mov     BYTE PTR [r10 + r9], o_piece    ; make the move
 
     ; prepare arguments for recursing. rcx (alpha) and rdx (beta) are already set
     inc     r8                              ; next depth 1..8
@@ -498,19 +498,19 @@ minmax_min PROC
     mov     r9, [rbp - I_OFFSET]            ; restore i
     mov     BYTE PTR [r10 + r9], 0          ; Restore the move on the board to 0 from O
 
-    cmp     rax, LSCO
+    cmp     rax, lose_score
     je      SHORT minmax_min_done           ; can't do better than losing score when minimizing
 
     mov     r14, [rbp - V_OFFSET]           ; load V
     cmp     rax, r14                        ; compare SC with v
     cmovl   r14, rax                        ; keep latest V in r14
 
-    lea     rdi, [rbp + B_S_OFFSET]         ; save address of beta
+    lea     rdi, [rbp + B_SPILL_OFFSET]     ; save address of beta
     mov     rdx, [rdi]                      ; load beta
     cmp     rdx, r14                        ; compare beta with V
     cmovg   rdx, r14                        ; if V is less than Beta, update Beta
 
-    mov     rcx, [rbp + A_S_OFFSET ]        ; load alpha
+    mov     rcx, [rbp + A_SPILL_OFFSET ]    ; load alpha
     cmp     rdx, rcx                        ; compare beta (rdx) with alpha (rcx)
     jle     SHORT minmax_min_loadv_done     ; beta pruning if beta <= alpha
     mov     [rdi], rdx                      ; update beta with a new value or the same value (to avoid a jump). no cmov for writing to memory
