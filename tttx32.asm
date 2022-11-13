@@ -15,7 +15,6 @@
 ; This prints elapsed time in two ways because Windows 98 produced different results
 
 iterations       equ     100000         ; # of times to solve the boards
-DEBUG            equ     0              ; 1 for debug tracing, 0 otherwise
 USE686           equ     0              ; it's actually slower to use the cmov instructions
 
 IF USE686
@@ -87,11 +86,6 @@ data_ttt SEGMENT 'DATA'
     tickStr       db     'ticks: %d', 10, 13, 0
     iterStr       db     'for %d iterations', 10, 13, 0
     elapStr       db     '%d milliseconds', 10, 13, 0
-
-    IF DEBUG
-        intS          db     '%d ', 10, 13, 0
-        dbg4          db     '%d %d %d %d', 10, 13, 0
-    ENDIF
 data_ttt ENDS
 
 code_ttt SEGMENT 'CODE'
@@ -102,9 +96,12 @@ main PROC ; linking with the C runtime, so main will be invoked
     push     edi
     push     esi
 
-    ;call     GetCurrentProcess@0
-    ;mov      ecx, eax
-    ;mov      edx, 7h                                       ; we only need 3 cores. 0x70 for the fast ones on ARM running x86 emulation
+    ; 0111h:  performance cores on i7-1280P
+    ; 07000h: efficiency cores on i7-1280P
+    ; 0111h:  3 random good cores on 5950x
+    call     GetCurrentProcess@0
+    mov      ecx, eax
+    mov      edx, 07000h                                       ; we only need 3 cores. 0x70 for the fast ones on ARM running x86 emulation
     ;call     SetProcessAffinityMask@8
 
     push     offset perfFrequency
