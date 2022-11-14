@@ -369,7 +369,7 @@ call_winnerproc
     sta      wpfunptr               ; store the low byte of the pointer to the proc
     lda      #0
     adc      /winnerprocs           ; load the high byte with a carry if needed from the low bytes
-    sta      wpfunptr+1             ; sore the high byte of the pointer to the proc
+    sta      wpfunptr+1             ; store the high byte of the pointer to the proc
     ldy      #0
     lda      (wpfunptr), y          ; read the low byte of the function pointer
     sta      wpfun                  ; write the low byte of the function pointer
