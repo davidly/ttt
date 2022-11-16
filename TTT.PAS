@@ -13,13 +13,12 @@ const
   scoreLose = 4;
   scoreMax = 9;
   scoreMin = 2;
-  scoreInvalid = 0;
 
   pieceBlank = 0;
   pieceX = 1;
   pieceO = 2;
 
-  iterations = 4;
+  iterations = 1;
 
 type
   boardType = array[ 0..8 ] of Integer;
@@ -27,16 +26,6 @@ type
 var
   evaluated: Integer;
   board: boardType;
-
-function min( x: Integer; y: Integer ): Integer;
-begin
-  if y < x then min := y else min := x;
-end;
-
-function max( x: Integer; y: Integer ): Integer;
-begin
-  if y > x then max := y else max := x;
-end;
 
 procedure dumpBoard;
 var
@@ -52,36 +41,45 @@ function lookForWinner : Integer;
 var
   t, p : Integer;
 begin
+  {  dumpBoard; }
   p := pieceBlank;
   t := board[ 0 ];
-  if ( pieceBlank <> t ) and ( ( ( t = board[1] ) and ( t = board[2] ) ) or
-                               ( ( t = board[3] ) and ( t = board[6] ) ) ) then
-    p := t
-  else
+  if pieceBlank <> t then
+  begin
+    if ( ( ( t = board[1] ) and ( t = board[2] ) ) or
+         ( ( t = board[3] ) and ( t = board[6] ) ) ) then
+      p := t;
+  end;
+
+  if pieceBlank = p then
   begin
     t := board[1];
-    if ( t <> pieceBlank ) and ( t = board[4] ) and ( t = board[7] ) then
-      p := t
-    else
+    if ( t = board[4] ) and ( t = board[7] ) then
+       p := t;
+
+    if pieceBlank = p then
     begin
       t := board[2];
-      if ( t <> pieceBlank ) and ( t = board[5] ) and ( t = board[8] ) then
-        p := t
-      else
+      if ( t = board[5] ) and ( t = board[8] ) then
+        p := t;
+
+      if pieceBlank = p then
       begin
         t := board[3];
-        if ( t <> pieceBlank ) and ( t = board[4] ) and ( t = board[5] ) then
-          p := t
-        else
+        if ( t = board[4] ) and ( t = board[5] ) then
+          p := t;
+
+        if pieceBlank = p then
         begin
           t := board[6];
-          if ( t <> pieceBlank ) and ( t = board[7] ) and ( t = board[8] ) then
-            p := t
-          else
+          if ( t = board[7] ) and ( t = board[8] ) then
+            p := t;
+
+          if pieceBlank = p then
           begin
             t := board[4];
-            if ( t <> pieceBlank ) and ( ( ( t = board[0] ) and ( t = board[8] ) ) or
-                                         ( ( t = board[2] ) and ( t = board[6] ) ) ) then
+            if ( ( ( t = board[0] ) and ( t = board[8] ) ) or
+                 ( ( t = board[2] ) and ( t = board[6] ) ) ) then
               p := t;
           end;
         end;
@@ -98,20 +96,22 @@ var
   done: boolean;
 begin
   evaluated := evaluated + 1;
-  value := scoreInvalid;
-
+  value := 0;
   if depth >= 4 then
   begin
     p := lookForWinner;
-    if p = pieceX then
-      value := scoreWin
-    else if p = pieceO then
-      value := scoreLose
+    if p <> pieceBlank then
+    begin
+        if p = pieceX then
+          value := scoreWin
+        else
+          value := scoreLose
+    end
     else if depth = 8 then
       value := scoreTie;
   end;
 
-  if value = scoreInvalid then
+  if value = 0 then
   begin
     if ( 0 <> ( depth AND 1 ) ) then
     begin
@@ -135,24 +135,21 @@ begin
 
         if ( 0 <> ( depth and 1 ) ) then
         begin
-          value := max( value, score );
-          alpha := max( alpha, value );
+          if ( score > value ) then value := score;
+          if ( value > alpha ) then alpha := value;
           if ( alpha >= beta ) or ( value = scoreWin ) then
             done := true;
         end
         else
         begin
-          value := min( value, score );
-          beta := min( value, beta );
+          if ( score < value ) then value := score;
+          if ( value < beta ) then beta := value;
           if ( beta <= alpha ) or ( value = scoreLose ) then
             done := true;
         end;
       end;
-
       p := p + 1;
-      if p > 8 then
-        done := true;
-
+      if p > 8 then done := true;
     until done;
   end;
 
@@ -161,16 +158,11 @@ end;
 
 procedure runit( move : Integer );
 var
-  score, i : Integer;
+  score: Integer;
 begin
   board[move] := pieceX;
   score := minmax( scoreMin, scoreMax, 0 );
   board[move] := pieceBlank;
-
-  if 5 <> score then
-  begin
-    Write( 'unexpected score: ' ); Write( score ); WriteLn;
-  end;
 end;
 
 var
@@ -185,8 +177,8 @@ begin
     runit( 0 );
     runit( 1 );
     runit( 4 );
-    Write( '.' );
   end;
 
   Write( 'moves evaluated: ' ); Write( evaluated ); WriteLn;
+  Write( 'iterations: ' ); Write( iterations ); WriteLn;
 end.
