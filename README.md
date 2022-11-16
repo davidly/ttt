@@ -55,8 +55,9 @@ The BA version is faster than Python even when Python is using function pointers
 I'm not really proud of BA -- it was a very quickly written hack. But it shows that Python could benefit from some performance work.
 
 I added minimal support in BA to compile BASIC apps to x64 .asm files which can then be assembled into a Windows .exe file. 
-Afterwards I added codegen for Arm64 on Macs, Arm64 for Windows, Arm32 on Linux, MOS 6502 on the Apple 1, Intel 8080 on CP/M 2.2, 8086 on DOS, and 32-bit
-x86 on Windows. Use the -a:x flag in BA to generate the x64 .asm file, and ma.bat to create the .exe. For example:
+Afterwards I added codegen for Arm64 on Macs, Arm64 for Windows, Arm32 on Linux, MOS 6502 on the Apple 1, Intel 8080 on CP/M 2.2, 
+8086 on DOS, and 32-bit x86 on Windows. Use the -a:x flag in BA to generate the x64 .asm file, and ma.bat to create the .exe. 
+For example:
 
     ba ttt_1dim.bas /x /a:x
     ma.bat ttt_1dim
@@ -92,7 +93,7 @@ To compile and run on a MOS 6502 Apple 1
 The compiler generates code that's in the middle of the pack of most real compilers on both x64 Windows and arm64 Mac. The 8080 code
 generated for CP/M 2.2 systems is about 3x as fast as Turbo Pascal 3.01A and 3x slower than hand-written assembler code (mostly due
 to using 16-bit integers and lack of global optimizations). 6502 code generation is OK given that's it's such a hard target for
-compilers and working with 16 bit integers is so cumbersome. The arm32 and 32 bit x86 code is unoptimized but working.
+compilers and working with 16 bit integers is so cumbersome. The arm32 and 32 bit x86 code is mostly unoptimized but working.
 
 To build BA:
 
@@ -135,7 +136,7 @@ To run ttt_trs80.asm on a TRS-80. (renamed as ttt.asm)
             On the trs-80, F8 to exit and say yes Y to disconnect, then f8 to go back to the root menu
             Run lt.ba, which loads t.do, converts it to binary in RAM, and executes the app
 	
-![image](https://user-images.githubusercontent.com/1497921/201252098-0b3ed150-bee3-4c51-9104-65832ab3a37d.png)
+![image](https://user-images.githubusercontent.com/1497921/201975940-b71eecf0-ed39-488e-8699-4233d4ea1731.png)
 
 
 
