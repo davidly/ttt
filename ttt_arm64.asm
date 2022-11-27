@@ -9,24 +9,34 @@
 ;     - loading 64 bit constants and variable labels is different
 ;     - directives for data/code segments, labels, proc start and end, data statements, equ statements, alignment fill semantics.
 ;
+; The app takes two optional arguments:
+;    - the number of iterations to run. Default is defaultIterations.
+;    - the hex affinity mask to select which cores to run on. Default is up to the OS
+;    - e.g.: ttt_arm64 10000 0x3
+;    - on the SQ3, 0xf are the 4 efficiency cores and 0xf0 are the 4 performance cores
+
 
   IMPORT |printf|
+  IMPORT |exit|
+  IMPORT |_strtoui64|
   IMPORT |CreateThread|
   IMPORT |WaitForSingleObject|
   IMPORT |CloseHandle|
   IMPORT |SetProcessAffinityMask|
   IMPORT |GetCurrentProcess|
+  IMPORT |GetLastError|
   EXPORT |main|
 
-iterations    equ 100000
-minimum_score equ 2
-maximum_score equ 9
-win_score     equ 6
-lose_score    equ 4
-tie_score     equ 5
-x_piece       equ 1
-o_piece       equ 2
-blank_piece   equ 0                     ; not referenced in the code below, but it is assumed to be 0
+defaultIterations   equ 100000
+defaultAffinityMask equ 0               ; let the OS use any cores it wants
+minimum_score       equ 2
+maximum_score       equ 9
+win_score           equ 6
+lose_score          equ 4
+tie_score           equ 5
+x_piece             equ 1
+o_piece             equ 2
+blank_piece         equ 0               ; not referenced in the code below, but it is assumed to be 0
 
   area |.data|, data, align=6, codealign
   ; allocate separate boards for the 3 unique starting moves so multiple threads can solve in parallel
@@ -41,11 +51,74 @@ board4 dcb 0,0,0,0,1,0,0,0,0
   align 64
 priorTicks        dcq 0
 moveCount         dcq 0
+loopCount         dcq defaultIterations
+affinityMask      dcq defaultAffinityMask
 elapString        dcb "%lld microseconds (-6)\n", 0
 itersString       dcb "%d iterations\n", 0
 movecountString   dcb "%d moves\n", 0
+usageStr          dcb "usage: %s [iterations] [hexAffinityMask]\n", 0
+affinityFail      dcb "failed to set affinity mask; illegal mask. error %lld\n", 0
+affinityStr       dcb "affinity mask: %#llx\n", 0
 
   area |.code|, code, align=4, codealign
+  align 16
+usage PROC
+    sub      sp, sp, #32
+    stp      x29, x30, [sp, #16]
+    add      x29, sp, #16
+
+    ldr      x1, [x21]
+    adrp     x0, usageStr
+    add      x0, x0, usageStr
+    bl       printf
+
+    mov      x0, -1
+    bl       exit
+    ENDP
+
+  align 16 
+parse_args PROC
+    sub      sp, sp, #32
+    stp      x29, x30, [sp, #16]
+    add      x29, sp, #16
+
+    cmp      x20, 3
+    b.gt     show_usage
+
+    cmp      x20, 2
+    b.lt     done_parsing_args
+    b.eq     get_iterations
+
+    ldr      x0, [x21, #16]
+    mov      x1, 0
+    mov      x2, 16
+    bl       _strtoui64
+    cmp      x0, 0
+    b.eq     show_usage
+    adrp     x1, affinityMask
+    add      x1, x1, affinityMask
+    str      x0, [x1]
+
+get_iterations
+    ldr      x0, [x21, #8]
+    mov      x1, 0
+    mov      x2, 10
+    bl       _strtoui64
+    adrp     x1, loopCount
+    add      x1, x1, loopCount
+    str      x0, [x1]
+    cmp      x0, 0
+    b.ne     done_parsing_args
+
+show_usage
+    bl       usage
+
+done_parsing_args
+    ldp      x29, x30, [sp, #16]
+    add      sp, sp, #32
+    ret
+    ENDP
+
   align 16 
 main PROC; linking with the C runtime, so main will be invoked
     ; remember the caller's stack frame and return address
@@ -53,10 +126,34 @@ main PROC; linking with the C runtime, so main will be invoked
     stp      x29, x30, [sp, #16]
     add      x29, sp, #16
 
-    ; set which cores the code will run on (optionally)
-    ;bl       GetCurrentProcess
-    ;mov      x1, 0x7                    ; on the sq3, 0x7 are the slow 4 cores (efficiency) and 0x70 are the fast 4 cores (performance)
-    ;bl       SetProcessAffinityMask
+    mov      x20, x0                    ; save argc
+    mov      x21, x1                    ; save argv
+    bl       parse_args                 ; parse optional loop count and affinity mask
+
+    adrp     x1, affinityMask           ; if there is an affinity mask, print it
+    add      x1, x1, affinityMask
+    ldr      x1, [x1]
+    cmp      x1, 0
+    b.eq     after_affinity_mask
+    mov      x22, x1
+    adrp     x0, affinityStr
+    add      x0, x0, affinityStr
+    bl       printf
+
+    bl       GetCurrentProcess          ; set the affinity mask
+    mov      x1, x22
+    bl       SetProcessAffinityMask
+    cmp      x0, 0
+    b.ne     after_affinity_mask
+
+    bl       GetLastError               ; failure -- show the error
+    mov      x1, x0
+    adrp     x0, affinityFail
+    add      x0, x0, affinityFail
+    bl       printf
+    bl       usage
+
+after_affinity_mask
 
     ; remember the starting tickcount
     adrp     x1, priorTicks
@@ -78,7 +175,9 @@ main PROC; linking with the C runtime, so main will be invoked
     bl       _print_elapsed_time        ; show how long it took in parallel
     bl       _print_movecount           ; show # of moves, a multiple of 6493
 
-    ldr      x1, =iterations
+    adrp     x1, loopCount
+    add      x1, x1, loopCount
+    ldr      x1, [x1]
     adrp     x0, itersString
     add      x0, x0, itersString
     bl       printf
@@ -174,7 +273,9 @@ _runmm_try4
     add      x21, x21, board4
 
 _runmm_for
-    ldr      x22, =iterations           ; x22 is the iteration for loop counter. ldr not mov because it's large
+    adrp     x22, loopCount
+    add      x22, x22, loopCount
+    ldr      x22, [x22]
 
 _runmm_loop
     mov      x23, minimum_score         ; alpha
