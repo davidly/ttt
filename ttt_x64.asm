@@ -20,8 +20,16 @@
 ;        6 | 7 | 8
 ;
 ; Only first moves 0, 1, and 4 are solved since other first moves are reflections
+;
+; The app takes two optional arguments:
+;    - the number of iterations to run. Default is defaultIterations.
+;    - the hex affinity mask to select which cores to run on. Default is up to the OS
+;    - e.g.: tttx64 10000 0x3
 
 extern printf: PROC
+extern _atoi64: PROC
+extern _strtoui64: PROC
+extern exit: PROC
 extern QueryPerformanceCounter: PROC
 extern QueryPerformanceFrequency: PROC
 extern CreateThread: PROC
@@ -31,28 +39,30 @@ extern WaitForMultipleObjects: PROC
 extern CloseHandle: PROC
 extern GetCurrentProcess: PROC
 extern SetProcessAffinityMask: PROC
+extern GetLastError: PROC
 
-iterations    equ 100000
-minimum_score equ 2
-maximum_score equ 9
-win_score     equ 6
-lose_score    equ 4
-tie_score     equ 5
-x_piece       equ 1
-o_piece       equ 2
-blank_piece   equ 0                      ; not referenced in the code below, but it is assumed to be 0
+defaultIterations   equ 100000
+defaultAffinityMask equ 0              ; use all available cores
+minimum_score       equ 2
+maximum_score       equ 9
+win_score           equ 6
+lose_score          equ 4
+tie_score           equ 5
+x_piece             equ 1
+o_piece             equ 2
+blank_piece         equ 0              ; not referenced in the code below, but it is assumed to be 0
                                          
 ; local variable offsets [rbp - X] where X = 1 to N where N is the number of QWORDS beyond 4 reserved at entry
 ; These are for the functions minmax_min and minmax_max
-V_OFFSET      equ 8 * 1                  ; the value of a board position
-I_OFFSET      equ 8 * 2                  ; i in the for loop 0..8
+V_OFFSET            equ 8 * 1          ; the value of a board position
+I_OFFSET            equ 8 * 2          ; i in the for loop 0..8
 
 ; spill offsets -- [rbp + X] where X = 2..5  Spill referrs to saving parameters in registers to memory when needed
 ; these registers can be spilled: rcx, rdx, r8, r9
 ; Locations 0 (prior rbp) and 1 (return address) are reserved.
 ; These are for the functions minmax_min and minmax_max
-A_SPILL_OFFSET    equ 8 * 2              ; alpha
-B_SPILL_OFFSET    equ 8 * 3              ; beta
+A_SPILL_OFFSET      equ 8 * 2          ; alpha
+B_SPILL_OFFSET      equ 8 * 3          ; beta
 
 data_ttt SEGMENT ALIGN( 4096 ) 'DATA'
     ; It's important to put each of these boards in separate 64-byte cache lines or multi-core performance is terrible
@@ -70,23 +80,78 @@ data_ttt SEGMENT ALIGN( 4096 ) 'DATA'
     fmtStr        db     'Format string int %I64d %I64d %I64d %I64d %I64d %s', 0
     pieceS        db     '%d', 0
     intS          db     '%d ', 0
-    moveStr       db     'moves: %d', 10, 13, 0
-    donewith      db     'done with: %d', 10, 13, 0
-    dbgcw         db     'calling winner', 10, 13, 0
-    iterStr       db     'iterations: %d', 10, 13, 0
+    moveStr       db     'moves: %lld', 10, 13, 0
+    iterStr       db     'iterations: %lld', 10, 13, 0
     CRLF          db     10, 13, 0
+    usageStr      db     'usage: %s [iterations] [hexAffinityMask]', 10, 13, 0
+    affinityFail  db     'failed to set affinity mask; illegal mask. error %lld', 10, 13, 0
+    affinityStr   db     'affinity mask: %#llx', 10, 13, 0
   align 128
     startTime     dq     0
     endTime       dq     0
     perfFrequency dq     0
     moveCount     dq     0
+    loopCount     dq     defaultIterations
+    affinityMask  dq     defaultAffinityMask
 data_ttt ENDS
 
 code_ttt SEGMENT ALIGN( 4096 ) 'CODE'
+
+usage PROC
+    push    rbp
+    mov     rbp, rsp
+    sub     rsp, 32
+
+    lea     rcx, [usageStr]
+    mov     rdx, QWORD PTR [r12]       ; assumes r12 has argv, set in main()
+    call    printf
+
+    mov     rax, -1
+    call    exit
+usage ENDP
+
+parse_args PROC
+    push    rbp
+    mov     rbp, rsp
+    sub     rsp, 32
+
+    cmp     rcx, 3
+    jg      show_usage
+
+    cmp     rcx, 2
+    jl      done_parsing_args
+    je      get_iterations
+
+    mov     rcx, QWORD PTR [r12 + 16]
+    mov     rdx, 0
+    mov     r8, 16
+    call    _strtoui64
+    cmp     rax, 0
+    jz      show_usage
+    mov     QWORD PTR [affinityMask], rax
+
+  get_iterations:
+    mov     rcx, QWORD PTR [r12 + 8]
+    call    _atoi64
+    mov     QWORD PTR [loopCount], rax
+    cmp     rax, 0
+    jne     done_parsing_args
+
+  show_usage:
+    call    usage
+
+  done_parsing_args:
+    leave
+    ret
+parse_args ENDP
+
 main PROC ; linking with the C runtime, so main will be invoked
     push    rbp
     mov     rbp, rsp
     sub     rsp, 32 + 8 * 4
+
+    mov     r12, rdx
+    call    parse_args
 
 ;    lea    rcx, [fmtStr]
 ;    mov    rdx, 17
@@ -100,14 +165,29 @@ main PROC ; linking with the C runtime, so main will be invoked
 ;    mov    [rsp + 8 * 6 ], rbx
 ;    call   printf
 
+    cmp     QWORD PTR [affinityMask], 0
+    je      after_affinity_mask
+
+    mov     rdx, QWORD PTR [affinityMask]
+    lea     rcx, affinityStr
+    call    printf
+
     call     GetCurrentProcess
     mov      rcx, rax
     ; 0111h:  performance cores on i7-1280P
     ; 07000h: efficiency cores on i7-1280P
     ; 0111h:  3 random good cores on 5950x
-    mov      rdx, 0ffh                   ; use every other proc to avoid hyperthreaded ones
-    ;call     SetProcessAffinityMask
+    mov      rdx, QWORD PTR [affinityMask]
+    call     SetProcessAffinityMask
+    cmp      rax, 0
+    jne      after_affinity_mask
+    call     GetLastError
+    mov      rdx, rax
+    lea      rcx, affinityFail
+    call     printf
+    call     usage
 
+  after_affinity_mask:
     ; solve for the 3 unique starting board positions in serial
 
     mov     [moveCount], 0               ; # of calls to minmax_* functions
@@ -136,7 +216,7 @@ main PROC ; linking with the C runtime, so main will be invoked
     call    showstats
 
     lea     rcx, [iterStr]
-    mov     rdx, iterations
+    mov     rdx, QWORD PTR [loopCount]
     call    printf
 
     xor     rax, rax
@@ -205,7 +285,7 @@ TTTThreadProc PROC
     mov     boardIndex$[rsp], rcx        ; again, make sure
 
   TTTThreadProc_for:
-    mov     r15, iterations
+    mov     r15, QWORD PTR [loopCount]
 
     align 16
   TTTThreadProc_loop:
