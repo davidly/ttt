@@ -9,6 +9,8 @@
         #define USE_CHRONO
     #endif
 
+    typedef unsigned __int64 LoopType;
+
 #else // _MSC_VER
 
     #define USE_CHRONO
@@ -16,6 +18,9 @@
     #include <thread>
     #include <unistd.h>
     #include <cstring>
+    #include <sched.h>
+
+    typedef unsigned long long LoopType;
 
 #endif // _MSC_VER
 
@@ -56,7 +61,8 @@ const int SCORE_TIE = 5;
 const int SCORE_LOSE = 4;
 const int SCORE_MAX = 9;
 const int SCORE_MIN = 2;
-const int Iterations = 100000;
+const LoopType Iterations = 100000;
+LoopType loopCount = Iterations; 
 
 const char PieceX = 1;
 const char PieceO = 2;
@@ -64,8 +70,10 @@ const char PieceBlank = 0;
 
 static void Usage()
 {
-    printf( "Usage: ttt\n" );
     printf( "  Tic Tac Toe" );
+
+    printf( "Usage: ttt [iterations] [hexAffinityMask]\n" );
+    printf( "  e.g.:    ttt 10000 0x3\n" );
 
     exit( 1 );
 } //Usage
@@ -335,7 +343,7 @@ TTTThreadProc( void * param )
     memset( board, 0, sizeof board );
     board[ position ] = PieceX;
 
-    for ( int times = 0; times < Iterations; times++ )
+    for ( LoopType times = 0; times < loopCount; times++ )
         MinMax( board, SCORE_MIN, SCORE_MAX, 0, position );
 
     return 0;
@@ -343,17 +351,95 @@ TTTThreadProc( void * param )
 
 int main( int argc, char * argv[] )
 {
+    if ( argc > 3 )
+        Usage();
+
+    if ( argc >= 2 )
+    {
+        #if _MSC_VER == 1200 
+            loopCount = _atoi64( argv[ 1 ] );
+        #else
+            loopCount = strtoull( argv[ 1 ], 0, 10 );
+        #endif
+    }
+
 #ifdef _MSC_VER
-#ifdef _M_ARM64
-    SetProcessAffinityMask( GetCurrentProcess(), 0x70 ); // sq3: 0x7 efficiency cores, 0x70 performance cores
-#endif
-#endif
+    #if _WIN32
+        DWORD mask = 0;
+    #else
+        DWORD_PTR mask = 0;
+    #endif
+
+    if ( argc >= 3 )
+    {
+        #if _WIN32
+            mask = strtoul( argv[2], 0, 16 );
+        #else
+            mask =_strtoui64( argv[2], 0, 16 );
+        #endif
+    }
+
+    if ( 0 != mask )
+    {
+        printf( "affinity mask: %#llx\n", (ULONGLONG) mask );
+        BOOL ok = SetProcessAffinityMask( GetCurrentProcess(), mask ); // sq3: 0x7 efficiency cores, 0x70 performance cores
+
+        if ( !ok )
+        {
+            printf( "call to SetProcessAffinityMask failed with error %d\n", GetLastError() );
+            exit( 0 );
+        }
+    }
+#else
+
+    //{
+    //    cpu_set_t mask;
+    //    long nproc, i;
+    //    if ( sched_getaffinity( 0, sizeof( mask ), &mask ) == -1 )
+    //        printf( "can't get affinity, errno %d\n", errno );
+    //    else
+    //    {
+    //        long nproc = sysconf( _SC_NPROCESSORS_ONLN );
+    //        printf( "sched_getaffinity = " );
+    //        for ( long i = 0; i < nproc; i++ )
+    //            printf( "%d ", CPU_ISSET( i, &mask ) );
+    //        printf( "\n" );
+    //    }
+    //}
+
+    unsigned long long affinity = 0;
+
+    if ( argc >= 3 )
+        affinity = strtoull( argv[ 2 ], 0, 16 );
+
+    if ( 0 != affinity )
+    {
+        printf( "affinity mask: %#llx\n", affinity );
+
+        cpu_set_t mask;
+        CPU_ZERO( &mask );
+
+        for ( long l = 0; l < 32; l++ )
+        {
+            int b = ( 1 << l );
+            if ( 0 != ( b & affinity ) )
+                CPU_SET( l, &mask );
+        }
+
+        int status = sched_setaffinity( 0, sizeof( mask ), &mask );
+        if ( 0 != status )
+        {
+            printf( "can't set affinity, errno %d\n", errno );
+            exit( -1 );
+        }
+    }
+#endif //_MSC_VER
 
     ticktype startParallel = GetTicks();
 
 #ifdef _MSC_VER
     HANDLE aHandles[ 2 ];
-    DWORD dwID; // required for Win98. On NT you can pass 0.
+    DWORD dwID = 0; // required for Win98. On NT you can pass 0.
     aHandles[ 0 ] = CreateThread( 0, 0, TTTThreadProc, (void *) 0, 0, &dwID );
     aHandles[ 1 ] = CreateThread( 0, 0, TTTThreadProc, (void *) 4, 0, &dwID );
 #else
@@ -388,7 +474,8 @@ int main( int argc, char * argv[] )
     if ( 0 != g_Moves )
         printf( "moves examined: %d, parallel %d\n", g_Moves, parallelMoves );
 
-    printf( "ran %d iterations\n", Iterations );
+    printf( "ran %llu iterations\n", loopCount );
+
     printf( "parallel milliseconds: %ld\n", GetMilliseconds( endParallel, startParallel ) );
     printf( "serial   milliseconds: %ld\n", GetMilliseconds( endSerial, startSerial ) );
 
