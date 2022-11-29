@@ -390,7 +390,8 @@ int main( int argc, char * argv[] )
             exit( 0 );
         }
     }
-#else
+
+#elif !defined(__APPLE__)
 
     //{
     //    cpu_set_t mask;
