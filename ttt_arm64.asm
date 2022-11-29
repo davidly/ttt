@@ -8,6 +8,7 @@
 ;     - Win32 CreateThread vs. posix pthread API
 ;     - loading 64 bit constants and variable labels is different
 ;     - directives for data/code segments, labels, proc start and end, data statements, equ statements, alignment fill semantics.
+;     - setting processor affinity is different; only native OS API are available
 ;
 ; The app takes two optional arguments:
 ;    - the number of iterations to run. Default is defaultIterations.
@@ -77,7 +78,7 @@ usage PROC
     ENDP
 
   align 16 
-parse_args PROC
+parse_args PROC                         ; assumes x20=argc and x21=argv
     sub      sp, sp, #32
     stp      x29, x30, [sp, #16]
     add      x29, sp, #16
