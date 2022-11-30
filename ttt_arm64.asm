@@ -15,6 +15,9 @@
 ;    - the hex affinity mask to select which cores to run on. Default is up to the OS
 ;    - e.g.: ttt_arm64 10000 0x3
 ;    - on the SQ3, 0xf are the 4 efficiency cores and 0xf0 are the 4 performance cores
+;
+; Handy reminder: brk      #0xF000
+
 
 
   IMPORT |printf|
@@ -367,7 +370,7 @@ _minmax_max PROC
     ; x22: global iteration count
     ; x23: alpha (argument)
     ; x24: beta (argument)
-    ; x25: depth
+    ; x25: next depth
     ; x26: value: local variable
     ; x27: for loop local variable I
     ; x28: the piece to move
@@ -455,7 +458,7 @@ _minmax_min PROC
     ; x22: global iteration count
     ; x23: alpha (argument)
     ; x24: beta (argument)
-    ; x25: depth
+    ; x25: next depth
     ; x26: value: local variable
     ; x27: for loop local variable I
     ; x28: the piece to move
@@ -708,6 +711,25 @@ _pos7func PROC
 pos7_return
         ret
         ENDP
+
+;  align 16
+;_pos7func PROC
+;        mov      w1, w0
+;        ldrb     w9, [x21, #6]
+;        and      w0, w0, w9
+;        ldrb     w9, [x21, #8]
+;        ands     w0, w0, w9
+;        b.ne     pos7_yes
+;
+;        mov      w0, w1
+;        ldrb     w9, [x21, #1]
+;        and      w0, w0, w9
+;        ldrb     w9, [x21, #4]
+;        and      w0, w0, w9
+;
+;pos7_yes
+;        ret
+;        ENDP
 
   align 16
 _pos8func PROC
