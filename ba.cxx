@@ -4416,8 +4416,8 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         else
         {
             fprintf( fp, "; Build on Windows 98 using ml 7.x like this:\n" );
-            fprintf( fp, ";   ml /c samplem.asm\n" );
-            fprintf( fp, ";   link sample.obj /defaultlib:msvcrt.lib /entry:mainCRTStartup\n" );
+            fprintf( fp, ";   ml /c sample.asm\n" );
+            fprintf( fp, ";   link sample.obj /OPT:REF /defaultlib:msvcrt.lib /subsystem:console,3.10 /entry:mainCRTStartup\n" );
             fprintf( fp, "; If you try to build on modern Windows, _printf will be unresolved.\n" );
             fprintf( fp, ";    workaround: add /defaultlib:legacy_stdio_definitions.lib\n" );
             fprintf( fp, ".386\n" );
@@ -4437,6 +4437,9 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "extern exit: proc\n" );
         fprintf( fp, "data_segment SEGMENT 'DATA'\n" );
     }
+
+    bool elapReferenced = false;
+    bool timeReferenced = false;
 
     for ( size_t l = 0; l < g_linesOfCode.size(); l++ )
     {
@@ -4512,7 +4515,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                         fprintf( fp, "str_%zd_%d dcb \"%s\", 0\n", l, t, e.c_str() );
                     }
                     else if ( i8080CPM == g_AssemblyTarget )
-                        fprintf( fp, "      s$%zd$%d: db '%s', '$'\n", l, t, strEscaped.c_str() );
+                        fprintf( fp, "      s$%zd$%d: db '%s', 0\n", l, t, strEscaped.c_str() );
                     else if ( mos6502Apple1 == g_AssemblyTarget )
                     {
                         string str6502Escaped = mos6502Escape( vals[ t ].strValue );
@@ -4521,6 +4524,10 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                     else if ( i8086DOS == g_AssemblyTarget )
                         fprintf( fp, "    str_%zd_%d   db  '%s', '$'\n", l, t , strEscaped.c_str() );
                 }
+                else if ( Token::ELAP == vals[ t ].token )
+                    elapReferenced = true;
+                else if ( Token::TIME == vals[ t ].token )
+                    timeReferenced = true;
             }
         }
     }
@@ -4633,11 +4640,18 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "    currentTime    dq 2  DUP(0)\n" ); // SYSTEMTIME is 8 WORDS
 
         fprintf( fp, "    errorString    db    'internal error', 10, 0\n" );
-        fprintf( fp, "    startString    db    'running basic', 10, 0\n" );
-        fprintf( fp, "    stopString     db    'done running basic', 10, 0\n" );
+        if ( !g_Quiet )
+        {
+            fprintf( fp, "    startString    db    'running basic', 10, 0\n" );
+            fprintf( fp, "    stopString     db    'done running basic', 10, 0\n" );
+        }
         fprintf( fp, "    newlineString  db    10, 0\n" );
-        fprintf( fp, "    elapString     db    '%%lld microseconds (-6)', 0\n" );
-        fprintf( fp, "    timeString     db    '%%02d:%%02d:%%02d:%%03d', 0\n" );
+
+        if ( elapReferenced )
+            fprintf( fp, "    elapString     db    '%%lld microseconds (-6)', 0\n" );
+        if ( timeReferenced )
+            fprintf( fp, "    timeString     db    '%%02d:%%02d:%%02d:%%03d', 0\n" );
+
         fprintf( fp, "    intString      db    '%%d', 0\n" );
         fprintf( fp, "    strString      db    '%%s', 0\n" );
 
@@ -4655,10 +4669,13 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
             fprintf( fp, "    call     printf\n" );
         }
 
-        fprintf( fp, "    lea      rcx, [startTicks]\n" );
-        fprintf( fp, "    call     QueryPerformanceCounter\n" );
-        fprintf( fp, "    lea      rcx, [perfFrequency]\n" );
-        fprintf( fp, "    call     QueryPerformanceFrequency\n" );
+        if ( elapReferenced )
+        {
+            fprintf( fp, "    lea      rcx, [startTicks]\n" );
+            fprintf( fp, "    call     QueryPerformanceCounter\n" );
+            fprintf( fp, "    lea      rcx, [perfFrequency]\n" );
+            fprintf( fp, "    call     QueryPerformanceFrequency\n" );
+        }
     }
     else if ( arm32Linux == g_AssemblyTarget )
     {
@@ -4667,11 +4684,19 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "    startTicks:    .quad 0\n" );
         fprintf( fp, "    rawTime:       .quad 0\n" ); // time_t
         fprintf( fp, "    errorString:   .asciz \"internal error\\n\"\n" );
-        fprintf( fp, "    startString:   .asciz \"running basic\\n\"\n" );
-        fprintf( fp, "    stopString:    .asciz \"done running basic\\n\"\n" );
+        if ( !g_Quiet )
+        {
+            fprintf( fp, "    startString:   .asciz \"running basic\\n\"\n" );
+            fprintf( fp, "    stopString:    .asciz \"done running basic\\n\"\n" );
+        }
         fprintf( fp, "    newlineString: .asciz \"\\n\"\n" );
-        fprintf( fp, "    timeString:    .asciz \"%%02d:%%02d:%%02d\"\n" );
-        fprintf( fp, "    elapString:    .asciz \"%%d microseconds (-6)\"\n" );
+
+        if ( timeReferenced )
+            fprintf( fp, "    timeString:    .asciz \"%%02d:%%02d:%%02d\"\n" );
+
+        if ( elapReferenced )
+            fprintf( fp, "    elapString:    .asciz \"%%d microseconds (-6)\"\n" );
+
         fprintf( fp, "    intString:     .asciz \"%%d\"\n" );
         fprintf( fp, "    strString:     .asciz \"%%s\"\n" );
 
@@ -4687,9 +4712,12 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
             fprintf( fp, "    bl       call_printf\n" );
         }
 
-        fprintf( fp, "    bl       clock\n" );
-        LoadArm32Label( fp, "r1", "startTicks" );
-        fprintf( fp, "    str      r0, [r1]\n" );
+        if ( elapReferenced )
+        {
+            fprintf( fp, "    bl       clock\n" );
+            LoadArm32Label( fp, "r1", "startTicks" );
+            fprintf( fp, "    str      r0, [r1]\n" );
+        }
     }
     else if ( arm64Mac == g_AssemblyTarget )
     {
@@ -4698,11 +4726,18 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "    startTicks:    .quad 0\n" );
         fprintf( fp, "    rawTime:       .quad 0\n" ); // time_t
         fprintf( fp, "    errorString:   .asciz \"internal error\\n\"\n" );
-        fprintf( fp, "    startString:   .asciz \"running basic\\n\"\n" );
-        fprintf( fp, "    stopString:    .asciz \"done running basic\\n\"\n" );
+        if ( !g_Quiet )
+        {
+            fprintf( fp, "    startString:   .asciz \"running basic\\n\"\n" );
+            fprintf( fp, "    stopString:    .asciz \"done running basic\\n\"\n" );
+        }
         fprintf( fp, "    newlineString: .asciz \"\\n\"\n" );
-        fprintf( fp, "    timeString:    .asciz \"%%02d:%%02d:%%02d\"\n" );
-        fprintf( fp, "    elapString:    .asciz \"%%lld microseconds (-6)\"\n" );
+
+        if ( timeReferenced )
+            fprintf( fp, "    timeString:    .asciz \"%%02d:%%02d:%%02d\"\n" );
+        if ( elapReferenced )
+            fprintf( fp, "    elapString:    .asciz \"%%lld microseconds (-6)\"\n" );
+
         fprintf( fp, "    intString:     .asciz \"%%d\"\n" );
         fprintf( fp, "    strString:     .asciz \"%%s\"\n" );
 
@@ -4720,9 +4755,12 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
             fprintf( fp, "    bl       call_printf\n" );
         }
 
-        LoadArm64Label( fp, "x1", "startTicks" );
-        fprintf( fp, "    mrs      x0, cntvct_el0\n" );
-        fprintf( fp, "    str      x0, [x1]\n" );
+        if ( elapReferenced )
+        {
+            LoadArm64Label( fp, "x1", "startTicks" );
+            fprintf( fp, "    mrs      x0, cntvct_el0\n" );
+            fprintf( fp, "    str      x0, [x1]\n" );
+        }
     }
     else if ( arm64Win == g_AssemblyTarget )
     {
@@ -4731,11 +4769,18 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "gosubCount    dcq 0\n" );
         fprintf( fp, "startTicks    dcq 0\n" );
         fprintf( fp, "errorString   dcb \"internal error\\n\", 0\n" );
-        fprintf( fp, "startString   dcb \"running basic\\n\", 0\n" );
-        fprintf( fp, "stopString    dcb \"done running basic\\n\", 0\n" );
+        if ( !g_Quiet )
+        {
+            fprintf( fp, "startString   dcb \"running basic\\n\", 0\n" );
+            fprintf( fp, "stopString    dcb \"done running basic\\n\", 0\n" );
+        }
         fprintf( fp, "newlineString dcb \"\\n\", 0\n" );
-        fprintf( fp, "timeString    dcb \"%%02d:%%02d:%%02d:%%03d\", 0\n" );
-        fprintf( fp, "elapString    dcb \"%%lld microseconds (-6)\", 0\n" );
+
+        if ( timeReferenced )
+            fprintf( fp, "timeString    dcb \"%%02d:%%02d:%%02d:%%03d\", 0\n" );
+        if ( elapReferenced )
+            fprintf( fp, "elapString    dcb \"%%lld microseconds (-6)\", 0\n" );
+
         fprintf( fp, "intString     dcb \"%%d\", 0\n" );
         fprintf( fp, "strString     dcb \"%%s\", 0\n" );
 
@@ -4753,16 +4798,22 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
             fprintf( fp, "    bl       call_printf\n" );
         }
 
-        LoadArm64Label( fp, "x1", "startTicks" );
-        fprintf( fp, "    mrs      x0, cntvct_el0\n" );
-        fprintf( fp, "    str      x0, [x1]\n" );
+        if ( elapReferenced )
+        {
+            LoadArm64Label( fp, "x1", "startTicks" );
+            fprintf( fp, "    mrs      x0, cntvct_el0\n" );
+            fprintf( fp, "    str      x0, [x1]\n" );
+        }
     }
     else if ( i8080CPM == g_AssemblyTarget )
     {
-        fprintf( fp, "    errorString:    db    'internal error', 10, 13, '$'\n" );
-        fprintf( fp, "    startString:    db    'running basic', 10, 13, '$'\n" );
-        fprintf( fp, "    stopString:     db    'done running basic', 10, 13, '$'\n" );
-        fprintf( fp, "    newlineString:  db    10, 13, '$'\n" );
+        fprintf( fp, "    errorString:    db    'internal error', 10, 13, 0\n" );
+        if ( !g_Quiet )
+        {
+            fprintf( fp, "    startString:    db    'running basic', 10, 13, 0\n" );
+            fprintf( fp, "    stopString:     db    'done running basic', 10, 13, 0\n" );
+        }
+        fprintf( fp, "    newlineString:  db    10, 13, 0\n" );
         fprintf( fp, "    mulTmp:         dw    0\n" ); // temporary for imul and idiv functions
         fprintf( fp, "    divRem:         dw    0\n" ); // idiv remainder
 
@@ -4795,17 +4846,19 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
 
         if ( !g_Quiet )
         {
-            fprintf( fp, "    mvi      c, PRSTR\n" );
-            fprintf( fp, "    lxi      d, startString\n" );
-            fprintf( fp, "    call     BDOS\n" );
+            fprintf( fp, "    lxi      h, startString\n" );
+            fprintf( fp, "    call     DISPLAY\n" );
         }
     }
     else if ( mos6502Apple1 == g_AssemblyTarget )
     {
         fprintf( fp, "intString      .az    '32768'\n" ); // big enough for 5 digits and no minus sign, plus 0.
         fprintf( fp, "errorString    .az    'internal error', #10, #13\n" );
-        fprintf( fp, "startString    .az    #10, #13, 'running basic', #10, #13\n" );
-        fprintf( fp, "stopString     .az    'done running basic$', #10, #13\n" );
+        if ( !g_Quiet )
+        {
+            fprintf( fp, "startString    .az    #10, #13, 'running basic', #10, #13\n" );
+            fprintf( fp, "stopString     .az    'done running basic$', #10, #13\n" ); // end with $ for timing app hack
+        }
         fprintf( fp, "newlineString  .az    #10, #13\n" );
         fprintf( fp, "divRem         .dw    0\n" ); // idiv remainder
         fprintf( fp, "mulResult      .dl    0\n" ); // multiplication result
@@ -4870,9 +4923,13 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
     else if ( i8086DOS == g_AssemblyTarget )
     {
         fprintf( fp, "crlfmsg        db      13,10,'$'\n" );
-        fprintf( fp, "elapString     db      ' seconds','$'\n" );
-        fprintf( fp, "startString    db      'running basic',13,10,'$'\n" );
-        fprintf( fp, "stopString     db      'done running basic',13,10,'$'\n" );
+        if ( elapReferenced )
+            fprintf( fp, "elapString     db      ' seconds','$'\n" );
+        if ( !g_Quiet )
+        {
+            fprintf( fp, "startString    db      'running basic',13,10,'$'\n" );
+            fprintf( fp, "stopString     db      'done running basic',13,10,'$'\n" );
+        }
         fprintf( fp, "errorString    db      'internal error',13,10,'$'\n" );
         fprintf( fp, "starttime      dd      0\n" );
         fprintf( fp, "scratchpad     dd      0\n" );
@@ -4880,10 +4937,13 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "\n" );
 
         fprintf( fp, "startup PROC NEAR\n" );
-        fprintf( fp, "    xor      ax, ax\n" );
-        fprintf( fp, "    int      1ah\n" );
-        fprintf( fp, "    mov      WORD PTR ds: [ starttime ], dx\n" ); // low word
-        fprintf( fp, "    mov      WORD PTR ds: [ starttime + 2 ], cx\n" ); // high word
+        if ( elapReferenced )
+        {
+            fprintf( fp, "    xor      ax, ax\n" );
+            fprintf( fp, "    int      1ah\n" );
+            fprintf( fp, "    mov      WORD PTR ds: [ starttime ], dx\n" ); // low word
+            fprintf( fp, "    mov      WORD PTR ds: [ starttime + 2 ], cx\n" ); // high word
+        }
 
         if ( !g_Quiet )
         {
@@ -4902,11 +4962,18 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "    currentTime    dq 2  DUP(0)\n" ); // SYSTEMTIME is 8 WORDS
 
         fprintf( fp, "    errorString    db    'internal error', 10, 0\n" );
-        fprintf( fp, "    startString    db    'running basic', 10, 0\n" );
-        fprintf( fp, "    stopString     db    'done running basic', 10, 0\n" );
+        if ( !g_Quiet )
+        {
+            fprintf( fp, "    startString    db    'running basic', 10, 0\n" );
+            fprintf( fp, "    stopString     db    'done running basic', 10, 0\n" );
+        }
         fprintf( fp, "    newlineString  db    10, 0\n" );
-        fprintf( fp, "    elapString     db    '%%d milliseconds', 0\n" );
-        fprintf( fp, "    timeString     db    '%%02d:%%02d:%%02d:%%03d', 0\n" );
+
+        if ( elapReferenced )
+            fprintf( fp, "    elapString     db    '%%d milliseconds', 0\n" );
+        if ( timeReferenced )
+            fprintf( fp, "    timeString     db    '%%02d:%%02d:%%02d:%%03d', 0\n" );
+
         fprintf( fp, "    intString      db    '%%d', 0\n" );
         fprintf( fp, "    strString      db    '%%s', 0\n" );
 
@@ -4925,16 +4992,19 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
             fprintf( fp, "    call     printf\n" );
         }
 
-        fprintf( fp, "    add      esp, 4\n" );
-        fprintf( fp, "    push     offset startTicks\n" );
-        fprintf( fp, "    call     QueryPerformanceCounter@4\n" );
-        fprintf( fp, "    push     offset perfFrequency\n" );
-        fprintf( fp, "    call     QueryPerformanceFrequency@4\n" );
-        fprintf( fp, "    mov      eax, DWORD PTR [perfFrequency]\n" );
-        fprintf( fp, "    mov      ebx, 1000000\n" ); // get it down to milliseconds
-        fprintf( fp, "    xor      edx, edx\n" );
-        fprintf( fp, "    div      ebx\n" );
-        fprintf( fp, "    mov      DWORD PTR [perfFrequency], eax\n" );
+        if ( elapReferenced )
+        {
+            fprintf( fp, "    add      esp, 4\n" );
+            fprintf( fp, "    push     offset startTicks\n" );
+            fprintf( fp, "    call     QueryPerformanceCounter@4\n" );
+            fprintf( fp, "    push     offset perfFrequency\n" );
+            fprintf( fp, "    call     QueryPerformanceFrequency@4\n" );
+            fprintf( fp, "    mov      eax, DWORD PTR [perfFrequency]\n" );
+            fprintf( fp, "    mov      ebx, 1000000\n" ); // get it down to milliseconds
+            fprintf( fp, "    xor      edx, edx\n" );
+            fprintf( fp, "    div      ebx\n" );
+            fprintf( fp, "    mov      DWORD PTR [perfFrequency], eax\n" );
+        }
     }
 
     if ( useRegistersInASM )
@@ -6319,9 +6389,8 @@ label_no_array_eq_optimization:
                         }
                         else if ( i8080CPM == g_AssemblyTarget )
                         {
-                            fprintf( fp, "    mvi      c, PRSTR\n" );
-                            fprintf( fp, "    lxi      d, s$%zd$%d\n", l, t + 1 );
-                            fprintf( fp, "    call     BDOS\n" );
+                            fprintf( fp, "    lxi      h, s$%zd$%d\n", l, t + 1 );
+                            fprintf( fp, "    call     DISPLAY\n" );
                         }
                         else if ( mos6502Apple1 == g_AssemblyTarget )
                         {
@@ -6502,9 +6571,8 @@ label_no_array_eq_optimization:
                 }
                 else if ( i8080CPM == g_AssemblyTarget )
                 {
-                    fprintf( fp, "    mvi      c, PRSTR\n" );
-                    fprintf( fp, "    lxi      d, newlineString\n" );
-                    fprintf( fp, "    call     BDOS\n" );
+                    fprintf( fp, "    lxi      h, newlineString\n" );
+                    fprintf( fp, "    call     DISPLAY\n" );
                 }
                 else if ( mos6502Apple1 == g_AssemblyTarget )
                     fprintf( fp, "    jsr      prcrlf\n" ); 
@@ -8480,68 +8548,74 @@ label_no_if_optimization:
         // Also push r8 to keep the stack 16-byte aligned, which is required for newer versions of the C++
         // runtime that use instructions like movdqa with stack pointers, which require 16-byte alignment
 
-        fprintf( fp, "align 16\n" );
-        fprintf( fp, "printElap PROC\n" );
-        fprintf( fp, "    push     r8\n" );
-        fprintf( fp, "    push     r9\n" );
-        fprintf( fp, "    push     r10\n" ); 
-        fprintf( fp, "    push     r11\n" ); 
-        fprintf( fp, "    push     rbp\n" );
-        fprintf( fp, "    mov      rbp, rsp\n" );
-        fprintf( fp, "    sub      rsp, 32\n" );
-
-        fprintf( fp, "    lea      rcx, [currentTicks]\n" );
-        fprintf( fp, "    call     call_QueryPerformanceCounter\n" );
-        fprintf( fp, "    mov      rax, [currentTicks]\n" );
-        fprintf( fp, "    sub      rax, [startTicks]\n" );
-        fprintf( fp, "    mov      rcx, [perfFrequency]\n" );
-        fprintf( fp, "    xor      rdx, rdx\n" );
-        fprintf( fp, "    mov      rbx, 1000000\n" );
-        fprintf( fp, "    mul      rbx\n" );
-        fprintf( fp, "    div      rcx\n" );
-
-        fprintf( fp, "    lea      rcx, [elapString]\n" );
-        fprintf( fp, "    mov      rdx, rax\n" );
-        fprintf( fp, "    call     printf\n" );
-
-        fprintf( fp, "    leave\n" );
-        fprintf( fp, "    pop      r11\n" );
-        fprintf( fp, "    pop      r10\n" );
-        fprintf( fp, "    pop      r9\n" );
-        fprintf( fp, "    pop      r8\n" );
-        fprintf( fp, "    ret\n" );
-        fprintf( fp, "printElap ENDP\n" );
+        if ( elapReferenced )
+        {
+            fprintf( fp, "align 16\n" );
+            fprintf( fp, "printElap PROC\n" );
+            fprintf( fp, "    push     r8\n" );
+            fprintf( fp, "    push     r9\n" );
+            fprintf( fp, "    push     r10\n" ); 
+            fprintf( fp, "    push     r11\n" ); 
+            fprintf( fp, "    push     rbp\n" );
+            fprintf( fp, "    mov      rbp, rsp\n" );
+            fprintf( fp, "    sub      rsp, 32\n" );
+    
+            fprintf( fp, "    lea      rcx, [currentTicks]\n" );
+            fprintf( fp, "    call     call_QueryPerformanceCounter\n" );
+            fprintf( fp, "    mov      rax, [currentTicks]\n" );
+            fprintf( fp, "    sub      rax, [startTicks]\n" );
+            fprintf( fp, "    mov      rcx, [perfFrequency]\n" );
+            fprintf( fp, "    xor      rdx, rdx\n" );
+            fprintf( fp, "    mov      rbx, 1000000\n" );
+            fprintf( fp, "    mul      rbx\n" );
+            fprintf( fp, "    div      rcx\n" );
+    
+            fprintf( fp, "    lea      rcx, [elapString]\n" );
+            fprintf( fp, "    mov      rdx, rax\n" );
+            fprintf( fp, "    call     printf\n" );
+    
+            fprintf( fp, "    leave\n" );
+            fprintf( fp, "    pop      r11\n" );
+            fprintf( fp, "    pop      r10\n" );
+            fprintf( fp, "    pop      r9\n" );
+            fprintf( fp, "    pop      r8\n" );
+            fprintf( fp, "    ret\n" );
+            fprintf( fp, "printElap ENDP\n" );
+        }
 
         //////////////////////////////////////////////////////////////////
 
-        fprintf( fp, "align 16\n" );
-        fprintf( fp, "printTime PROC\n" );
-        fprintf( fp, "    push     r8\n" );
-        fprintf( fp, "    push     r9\n" );
-        fprintf( fp, "    push     r10\n" ); 
-        fprintf( fp, "    push     r11\n" ); 
-        fprintf( fp, "    push     rbp\n" );
-        fprintf( fp, "    mov      rbp, rsp\n" );
-        fprintf( fp, "    sub      rsp, 64\n" );
-
-        fprintf( fp, "    lea      rcx, [currentTime]\n" );
-        fprintf( fp, "    call     GetLocalTime\n" );
-        fprintf( fp, "    lea      rax, [currentTime]\n" );
-        fprintf( fp, "    lea      rcx, [timeString]\n" );
-        fprintf( fp, "    movzx    rdx, WORD PTR [currentTime + 8]\n" );
-        fprintf( fp, "    movzx    r8, WORD PTR [currentTime + 10]\n" );
-        fprintf( fp, "    movzx    r9, WORD PTR [currentTime + 12]\n" );
-        fprintf( fp, "    movzx    r10, WORD PTR [currentTime + 14]\n" );
-        fprintf( fp, "    mov      QWORD PTR [rsp + 32], r10\n" );
-        fprintf( fp, "    call     printf\n" );
-
-        fprintf( fp, "    leave\n" );
-        fprintf( fp, "    pop      r11\n" );
-        fprintf( fp, "    pop      r10\n" );
-        fprintf( fp, "    pop      r9\n" );
-        fprintf( fp, "    pop      r8\n" );
-        fprintf( fp, "    ret\n" );
-        fprintf( fp, "printTime ENDP\n" );
+        if ( timeReferenced )
+        {
+            fprintf( fp, "align 16\n" );
+            fprintf( fp, "printTime PROC\n" );
+            fprintf( fp, "    push     r8\n" );
+            fprintf( fp, "    push     r9\n" );
+            fprintf( fp, "    push     r10\n" ); 
+            fprintf( fp, "    push     r11\n" ); 
+            fprintf( fp, "    push     rbp\n" );
+            fprintf( fp, "    mov      rbp, rsp\n" );
+            fprintf( fp, "    sub      rsp, 64\n" );
+    
+            fprintf( fp, "    lea      rcx, [currentTime]\n" );
+            fprintf( fp, "    call     GetLocalTime\n" );
+            fprintf( fp, "    lea      rax, [currentTime]\n" );
+            fprintf( fp, "    lea      rcx, [timeString]\n" );
+            fprintf( fp, "    movzx    rdx, WORD PTR [currentTime + 8]\n" );
+            fprintf( fp, "    movzx    r8, WORD PTR [currentTime + 10]\n" );
+            fprintf( fp, "    movzx    r9, WORD PTR [currentTime + 12]\n" );
+            fprintf( fp, "    movzx    r10, WORD PTR [currentTime + 14]\n" );
+            fprintf( fp, "    mov      QWORD PTR [rsp + 32], r10\n" );
+            fprintf( fp, "    call     printf\n" );
+    
+            fprintf( fp, "    leave\n" );
+            fprintf( fp, "    pop      r11\n" );
+            fprintf( fp, "    pop      r10\n" );
+            fprintf( fp, "    pop      r9\n" );
+            fprintf( fp, "    pop      r8\n" );
+            fprintf( fp, "    ret\n" );
+            fprintf( fp, "printTime ENDP\n" );
+       }
 
         //////////////////////////////////////////////////////////////////
 
@@ -8577,23 +8651,26 @@ label_no_if_optimization:
 
         //////////////////////////////////////////////////////////////////
 
-        fprintf( fp, "align 16\n" );
-        fprintf( fp, "call_QueryPerformanceCounter PROC\n" );
-        fprintf( fp, "    push     r8\n" );
-        fprintf( fp, "    push     r9\n" );   
-        fprintf( fp, "    push     r10\n" ); 
-        fprintf( fp, "    push     r11\n" ); 
-        fprintf( fp, "    push     rbp\n" );
-        fprintf( fp, "    mov      rbp, rsp\n" );
-        fprintf( fp, "    sub      rsp, 32\n" );
-        fprintf( fp, "    call     QueryPerformanceCounter\n" );
-        fprintf( fp, "    leave\n" );
-        fprintf( fp, "    pop      r11\n" );
-        fprintf( fp, "    pop      r10\n" );
-        fprintf( fp, "    pop      r9\n" );
-        fprintf( fp, "    pop      r8\n" );
-        fprintf( fp, "    ret\n" );
-        fprintf( fp, "call_QueryPerformanceCounter ENDP\n" );
+        if ( elapReferenced )
+        {
+            fprintf( fp, "align 16\n" );
+            fprintf( fp, "call_QueryPerformanceCounter PROC\n" );
+            fprintf( fp, "    push     r8\n" );
+            fprintf( fp, "    push     r9\n" );   
+            fprintf( fp, "    push     r10\n" ); 
+            fprintf( fp, "    push     r11\n" ); 
+            fprintf( fp, "    push     rbp\n" );
+            fprintf( fp, "    mov      rbp, rsp\n" );
+            fprintf( fp, "    sub      rsp, 32\n" );
+            fprintf( fp, "    call     QueryPerformanceCounter\n" );
+            fprintf( fp, "    leave\n" );
+            fprintf( fp, "    pop      r11\n" );
+            fprintf( fp, "    pop      r10\n" );
+            fprintf( fp, "    pop      r9\n" );
+            fprintf( fp, "    pop      r8\n" );
+            fprintf( fp, "    ret\n" );
+            fprintf( fp, "call_QueryPerformanceCounter ENDP\n" );
+        }
 
         // end of the code segment and program
 
@@ -8723,27 +8800,30 @@ label_no_if_optimization:
 
         //////////////////////////////////////////////////////
 
-        fprintf( fp, "  align 16\n" );
-        fprintf( fp, "printTime\n" );
-        fprintf( fp, "    save_volatile_registers\n" );
-        fprintf( fp, "    sub      sp, sp, #32\n" );
-        fprintf( fp, "    stp      x29, x30, [sp, #16]\n" );
-        fprintf( fp, "    add      x29, sp, #16\n" );
-
-        LoadArm64Label( fp, "x0", "currentTime" );
-        fprintf( fp, "    bl       GetLocalTime\n" );
-        LoadArm64Label( fp, "x0", "currentTime" );
-        fprintf( fp, "    ldrh     w1, [x0, #8]\n" );
-        fprintf( fp, "    ldrh     w2, [x0, #10]\n" );
-        fprintf( fp, "    ldrh     w3, [x0, #12]\n" );
-        fprintf( fp, "    ldrh     w4, [x0, #14]\n" );
-        LoadArm64Label( fp, "x0", "timeString" );
-        fprintf( fp, "    bl       printf\n" );
-
-        fprintf( fp, "    ldp      x29, x30, [sp, #16]\n" );
-        fprintf( fp, "    add      sp, sp, #32\n" );
-        fprintf( fp, "    restore_volatile_registers\n" );
-        fprintf( fp, "    ret\n" );
+        if ( timeReferenced )
+        {
+            fprintf( fp, "  align 16\n" );
+            fprintf( fp, "printTime\n" );
+            fprintf( fp, "    save_volatile_registers\n" );
+            fprintf( fp, "    sub      sp, sp, #32\n" );
+            fprintf( fp, "    stp      x29, x30, [sp, #16]\n" );
+            fprintf( fp, "    add      x29, sp, #16\n" );
+    
+            LoadArm64Label( fp, "x0", "currentTime" );
+            fprintf( fp, "    bl       GetLocalTime\n" );
+            LoadArm64Label( fp, "x0", "currentTime" );
+            fprintf( fp, "    ldrh     w1, [x0, #8]\n" );
+            fprintf( fp, "    ldrh     w2, [x0, #10]\n" );
+            fprintf( fp, "    ldrh     w3, [x0, #12]\n" );
+            fprintf( fp, "    ldrh     w4, [x0, #14]\n" );
+            LoadArm64Label( fp, "x0", "timeString" );
+            fprintf( fp, "    bl       printf\n" );
+    
+            fprintf( fp, "    ldp      x29, x30, [sp, #16]\n" );
+            fprintf( fp, "    add      sp, sp, #32\n" );
+            fprintf( fp, "    restore_volatile_registers\n" );
+            fprintf( fp, "    ret\n" );
+        }
 
         //////////////////////////////////////////////////////
 
@@ -8770,17 +8850,15 @@ label_no_if_optimization:
         fprintf( fp, "    ret\n" );
 
         fprintf( fp, "errorExit:\n" );
-        fprintf( fp, "    mvi      c, PRSTR\n" );
-        fprintf( fp, "    lxi      d, errorString\n" );
-        fprintf( fp, "    call     BDOS\n" );
+        fprintf( fp, "    lxi      h, errorString\n" );
+        fprintf( fp, "    call     DISPLAY\n" );
         fprintf( fp, "    jmp      leaveExecution\n" );
 
         fprintf( fp, "endExecution:\n" );
         if ( !g_Quiet )
         {
-            fprintf( fp, "    mvi      c, PRSTR\n" );
-            fprintf( fp, "    lxi      d, stopString\n" );
-            fprintf( fp, "    call     BDOS\n" );
+            fprintf( fp, "    lxi      h, stopString\n" );
+            fprintf( fp, "    call     DISPLAY\n" );
         }
 
         fprintf( fp, "leaveExecution:\n" );
@@ -8788,6 +8866,43 @@ label_no_if_optimization:
         fprintf( fp, "    pop      d\n" );
         fprintf( fp, "    pop      b\n" );
         fprintf( fp, "    jmp      0\n" );
+
+        /////////////////////////////////////////
+        // displays the chracter in A
+
+        fprintf( fp, "DisplayOneCharacter:\n" );
+        fprintf( fp, "    push    b\n" );
+        fprintf( fp, "    push    d\n" );
+        fprintf( fp, "    push    h\n" );
+        fprintf( fp, "    mvi     c, WCONF\n" );
+        fprintf( fp, "    mov     e, a\n" );
+        fprintf( fp, "    call    BDOS\n" );
+        fprintf( fp, "    pop     h\n" );
+        fprintf( fp, "    pop     d\n" );
+        fprintf( fp, "    pop     b\n" );
+        fprintf( fp, "    ret\n" );
+
+        /////////////////////////////////////////
+        // displays a null-terminated string in hl (not $-terminated like the BDOS)
+
+        fprintf( fp, "DISPLAY:\n" );
+        fprintf( fp, "    push    h\n" );
+        fprintf( fp, "    push    d\n" );
+        fprintf( fp, "    push    b\n" );
+        fprintf( fp, "    mov     b, h\n" );
+        fprintf( fp, "    mov     c, l\n" );
+        fprintf( fp, "  DNEXT:\n" );
+        fprintf( fp, "    ldax    b\n" );
+        fprintf( fp, "    cpi     0\n" );
+        fprintf( fp, "    jz      DDONE\n" );
+        fprintf( fp, "    call    DisplayOneCharacter\n" );
+        fprintf( fp, "    inx     b\n" );
+        fprintf( fp, "    jmp     DNEXT\n" );
+        fprintf( fp, "  DDONE:\n" );
+        fprintf( fp, "    pop     b\n" );
+        fprintf( fp, "    pop     d\n" );
+        fprintf( fp, "    pop     h\n" );
+        fprintf( fp, "    ret\n" );
 
         /////////////////////////////////////////
         // zeroes memory. byte count in de, starting at address bc
@@ -9326,89 +9441,95 @@ label_no_if_optimization:
 
         //////////////////
 
-        fprintf( fp, "printelap PROC NEAR\n" );
-        fprintf( fp, "    xor      ax, ax\n" );
-        fprintf( fp, "    int      1ah\n" );        // "ticks" in cx:dx, with 18.2 ticks per second. 
-        fprintf( fp, "    mov      WORD PTR ds: [ scratchpad ], dx\n" ); // low word
-        fprintf( fp, "    mov      WORD PTR ds: [ scratchpad + 2 ], cx\n" ); // high word
-
-        // subtract the current tick count from the app start tickcount
-
-        fprintf( fp, "    mov      dl, 0\n" );
-        fprintf( fp, "    mov      ax, WORD PTR ds: [ scratchpad ]\n" );
-        fprintf( fp, "    mov      bx, WORD PTR ds: [ starttime ]\n" );
-        fprintf( fp, "    sub      ax, bx\n" );
-        fprintf( fp, "    mov      word ptr ds: [ result ], ax\n" );
-        fprintf( fp, "    mov      ax, WORD PTR ds: [ scratchpad + 2 ]\n" );
-        fprintf( fp, "    mov      bx, WORD PTR ds: [ starttime + 2 ]\n" );
-        fprintf( fp, "    sbb      ax, bx\n" );
-        fprintf( fp, "    mov      word ptr ds: [ result + 2 ], ax\n" );
-
-        // 1193180 / 65536 = 18.20648193...
-        // multiply by 10000 (to retain precision for the upcoming divide)
-
-        fprintf( fp, "    mov      dx, word ptr ds: [ result + 2 ]\n" );
-        fprintf( fp, "    mov      ax, word ptr ds: [ result ]\n" );
-        fprintf( fp, "    mov      bx, 10000\n" );
-        fprintf( fp, "    mul      bx\n" );
-
-        // divide by 18206. After the divide, the result must fit in 16 bits, which means
-        // a maximum of 3276 seconds (printint is signed!), or about 54 minutes.
-        // elapsed times beyond that aren't supported.
-
-        fprintf( fp, "    mov      bx, 18206\n" );
-        fprintf( fp, "    div      bx\n" );
-
-        // it's now in tenths of a second. divide by 10 to get it back to seconds
-
-        fprintf( fp, "    xor      dx, dx\n" );
-        fprintf( fp, "    mov      bx, 10\n" );
-        fprintf( fp, "    div      bx\n" );
-        fprintf( fp, "    push     dx\n" ); // this is the remainder (tenths of a second)
-
-        // print the seconds, a period, and the remainder which is tenths of a second.
-        // given 18.2 ticks per second, it's more like 1/5 of a second resolution
-
-        fprintf( fp, "    call     printint\n" );
-        fprintf( fp, "    call     prperiod\n" );
-        fprintf( fp, "    pop      ax\n" );
-        fprintf( fp, "    call     printint\n" );
-
-        fprintf( fp, "    ret\n" );
-        fprintf( fp, "printelap ENDP\n" );
+        if ( elapReferenced )
+        {
+            fprintf( fp, "printelap PROC NEAR\n" );
+            fprintf( fp, "    xor      ax, ax\n" );
+            fprintf( fp, "    int      1ah\n" );        // "ticks" in cx:dx, with 18.2 ticks per second. 
+            fprintf( fp, "    mov      WORD PTR ds: [ scratchpad ], dx\n" ); // low word
+            fprintf( fp, "    mov      WORD PTR ds: [ scratchpad + 2 ], cx\n" ); // high word
+    
+            // subtract the current tick count from the app start tickcount
+    
+            fprintf( fp, "    mov      dl, 0\n" );
+            fprintf( fp, "    mov      ax, WORD PTR ds: [ scratchpad ]\n" );
+            fprintf( fp, "    mov      bx, WORD PTR ds: [ starttime ]\n" );
+            fprintf( fp, "    sub      ax, bx\n" );
+            fprintf( fp, "    mov      word ptr ds: [ result ], ax\n" );
+            fprintf( fp, "    mov      ax, WORD PTR ds: [ scratchpad + 2 ]\n" );
+            fprintf( fp, "    mov      bx, WORD PTR ds: [ starttime + 2 ]\n" );
+            fprintf( fp, "    sbb      ax, bx\n" );
+            fprintf( fp, "    mov      word ptr ds: [ result + 2 ], ax\n" );
+    
+            // 1193180 / 65536 = 18.20648193...
+            // multiply by 10000 (to retain precision for the upcoming divide)
+    
+            fprintf( fp, "    mov      dx, word ptr ds: [ result + 2 ]\n" );
+            fprintf( fp, "    mov      ax, word ptr ds: [ result ]\n" );
+            fprintf( fp, "    mov      bx, 10000\n" );
+            fprintf( fp, "    mul      bx\n" );
+    
+            // divide by 18206. After the divide, the result must fit in 16 bits, which means
+            // a maximum of 3276 seconds (printint is signed!), or about 54 minutes.
+            // elapsed times beyond that aren't supported.
+    
+            fprintf( fp, "    mov      bx, 18206\n" );
+            fprintf( fp, "    div      bx\n" );
+    
+            // it's now in tenths of a second. divide by 10 to get it back to seconds
+    
+            fprintf( fp, "    xor      dx, dx\n" );
+            fprintf( fp, "    mov      bx, 10\n" );
+            fprintf( fp, "    div      bx\n" );
+            fprintf( fp, "    push     dx\n" ); // this is the remainder (tenths of a second)
+    
+            // print the seconds, a period, and the remainder which is tenths of a second.
+            // given 18.2 ticks per second, it's more like 1/5 of a second resolution
+    
+            fprintf( fp, "    call     printint\n" );
+            fprintf( fp, "    call     prperiod\n" );
+            fprintf( fp, "    pop      ax\n" );
+            fprintf( fp, "    call     printint\n" );
+    
+            fprintf( fp, "    ret\n" );
+            fprintf( fp, "printelap ENDP\n" );
+        }
 
         //////////////////
 
-        fprintf( fp, "printtime PROC NEAR\n" );
-        fprintf( fp, "    mov      ah, 2ch\n" );
-        fprintf( fp, "    int      21h\n" );
-
-        fprintf( fp, "    push     dx\n" );
-        fprintf( fp, "    push     cx\n" );
-        fprintf( fp, "    xor      ax, ax\n" );
-        fprintf( fp, "    mov      al, ch\n" );
-        fprintf( fp, "    call     print2digits\n" );
-        fprintf( fp, "    call     prcolon\n" );
-
-        fprintf( fp, "    pop      cx\n" );
-        fprintf( fp, "    xor      ax, ax\n" );
-        fprintf( fp, "    mov      al, cl\n" );
-        fprintf( fp, "    call     print2digits\n" );
-        fprintf( fp, "    call     prcolon\n" );
-
-        fprintf( fp, "    pop      dx\n" );
-        fprintf( fp, "    push     dx\n" );
-        fprintf( fp, "    xor      ax, ax\n" );
-        fprintf( fp, "    mov      al, dh\n" );
-        fprintf( fp, "    call     print2digits\n" );
-        fprintf( fp, "    call     prperiod\n" );  // period because what's next is in 1/100 of a second
-
-        fprintf( fp, "    pop      dx\n" );
-        fprintf( fp, "    xor      ax, ax\n" );
-        fprintf( fp, "    mov      al, dl\n" );
-        fprintf( fp, "    call     print2digits\n" );
-        fprintf( fp, "    ret\n" );
-        fprintf( fp, "printtime ENDP\n" );
+        if ( timeReferenced )
+        {
+            fprintf( fp, "printtime PROC NEAR\n" );
+            fprintf( fp, "    mov      ah, 2ch\n" );
+            fprintf( fp, "    int      21h\n" );
+    
+            fprintf( fp, "    push     dx\n" );
+            fprintf( fp, "    push     cx\n" );
+            fprintf( fp, "    xor      ax, ax\n" );
+            fprintf( fp, "    mov      al, ch\n" );
+            fprintf( fp, "    call     print2digits\n" );
+            fprintf( fp, "    call     prcolon\n" );
+    
+            fprintf( fp, "    pop      cx\n" );
+            fprintf( fp, "    xor      ax, ax\n" );
+            fprintf( fp, "    mov      al, cl\n" );
+            fprintf( fp, "    call     print2digits\n" );
+            fprintf( fp, "    call     prcolon\n" );
+    
+            fprintf( fp, "    pop      dx\n" );
+            fprintf( fp, "    push     dx\n" );
+            fprintf( fp, "    xor      ax, ax\n" );
+            fprintf( fp, "    mov      al, dh\n" );
+            fprintf( fp, "    call     print2digits\n" );
+            fprintf( fp, "    call     prperiod\n" );  // period because what's next is in 1/100 of a second
+    
+            fprintf( fp, "    pop      dx\n" );
+            fprintf( fp, "    xor      ax, ax\n" );
+            fprintf( fp, "    mov      al, dl\n" );
+            fprintf( fp, "    call     print2digits\n" );
+            fprintf( fp, "    ret\n" );
+            fprintf( fp, "printtime ENDP\n" );
+        }
 
         /////////////////////////
 
@@ -9505,7 +9626,7 @@ label_no_if_optimization:
     {
         // validate there is an active GOSUB before returning (or not)
 
-        fprintf( fp, "label_gosub_return:\n" );
+        fprintf( fp, "  label_gosub_return:\n" );
         // fprintf( fp, "    dec      DWORD PTR [gosubCount]\n" );   // should we protect against return without gosub?
         // fprintf( fp, "    cmp      DWORD PTR [gosubCount], 0\n" );
         // fprintf( fp, "    jl       error_exit\n" );
@@ -9533,41 +9654,36 @@ label_no_if_optimization:
 
         //////////////////////////////////////
 
-        fprintf( fp, "align 16\n" );
-        fprintf( fp, "call_exit PROC\n" );
-        fprintf( fp, "    push     0\n" );
-        fprintf( fp, "    call     exit\n" );
-        fprintf( fp, "call_exit ENDP\n" );
-
-        //////////////////////////////////////
-
-        fprintf( fp, "align 16\n" );
-        fprintf( fp, "printCurrentTime PROC\n" );
-        fprintf( fp, "    push     ebp\n" );
-        fprintf( fp, "    mov      ebp, esp\n" );
-        fprintf( fp, "    push     edi\n" );
-        fprintf( fp, "    push     esi\n" );
-        fprintf( fp, "    push     ecx\n" );
-        fprintf( fp, "    push     offset currentTime\n" );
-        fprintf( fp, "    call     GetLocalTime@4\n" );
-        fprintf( fp, "    movsx    eax, WORD PTR [currentTime + 14]\n" );
-        fprintf( fp, "    push     eax\n" );
-        fprintf( fp, "    movsx    eax, WORD PTR [currentTime + 12]\n" );
-        fprintf( fp, "    push     eax\n" );
-        fprintf( fp, "    movsx    eax, WORD PTR [currentTime + 10]\n" );
-        fprintf( fp, "    push     eax\n" );
-        fprintf( fp, "    movsx    eax, WORD PTR [currentTime + 8]\n" );
-        fprintf( fp, "    push     eax\n" );
-        fprintf( fp, "    push     offset timeString\n" );
-        fprintf( fp, "    call     printf\n" );
-        fprintf( fp, "    add      esp, 32\n" );
-        fprintf( fp, "    pop      ecx\n" );
-        fprintf( fp, "    pop      esi\n" );
-        fprintf( fp, "    pop      edi\n" );
-        fprintf( fp, "    mov      esp, ebp\n" );
-        fprintf( fp, "    pop      ebp\n" );
-        fprintf( fp, "    ret\n" );
-        fprintf( fp, "printCurrentTime ENDP\n" );
+        if ( timeReferenced )
+        {
+            fprintf( fp, "align 16\n" );
+            fprintf( fp, "printCurrentTime PROC\n" );
+            fprintf( fp, "    push     ebp\n" );
+            fprintf( fp, "    mov      ebp, esp\n" );
+            fprintf( fp, "    push     edi\n" );
+            fprintf( fp, "    push     esi\n" );
+            fprintf( fp, "    push     ecx\n" );
+            fprintf( fp, "    push     offset currentTime\n" );
+            fprintf( fp, "    call     GetLocalTime@4\n" );
+            fprintf( fp, "    movsx    eax, WORD PTR [currentTime + 14]\n" );
+            fprintf( fp, "    push     eax\n" );
+            fprintf( fp, "    movsx    eax, WORD PTR [currentTime + 12]\n" );
+            fprintf( fp, "    push     eax\n" );
+            fprintf( fp, "    movsx    eax, WORD PTR [currentTime + 10]\n" );
+            fprintf( fp, "    push     eax\n" );
+            fprintf( fp, "    movsx    eax, WORD PTR [currentTime + 8]\n" );
+            fprintf( fp, "    push     eax\n" );
+            fprintf( fp, "    push     offset timeString\n" );
+            fprintf( fp, "    call     printf\n" );
+            fprintf( fp, "    add      esp, 32\n" );
+            fprintf( fp, "    pop      ecx\n" );
+            fprintf( fp, "    pop      esi\n" );
+            fprintf( fp, "    pop      edi\n" );
+            fprintf( fp, "    mov      esp, ebp\n" );
+            fprintf( fp, "    pop      ebp\n" );
+            fprintf( fp, "    ret\n" );
+            fprintf( fp, "printCurrentTime ENDP\n" );
+        }
 
         //////////////////////////////////////
 
@@ -9633,36 +9749,39 @@ label_no_if_optimization:
 
         //////////////////////////////////////
 
-        fprintf( fp, "align 16\n" );
-        fprintf( fp, "printElapTime PROC\n" );
-        fprintf( fp, "    push     ebp\n" );
-        fprintf( fp, "    mov      ebp, esp\n" );
-        fprintf( fp, "    push     edi\n" );
-        fprintf( fp, "    push     esi\n" );
-        fprintf( fp, "    push     ecx\n" );
-        fprintf( fp, "    push     offset currentTicks\n" );
-        fprintf( fp, "    call     QueryPerformanceCounter@4\n" );
-        fprintf( fp, "    mov      eax, DWORD PTR [currentTicks]\n" );
-        fprintf( fp, "    mov      edx, DWORD PTR [currentTicks + 4]\n" );
-        fprintf( fp, "    mov      ebx, DWORD PTR [startTicks]\n" );
-        fprintf( fp, "    mov      ecx, DWORD PTR [startTicks + 4]\n" );
-        fprintf( fp, "    sub      eax, ebx\n" );
-        fprintf( fp, "    sbb      edx, ecx\n" );
-        fprintf( fp, "    idiv     DWORD PTR [perfFrequency]\n" );
-        fprintf( fp, "    xor      edx, edx\n" );
-        fprintf( fp, "    mov      ecx, 1000\n" );
-        fprintf( fp, "    idiv     ecx\n" );
-        fprintf( fp, "    push     eax\n" );
-        fprintf( fp, "    push     offset elapString\n" );
-        fprintf( fp, "    call     printf\n" );
-        fprintf( fp, "    add      esp, 8\n" );
-        fprintf( fp, "    pop      ecx\n" );
-        fprintf( fp, "    pop      esi\n" );
-        fprintf( fp, "    pop      edi\n" );
-        fprintf( fp, "    mov      esp, ebp\n" );
-        fprintf( fp, "    pop      ebp\n" );
-        fprintf( fp, "    ret\n" );
-        fprintf( fp, "printElapTime ENDP\n" );
+        if ( elapReferenced )
+        {
+            fprintf( fp, "align 16\n" );
+            fprintf( fp, "printElapTime PROC\n" );
+            fprintf( fp, "    push     ebp\n" );
+            fprintf( fp, "    mov      ebp, esp\n" );
+            fprintf( fp, "    push     edi\n" );
+            fprintf( fp, "    push     esi\n" );
+            fprintf( fp, "    push     ecx\n" );
+            fprintf( fp, "    push     offset currentTicks\n" );
+            fprintf( fp, "    call     QueryPerformanceCounter@4\n" );
+            fprintf( fp, "    mov      eax, DWORD PTR [currentTicks]\n" );
+            fprintf( fp, "    mov      edx, DWORD PTR [currentTicks + 4]\n" );
+            fprintf( fp, "    mov      ebx, DWORD PTR [startTicks]\n" );
+            fprintf( fp, "    mov      ecx, DWORD PTR [startTicks + 4]\n" );
+            fprintf( fp, "    sub      eax, ebx\n" );
+            fprintf( fp, "    sbb      edx, ecx\n" );
+            fprintf( fp, "    idiv     DWORD PTR [perfFrequency]\n" );
+            fprintf( fp, "    xor      edx, edx\n" );
+            fprintf( fp, "    mov      ecx, 1000\n" );
+            fprintf( fp, "    idiv     ecx\n" );
+            fprintf( fp, "    push     eax\n" );
+            fprintf( fp, "    push     offset elapString\n" );
+            fprintf( fp, "    call     printf\n" );
+            fprintf( fp, "    add      esp, 8\n" );
+            fprintf( fp, "    pop      ecx\n" );
+            fprintf( fp, "    pop      esi\n" );
+            fprintf( fp, "    pop      edi\n" );
+            fprintf( fp, "    mov      esp, ebp\n" );
+            fprintf( fp, "    pop      ebp\n" );
+            fprintf( fp, "    ret\n" );
+            fprintf( fp, "printElapTime ENDP\n" );
+        }
 
         // end of the code segment and program
 
