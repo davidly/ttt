@@ -3,12 +3,11 @@
 
 ; DOS constants
 
-dos_write_string   equ   9h
 dos_write_char     equ   2h
 dos_get_systemtime equ   1ah
 dos_exit           equ   4ch
 
-iterations  equ     10000   ; # of times to run (max 32767)
+iterations  equ     100 ; # of times to run (max 32767)
 max_score   equ     9   ; maximum score
 min_score   equ     2   ; minimum score
 win_score   equ     6   ; winning score
@@ -60,23 +59,20 @@ again:
         jne      again
 
         call     printelap
-        mov      ah, dos_write_string
         mov      dx, offset secondsmsg
-        int      21h
+        call     printstring
 
-        mov      ah, dos_write_string
         mov      dx, offset movesmsg
-        int      21h
+        call     printstring
 
         mov      ax, ds: [MOVES]
         call     printint
         call     printcrlf
 
-        mov      ah, dos_write_string
-        mov      dx, offset itersmsg
-        int      21h
+        mov      dx, offset iterationsmsg
+        call     printstring
 
-        mov      ax, iterations
+        mov      ax, ds: [iters]
         call     printint
         call     printcrlf
 
@@ -525,9 +521,8 @@ printcrlf PROC NEAR
         push     dx
         push     di
         push     si
-        mov      ah, dos_write_string
         mov      dx, offset crlfmsg
-        int      21h
+        call     printstring
         pop      si
         pop      di
         pop      dx
@@ -544,9 +539,8 @@ printcommasp PROC NEAR
         push     dx
         push     di
         push     si
-        mov      ah, dos_write_string
         mov      dx, offset commaspmsg
-        int      21h
+        call     printstring
         pop      si
         pop      di
         pop      dx
@@ -617,6 +611,38 @@ printelap PROC NEAR
         pop      ax
         ret
 printelap ENDP
+
+printstring PROC NEAR
+        push     ax
+        push     bx
+        push     cx
+        push     dx
+        push     di
+        push     si
+
+        mov      di, dx
+
+  _psnext:
+      
+        mov      al, BYTE PTR ds: [ di ]
+        cmp      al, 0
+        je       _psdone
+        mov      dx, ax
+        mov      ah, dos_write_char
+        int      21h
+
+        inc      di
+        jmp      _psnext
+
+  _psdone:
+        pop      si
+        pop      di
+        pop      dx
+        pop      cx
+        pop      bx
+        pop      ax
+        ret
+printstring ENDP
 
 align 2
 proc0 PROC NEAR
@@ -842,12 +868,12 @@ proc8 PROC NEAR
     ret
 proc8 ENDP
 
-crlfmsg    db      13,10,'$'
-secondsmsg db      ' seconds',13,10,'$'
-movesmsg   db      'moves: ','$'
-itersmsg   db      'iterations: ','$'
-commaspmsg db      ', ','$'
-board      db      0,0,0,0,0,0,0,0,0
+crlfmsg       db      13,10,0
+secondsmsg    db      ' seconds',13,10,0
+iterationsmsg db      'iterations: ',0
+movesmsg      db      'moves: ',0
+commaspmsg    db      ', ',0
+board         db      0,0,0,0,0,0,0,0,0
 
 align 2
 moves      dw      0        ; Count of moves examined 
