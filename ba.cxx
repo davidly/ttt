@@ -4390,7 +4390,6 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "\n" );
         fprintf( fp, "; DOS constants\n" );
         fprintf( fp, "\n" );
-        fprintf( fp, "dos_write_string   equ   9h\n" );
         fprintf( fp, "dos_write_char     equ   2h\n" );
         fprintf( fp, "dos_get_systemtime equ   1ah\n" );
         fprintf( fp, "dos_exit           equ   4ch\n" );
@@ -4522,7 +4521,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                         fprintf( fp, "str_%zd_%d .az '%s'\n", l, t, str6502Escaped.c_str() );
                     }
                     else if ( i8086DOS == g_AssemblyTarget )
-                        fprintf( fp, "    str_%zd_%d   db  '%s', '$'\n", l, t , strEscaped.c_str() );
+                        fprintf( fp, "    str_%zd_%d   db  '%s', 0\n", l, t , strEscaped.c_str() );
                 }
                 else if ( Token::ELAP == vals[ t ].token )
                     elapReferenced = true;
@@ -4922,15 +4921,15 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
     }
     else if ( i8086DOS == g_AssemblyTarget )
     {
-        fprintf( fp, "crlfmsg        db      13,10,'$'\n" );
+        fprintf( fp, "crlfmsg        db      13,10,0\n" );
         if ( elapReferenced )
-            fprintf( fp, "elapString     db      ' seconds','$'\n" );
+            fprintf( fp, "elapString     db      ' seconds',0\n" );
         if ( !g_Quiet )
         {
-            fprintf( fp, "startString    db      'running basic',13,10,'$'\n" );
-            fprintf( fp, "stopString     db      'done running basic',13,10,'$'\n" );
+            fprintf( fp, "startString    db      'running basic',13,10,0\n" );
+            fprintf( fp, "stopString     db      'done running basic',13,10,0\n" );
         }
-        fprintf( fp, "errorString    db      'internal error',13,10,'$'\n" );
+        fprintf( fp, "errorString    db      'internal error',13,10,0\n" );
         fprintf( fp, "starttime      dd      0\n" );
         fprintf( fp, "scratchpad     dd      0\n" );
         fprintf( fp, "result         dd      0\n" );
@@ -4947,9 +4946,8 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
 
         if ( !g_Quiet )
         {
-            fprintf( fp, "    mov      ah, dos_write_string\n" );
             fprintf( fp, "    mov      dx, offset startString\n" );
-            fprintf( fp, "    int      21h\n" );
+            fprintf( fp, "    call     printstring\n" );
         }
     }
     else if ( x86Win == g_AssemblyTarget )
@@ -6403,8 +6401,7 @@ label_no_array_eq_optimization:
                         else if ( i8086DOS == g_AssemblyTarget )
                         {
                             fprintf( fp, "    mov      dx, offset str_%zd_%d\n", l, t + 1 );
-                            fprintf( fp, "    mov      ah, dos_write_string\n" );
-                            fprintf( fp, "    int      21h\n" );
+                            fprintf( fp, "    call     printstring\n" );
                         }
                         else if ( x86Win == g_AssemblyTarget )
                         {
@@ -6508,9 +6505,8 @@ label_no_array_eq_optimization:
                         else if ( i8086DOS == g_AssemblyTarget )
                         {
                             fprintf( fp, "    call     printelap\n" );
-                            fprintf( fp, "    mov      ah, dos_write_string\n" );
                             fprintf( fp, "    mov      dx, offset elapString\n" );
-                            fprintf( fp, "    int      21h\n" );
+                            fprintf( fp, "    int      call printstring\n" );
                         }
                         else if ( x86Win == g_AssemblyTarget )
                         {
@@ -9419,17 +9415,15 @@ label_no_if_optimization:
         fprintf( fp, "    ret\n" );
 
         fprintf( fp, "error_exit:\n" );
-        fprintf( fp, "    mov      ah, dos_write_string\n" );
         fprintf( fp, "    mov      dx, offset errorString\n" );
-        fprintf( fp, "    int      21h\n" );
+        fprintf( fp, "    call     printstring\n" );
         fprintf( fp, "    jmp      leave_execution\n" );
 
         fprintf( fp, "end_execution:\n" );
         if ( !g_Quiet )
         {
-            fprintf( fp, "    mov      ah, dos_write_string\n" );
             fprintf( fp, "    mov      dx, offset stopString\n" );
-            fprintf( fp, "    int      21h\n" );
+            fprintf( fp, "    call     printstring\n" );
         }
 
         fprintf( fp, "leave_execution:\n" );
@@ -9531,6 +9525,35 @@ label_no_if_optimization:
             fprintf( fp, "printtime ENDP\n" );
         }
 
+        //////////////////////////
+
+        fprintf( fp, "printstring PROC NEAR\n" );
+        fprintf( fp, "        push     ax\n" );
+        fprintf( fp, "        push     bx\n" );
+        fprintf( fp, "        push     cx\n" );
+        fprintf( fp, "        push     dx\n" );
+        fprintf( fp, "        push     di\n" );
+        fprintf( fp, "        push     si\n" );
+        fprintf( fp, "        mov      di, dx\n" );
+        fprintf( fp, "  _psnext:\n" );
+        fprintf( fp, "        mov      al, BYTE PTR ds: [ di ]\n" );
+        fprintf( fp, "        cmp      al, 0\n" );
+        fprintf( fp, "        je       _psdone\n" );
+        fprintf( fp, "        mov      dx, ax\n" );
+        fprintf( fp, "        mov      ah, dos_write_char\n" );
+        fprintf( fp, "        int      21h\n" );
+        fprintf( fp, "        inc      di\n" );
+        fprintf( fp, "        jmp      _psnext\n" );
+        fprintf( fp, "  _psdone:\n" );
+        fprintf( fp, "        pop      si\n" );
+        fprintf( fp, "        pop      di\n" );
+        fprintf( fp, "        pop      dx\n" );
+        fprintf( fp, "        pop      cx\n" );
+        fprintf( fp, "        pop      bx\n" );
+        fprintf( fp, "        pop      ax\n" );
+        fprintf( fp, "        ret\n" );
+        fprintf( fp, "printstring ENDP\n" );
+
         /////////////////////////
 
         fprintf( fp, "; print 2-digit number in ax with a potential leading zero\n" );
@@ -9612,9 +9635,8 @@ label_no_if_optimization:
         fprintf( fp, "     ret\n" );
         fprintf( fp, "przero ENDP\n" );
         fprintf( fp, "printcrlf PROC NEAR\n" );
-        fprintf( fp, "     mov      ah, dos_write_string\n" );
         fprintf( fp, "     mov      dx, offset crlfmsg\n" );
-        fprintf( fp, "     int      21h\n" );
+        fprintf( fp, "     call     printstring\n" );
         fprintf( fp, "     ret\n" );
         fprintf( fp, "printcrlf ENDP\n" );
         fprintf( fp, "\n" );
