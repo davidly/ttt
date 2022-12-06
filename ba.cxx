@@ -47,6 +47,7 @@ using namespace std::chrono;
 bool g_Tracing = false;
 bool g_ExpressionOptimization = true;
 bool g_Quiet = false;
+bool g_GenerateAppleDollar = false;
 int g_pc = 0;
 struct LineOfCode;
 vector<LineOfCode> g_linesOfCode;
@@ -438,6 +439,7 @@ static void Usage()
     printf( "                                  I -- Generate 32-bit i386 (386) Windows 98 'ml' compatible assembler code to filename.asm\n" );
     printf( "                                  m -- Generate 64-bit Mac 'as -arch arm64' compatible assembler code to filename.s\n" );
     printf( "                                  x -- Generate 64-bit Windows x64 'ml64' compatible assembler code to filename.asm\n" );
+    printf( "                 -d               Generate a dollar sign $ at the end of execution for Apple 1 apps\n" );
     printf( "                 -e               Show execution count and time for each line\n" );
     printf( "                 -l               Show 'pcode' listing\n" );
     printf( "                 -o               Don't do expression optimization for assembly code\n" );
@@ -4806,13 +4808,13 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
     }
     else if ( i8080CPM == g_AssemblyTarget )
     {
-        fprintf( fp, "    errorString:    db    'internal error', 10, 13, 0\n" );
+        fprintf( fp, "    errorString:    db    'internal error', 13, 10, 0\n" );
         if ( !g_Quiet )
         {
-            fprintf( fp, "    startString:    db    'running basic', 10, 13, 0\n" );
-            fprintf( fp, "    stopString:     db    'done running basic', 10, 13, 0\n" );
+            fprintf( fp, "    startString:    db    'running basic', 13, 10, 0\n" );
+            fprintf( fp, "    stopString:     db    'done running basic', 13, 10, 0\n" );
         }
-        fprintf( fp, "    newlineString:  db    10, 13, 0\n" );
+        fprintf( fp, "    newlineString:  db    13, 10, 0\n" );
         fprintf( fp, "    mulTmp:         dw    0\n" ); // temporary for imul and idiv functions
         fprintf( fp, "    divRem:         dw    0\n" ); // idiv remainder
 
@@ -4852,13 +4854,16 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
     else if ( mos6502Apple1 == g_AssemblyTarget )
     {
         fprintf( fp, "intString      .az    '32768'\n" ); // big enough for 5 digits and no minus sign, plus 0.
-        fprintf( fp, "errorString    .az    'internal error', #10, #13\n" );
+        fprintf( fp, "errorString    .az    'internal error', #13, #10\n" );
         if ( !g_Quiet )
         {
-            fprintf( fp, "startString    .az    #10, #13, 'running basic', #10, #13\n" );
-            fprintf( fp, "stopString     .az    'done running basic$', #10, #13\n" ); // end with $ for timing app hack
+            fprintf( fp, "startString    .az    #13, #10, 'running basic', #13, #10\n" );
+            if ( g_GenerateAppleDollar )
+                fprintf( fp, "stopString     .az    'done running basic$', #13, #10\n" ); // end with $ for timing app hack
+            else
+                fprintf( fp, "stopString     .az    'done running basic', #13, #10\n" );
         }
-        fprintf( fp, "newlineString  .az    #10, #13\n" );
+        fprintf( fp, "newlineString  .az    #13, #10\n" );
         fprintf( fp, "divRem         .dw    0\n" ); // idiv remainder
         fprintf( fp, "mulResult      .dl    0\n" ); // multiplication result
         fprintf( fp, "tempWord       .dw    0\n" ); // temporary storage
@@ -7330,14 +7335,16 @@ label_no_array_eq_optimization:
                     fprintf( fp, "    and      #%d\n", vals[ t + 3 ].value );
                     fprintf( fp, "    beq      _uniq_%d\n", s_uniqueLabel );
                     fprintf( fp, "    lda      #%d\n", vals[ t + 8 ].value );
+                    fprintf( fp, "    sta      %s\n", GenVariableName( vals[ t + 10 ].strValue ) );
+                    fprintf( fp, "    lda      /%d\n", vals[ t + 8 ].value );
                     fprintf( fp, "    jmp      _uniq_%d\n", s_uniqueLabel + 1 );
 
                     fprintf( fp, "_uniq_%d:\n", s_uniqueLabel );
                     fprintf( fp, "    lda      #%d\n", vals[ t + 13 ].value );
+                    fprintf( fp, "    sta      %s\n", GenVariableName( vals[ t + 10 ].strValue ) );
+                    fprintf( fp, "    lda      /%d\n", vals[ t + 13 ].value );
                     s_uniqueLabel++;
                     fprintf( fp, "_uniq_%d:\n", s_uniqueLabel );
-                    fprintf( fp, "    sta      %s\n", GenVariableName( vals[ t + 10 ].strValue ) );
-                    fprintf( fp, "    lda      #0\n" );
                     fprintf( fp, "    sta      %s+1\n", GenVariableName( vals[ t + 10 ].strValue ) );
 
                     s_uniqueLabel++;
@@ -10563,6 +10570,8 @@ extern int main( int argc, char *argv[] )
                 else
                     Usage();
             }
+            else if ( 'd' == c1 )
+                g_GenerateAppleDollar = true;
             else if ( 'e' == c1 )
                 showExecutionTime = true;
             else if ( 'l' == c1 )
@@ -10596,6 +10605,12 @@ extern int main( int argc, char *argv[] )
         printf( "input file not specified\n" );
         Usage();
     }
+
+    FILE * fptest = fopen( inputfile, "r" );
+    if ( fptest )
+        fclose( fptest );
+    else if ( !strstr( inputfile, ".bas" ) )
+        strcat( inputfile, ".bas" );
 
     ParseInputFile( inputfile );
 
