@@ -4360,9 +4360,9 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "; assemble for an Apple 1 using the following for %s:\n", outputfile );
         fprintf( fp, ";   sbasm30306\\sbasm.py %s\n", justFile.data() );
         fprintf( fp, "; sbasm.py can be found here: https://www.sbprojects.net/sbasm/\n" );
-        fprintf( fp, "; this creates a %s.h hex text file with 'address: bytes' lines that can be loaded on an Apple 1\n", justFile.data() );
+        fprintf( fp, "; this creates a %s.hex hex text file with 'address: bytes' lines that can be loaded on an Apple 1\n", justFile.data() );
         fprintf( fp, "    .cr       6502\n" );
-        fprintf( fp, "    .tf       %s.h, AP1, 8\n", justFile.data() );
+        fprintf( fp, "    .tf       %s.hex, AP1, 8\n", justFile.data() );
         fprintf( fp, "    .or       $1000\n" );
         fprintf( fp, "echo          .eq     $ffef\n" );  // prints character in a
         fprintf( fp, "prbyte        .eq     $ffdc\n" );  // prints hex value of a 
