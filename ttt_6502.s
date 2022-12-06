@@ -13,7 +13,7 @@
 ;
 
     .cr      6502
-    .tf      ttt.h, AP1, 8
+    .tf      ttt.hex, AP1, 8
     .or      $1000
 
 echo         .eq     $ffef
