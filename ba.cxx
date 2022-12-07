@@ -9,7 +9,7 @@
 //    -- for loop start and end values must be constants
 //    -- variables can only be two characters long plus a mandatory %
 //    -- string values work in PRINT statements and nowhere else
-//    -- a new token ELAP$ for PRINT that shows elapsed time including microseconds
+//    -- a new token ELAP$ for PRINT that shows elapsed time milliseconds or microseconds
 //    -- keywords supported: (see "Operators" below).
 //    -- Not supported: DEF, PLAY, OPEN, INKEY$, DATA, READ, and a very long list of others.
 //    -- only arrays of 1 and 2 dimensions are supported
@@ -6511,7 +6511,7 @@ label_no_array_eq_optimization:
                         {
                             fprintf( fp, "    call     printelap\n" );
                             fprintf( fp, "    mov      dx, offset elapString\n" );
-                            fprintf( fp, "    int      call printstring\n" );
+                            fprintf( fp, "    call     printstring\n" );
                         }
                         else if ( x86Win == g_AssemblyTarget )
                         {
@@ -10606,9 +10606,11 @@ extern int main( int argc, char *argv[] )
         Usage();
     }
 
-    FILE * fptest = fopen( inputfile, "r" );
-    if ( fptest )
-        fclose( fptest );
+    // append ".bas" to a filename if it's not there already and the file doesn't exist.
+
+    CFile ftest( fopen( inputfile, "r" ) );
+    if ( ftest.get() )
+        ftest.Close();
     else if ( !strstr( inputfile, ".bas" ) )
         strcat( inputfile, ".bas" );
 
@@ -10663,6 +10665,4 @@ extern int main( int argc, char *argv[] )
     if ( executeCode )
         InterpretCode( varmap );
 } //main
-
-
 
