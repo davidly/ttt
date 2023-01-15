@@ -688,6 +688,9 @@ Token readTokenInner( const char * p, int & len )
     {
         if ( !_strnicmp( p, "RETURN", 5 ) )
            return Token::RETURN;
+
+        if ( !_strnicmp( p, "SYSTEM", 5 ) ) // system is the same as end; both exit execution
+           return Token::END;
     }
 
     return Token::INVALID;
