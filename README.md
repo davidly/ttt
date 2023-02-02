@@ -136,7 +136,9 @@ To run ttt_trs80.asm on a TRS-80. (renamed as ttt.asm)
             On the trs-80, F8 to exit and say yes Y to disconnect, then f8 to go back to the root menu
             Run lt.ba, which loads t.do, converts it to binary in RAM, and executes the app
 	
-![image](https://user-images.githubusercontent.com/1497921/215000290-0679677d-8538-4692-b046-7a4210b8cf41.png)
+														
+![image](https://user-images.githubusercontent.com/1497921/216386389-54e6cf54-654b-439b-8b5b-bb2445f82784.png)
+
 
 
 
