@@ -135,8 +135,23 @@ To run ttt_trs80.asm on a TRS-80. (renamed as ttt.asm)
             On the pc, copy t.do com3
             On the trs-80, F8 to exit and say yes Y to disconnect, then f8 to go back to the root menu
             Run lt.ba, which loads t.do, converts it to binary in RAM, and executes the app
-	
-![image](https://user-images.githubusercontent.com/1497921/217003064-cb7a3b33-1a33-4035-85a0-f1c4cffbc29f.png)
+
+Notes on timing table:
+
+* The Apple 1 released in 1976 is 29x faster than WOPR. The 8085 released in 1976 is 23x faster. The Z80-A released in 1977 is 39x faster. The i7-1280P laptop CPU is 6.5 billion times faster.
+* All times are in milliseconds for one iteration of solving of all 3 unique starting moves.
+* Times in parenthesis () are for when not using function tables, so performance is comparable to BASIC.
+* mt = multithreaded. Use 3 threads for the 3 unique first moves on up to 3 physical or hyperthreaded cores.
+* vpc = Virtual PC.
+* ec = Efficiency Core. 
+* ntvcm = virtual 8080 CP/M. ntvdm = virtual 8086 DOS. ntvao virtual 6502 Apple 1. (find these 3 virtual machines in my other repos)
+* vs6 = Visual Studio 6.0.
+* X-bit = 8/16/32/64 bit versions of the code. If not specified, the native CPU+OS bit width assumed. 
+* The i5-2430M, i7-5820K, and i7-4770K CPUs require 256 byte cache lines, not 64 like every other CPU. 16-bit perf on an Atom CPU running XP is very bad.
+* Openmp and PPL implementations are slower than both CreateThread() and pthread_create() on all applicable platforms and compilers. 
+* ttt_all.cxx is now the universal C++ implementation. ttt16.c is the 16-bit old C compiler version.
+
+![image](https://user-images.githubusercontent.com/1497921/217022661-e58566dd-6f35-499c-bce4-e7f5f225b419.png)
 
 
 
