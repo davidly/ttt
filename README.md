@@ -151,11 +151,7 @@ Notes on timing table:
 * Openmp and PPL implementations are slower than both CreateThread() and pthread_create() on all applicable platforms and compilers. 
 * ttt_all.cxx is now the universal C++ implementation. ttt16.c is the 16-bit old C compiler version.
 
-![image](https://user-images.githubusercontent.com/1497921/217022661-e58566dd-6f35-499c-bce4-e7f5f225b419.png)
-
-
-
-
+![timing](https://user-images.githubusercontent.com/1497921/217025100-d16f9ec4-ccf6-4186-b143-ac2c28e4ff8a.png)
 
 
 
