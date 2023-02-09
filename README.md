@@ -138,4 +138,4 @@ To run ttt_trs80.asm on a TRS-80. (renamed as ttt.asm)
 
 
 ![runtimes_notes](https://user-images.githubusercontent.com/1497921/217294406-cdd2420f-9a34-4d11-bb53-8a679c9bd9e3.png)
-![runtimes](https://user-images.githubusercontent.com/1497921/217294287-c8c00be1-cc54-438b-9ebe-f0287c717bb6.png)
+![times](https://user-images.githubusercontent.com/1497921/217715729-8f85441a-3842-418f-9724-5c071b442c2b.png)
