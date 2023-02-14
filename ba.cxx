@@ -4431,9 +4431,6 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "\n" );
         fprintf( fp, "extern QueryPerformanceCounter@4: PROC\n" );
         fprintf( fp, "extern QueryPerformanceFrequency@4: PROC\n" );
-        fprintf( fp, "extern CreateThread@24: PROC\n" );
-        fprintf( fp, "extern WaitForSingleObject@8: PROC\n" );
-        fprintf( fp, "extern CloseHandle@4: PROC\n" );
         fprintf( fp, "extern GetLocalTime@4: PROC\n" );
         fprintf( fp, "\n" );
 
