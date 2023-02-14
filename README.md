@@ -120,7 +120,7 @@ To run ttt_trs80.asm on a TRS-80. (renamed as ttt.asm)
         Use PuTTY or similar app to connect to the serial port and configure for 9600 baud, 8 bits, even parity, 1 stop bit, and xon/xoff enable. 
         Exit putty so it frees the com port for the command below.
 	
-        Transfer lt.ba, which translates the assembly code back to a .co file and run the binary:
+        Transfer lt.ba, which translates the assembly code back to a .co file and runs the binary:
 	
             In basic (only basic can transfer .ba files and only TELCOM can copy .DO files)
             Load "com:88E1E"
@@ -135,10 +135,8 @@ To run ttt_trs80.asm on a TRS-80. (renamed as ttt.asm)
             On the pc, copy t.do com3
             On the trs-80, F8 to exit and say yes Y to disconnect, then f8 to go back to the root menu
             Run lt.ba, which loads t.do, converts it to binary in RAM, and executes the app
-	
-![image](https://user-images.githubusercontent.com/1497921/215000290-0679677d-8538-4692-b046-7a4210b8cf41.png)
 
-
-
+![wopr_text](https://user-images.githubusercontent.com/1497921/218321546-814ab99b-00d3-41fd-bf64-2a699f7d11f2.png)
+![wopr_table](https://user-images.githubusercontent.com/1497921/218321551-e28e1b75-4f9a-402e-a568-ae30eaee4692.png)
 
 
