@@ -32,7 +32,7 @@
         .string "moves: %ld\n"
 
   .time_string:
-        .string "milliseconds: %lf\n"
+        .string "seconds: %lf\n"
 
   .iterations_string:
         .string "iterations: %ld\n"
@@ -83,7 +83,7 @@ bamain:
         call    run_minmax
         add     s1, a0, s1
 
-        call    clock                                    # duration = end time - start time
+        call    clock                # duration = end time - start time
         sub     s3, a0, s3
 
         lla     a0, g_string_buffer  # show the # of moves examined (a multiple of 6493)
@@ -104,7 +104,7 @@ bamain:
         mv      a0, s3
         call    __divdf3
 
-        mv      a2, a0               # show the elapsed time in ms
+        mv      a2, a0               # show the elapsed time in seconds
         lla     a1, .time_string
         lla     a0, g_string_buffer
         call    sprintf
@@ -158,7 +158,7 @@ run_minmax:
 
         lla     s10, winner_functions
         mv      s11, zero            # move count for this thread
-        mv      s8, zero             # iteration count
+        li      s8, iterations       # iteration count
 
   .run_minmax_next_iteration:
 
@@ -169,9 +169,8 @@ run_minmax:
 
         call    minmax_min
 
-        addi    s8, s8, 1
-        li      a1, iterations
-        bne     s8, a1, .run_minmax_next_iteration
+        addi    s8, s8, -1
+        bne     s8, zero, .run_minmax_next_iteration
 
         add     t0, s9, s1           # restore a 0 to the move position on the board
         sb      zero, (t0)
@@ -242,10 +241,10 @@ minmax_max:
         li      s7, x_piece        # making x moves below
         li      s5, minimum_score  # min because we're maximizing
         li      s6, -1             # start the loop with I at -1
+        li      t6, 8              # t6 is a global constant of 8
 
-  .minmax_max_loop:                                       # loop over all possible next moves
-        li      t0, 8              # all out of moves?
-        beq     s6, t0, .minmax_max_loadv_done
+  .minmax_max_loop:                # loop over all possible next moves 0..8
+        beq     s6, t6, .minmax_max_loadv_done            
         addi    s6, s6, 1
 
         add     t1, s6, s9         # is this move position free?
@@ -263,8 +262,8 @@ minmax_max:
         add     t1, s6, s9         # restore a 0 to the last move position
         sb      zero, (t1)        
 
-        li      t0, win_score
-        beq     a0, t0, .minmax_max_done  # can't do better than winning when maximizing
+        li      t0, win_score      # can't do better than winning when maximizing
+        beq     a0, t0, .minmax_max_done  
 
         ble     a0, s5, .minmax_max_skip_value  # compare score with value
         mv      s5, a0             # update value with the new high score
@@ -350,10 +349,11 @@ minmax_min:
         li      s7, o_piece        # making o moves below
         li      s5, maximum_score  # max because we're minimizing
         li      s6, -1             # start the loop with I at -1
+        li      t6, 8              # t6 is a global constant of 8
 
-  .minmax_min_loop:                                       # loop over all possible next moves
-        li      t0, 8              # all out of moves?
-        beq     s6, t0, .minmax_min_loadv_done
+  .minmax_min_loop:                # loop over all possible next moves 0..8
+        
+        beq     s6, t6, .minmax_min_loadv_done
         addi    s6, s6, 1
 
         add     t1, s6, s9         # is this move position free?
@@ -371,8 +371,8 @@ minmax_min:
         add     t1, s6, s9         # restore a 0 to the last move position
         sb      zero, (t1)        
 
-        li      t0, lose_score
-        beq     a0, t0, .minmax_min_done  # can't do better than losing when minimizing
+        li      t0, lose_score    # can't do better than losing when minimizing
+        beq     a0, t0, .minmax_min_done  
 
         bge     a0, s5, .minmax_min_skip_value  # compare score with value
         mv      s5, a0             # update value with the new low score
