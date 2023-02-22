@@ -56,7 +56,8 @@ I'm not really proud of BA -- it was a very quickly written hack. But it shows t
 
 I added minimal support in BA to compile BASIC apps to x64 .asm files which can then be assembled into a Windows .exe file. 
 Afterwards I added codegen for Arm64 on Macs, Arm64 for Windows, Arm32 on Linux, MOS 6502 on the Apple 1, Intel 8080 on CP/M 2.2, 
-8086 on DOS, and 32-bit x86 on Windows. Use the -a:x flag in BA to generate the x64 .asm file, and ma.bat to create the .exe. 
+8086 on DOS, 32-bit x86 on Windows, and 64-bit RISC-V on the SiPeed Maixduino K210. Use the -a:x flag in BA to generate the x64
+.asm file, and ma.bat to create the .exe. 
 For example:
 
     ba ttt_1dim.bas /x /a:x
