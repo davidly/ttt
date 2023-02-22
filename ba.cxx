@@ -10102,7 +10102,7 @@ label_no_if_optimization:
         fprintf( fp, "    call     __floatundidf\n" );
         fprintf( fp, "    mv       t0, a0\n" );
 
-        fprintf( fp, "    li       a0, 1000000\n" );
+        fprintf( fp, "    li       a0, 1000\n" ); // get it to ms on the K210 machine. Perhaps broken elsewhere
         fprintf( fp, "    call     __floatundidf\n" );
         fprintf( fp, "    mv       a1, a0\n" );
         fprintf( fp, "    mv       a0, t0\n" );
