@@ -3228,24 +3228,14 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
             }
             else if ( riscv64 == g_AssemblyTarget )
             {
-                static int s_labelVal = 0;
-
                 if ( IsVariableInReg( varmap, varname ) )
-                    fprintf( fp, "    beq      %s, zero, _not_true_%d\n", GenVariableReg( varmap, varname ), s_labelVal );
+                    fprintf( fp, "    sltiu    a0, %s, 1\n", GenVariableReg( varmap, varname ) );
                 else
                 {
                     fprintf( fp, "    lla      a0, %s\n", GenVariableName( varname ) );
                     fprintf( fp, "    ld       a0, (a0)\n" );
-                    fprintf( fp, "    beq      a0, zero, _not_true_%d\n", s_labelVal );
+                    fprintf( fp, "    sltiu    a0, a0, 1\n" );
                 }
-
-                fprintf( fp, "    mv       a0, zero\n" );
-                fprintf( fp, "    j        _not_done_%d\n", s_labelVal );
-                fprintf( fp, "  _not_true_%d:\n", s_labelVal );
-                fprintf( fp, "    li       a0, 1\n" );
-                fprintf( fp, "  _not_done_%d:\n", s_labelVal );
-        
-                s_labelVal++;
             }
 
             iToken++;
@@ -3728,14 +3718,30 @@ void GenerateRelational( FILE * fp, map<string, Variable> const & varmap, int & 
 
         fprintf( fp, "    mv       t0, a0\n" );
         RiscVPop( fp, "a0" );
-        fprintf( fp, "    b%-4s    a0, t0, _relational_true_%d\n", ConditionsRiscV[ op ], s_labelVal );
-        fprintf( fp, "    mv       a0, zero\n" );
-        fprintf( fp, "    j        _relational_done_%d\n", s_labelVal );
-        fprintf( fp, "  _relational_true_%d:\n", s_labelVal );
-        fprintf( fp, "    li       a0, 1\n" );
-        fprintf( fp, "  _relational_done_%d:\n", s_labelVal );
 
-        s_labelVal++;
+        fprintf( fp, "    sub    t0, a0, t0\n" );
+        if ( Token::EQ == op )
+            fprintf( fp, "    sltiu    a0, t0, 1\n" );
+        else if ( Token::NE == op )
+            fprintf( fp, "    sltu     a0, zero, t0\n" );
+        else if ( Token::LT == op )
+            fprintf( fp, "    slt      a0, t0, zero\n" );
+        else if ( Token::GT == op )
+            fprintf( fp, "    slt      a0, zero, t0\n" );
+        else if ( Token::LE == op )
+        {
+            fprintf( fp, "    sltiu    a0, t0, 1\n" );
+            fprintf( fp, "    slt      t1, t0, zero\n" );
+            fprintf( fp, "    or       a0, a0, t1\n" );
+        }
+        else if ( Token::GE == op )
+        {
+            fprintf( fp, "    sltiu    a0, t0, 1\n" );
+            fprintf( fp, "    slt      t1, zero, t0\n" );
+            fprintf( fp, "    or       a0, a0, t1\n" );
+        }
+        else
+            assert( false );
     }
 } //GenerateRelational
 
