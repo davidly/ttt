@@ -213,9 +213,11 @@ const char * MappedRegistersArm64_64[] = { "x10", "x11", "x12", "x13", "x14", "x
 
 const char * MappedRegistersArm32[] = { /*"r3",*/ "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11" };
 
-// x86 registers are a sparse commodity. Make sure no generated code uses these aside for variables.
+// x86 registers are a sparse commodity. Make sure no generated code uses these aside from variables.
 
 const char * MappedRegistersX86[] = { "ecx", "esi", "edi" };
+
+const char * MappedRegistersRiscV64[] = { "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11" };
 
 void RiscVPush( FILE * fp, char const * pcreg )
 {
@@ -2823,8 +2825,13 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
                 }
                 else if ( riscv64 == g_AssemblyTarget )
                 {
-                    fprintf( fp, "    lla      t0, %s\n", GenVariableName( varname ) );
-                    fprintf( fp, "    lw       a0, (t0)\n" );
+                    if ( IsVariableInReg( varmap, varname ) )
+                        fprintf( fp, "    mv       a0, %s\n", GenVariableReg( varmap, varname ) );
+                    else
+                    {
+                        fprintf( fp, "    lla      t0, %s\n", GenVariableName( varname ) );
+                        fprintf( fp, "    lw       a0, (t0)\n" );
+                    }
                 }
             }
             else if ( 1 == vals[ iToken ].dimensions )
@@ -2854,7 +2861,10 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
                 }
                 else if ( arm64Mac == g_AssemblyTarget || arm64Win == g_AssemblyTarget )
                 {
-                    LoadArm64Address( fp, "x1", varname );
+                    if ( IsVariableInReg( varmap, varname ) )
+                        fprintf( fp, "    mov      x1, %s\n", GenVariableReg64( varmap, varname ) );
+                    else
+                        LoadArm64Address( fp, "x1", varname );
                     fprintf( fp, "    add      x1, x1, x0, lsl #2\n" );
                     fprintf( fp, "    ldr      w0, [x1], 0\n" );
                 }
@@ -2962,7 +2972,10 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
                     LoadArm64Constant( fp, "x2", pvar->dims[ 1 ] );
                     fprintf( fp, "    mul      x1, x1, x2\n" );
                     fprintf( fp, "    add      x0, x0, x1\n" );
-                    LoadArm64Address( fp, "x1", varname );
+                    if ( IsVariableInReg( varmap, varname ) )
+                        fprintf( fp, "    mov      x1, %s\n", GenVariableReg64( varmap, varname ) );
+                    else
+                        LoadArm64Address( fp, "x1", varname );
                     fprintf( fp, "    add      x1, x1, x0, lsl #2\n" );
                     fprintf( fp, "    ldr      w0, [x1], 0\n" );
                 }
@@ -3217,9 +3230,15 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
             {
                 static int s_labelVal = 0;
 
-                fprintf( fp, "    lla      a0, %s\n", GenVariableName( varname ) );
-                fprintf( fp, "    ld       a0, (a0)\n" );
-                fprintf( fp, "    beq      a0, zero, _not_true_%d\n", s_labelVal );
+                if ( IsVariableInReg( varmap, varname ) )
+                    fprintf( fp, "    beq      %s, zero, _not_true_%d\n", GenVariableReg( varmap, varname ), s_labelVal );
+                else
+                {
+                    fprintf( fp, "    lla      a0, %s\n", GenVariableName( varname ) );
+                    fprintf( fp, "    ld       a0, (a0)\n" );
+                    fprintf( fp, "    beq      a0, zero, _not_true_%d\n", s_labelVal );
+                }
+
                 fprintf( fp, "    mv       a0, zero\n" );
                 fprintf( fp, "    j        _not_done_%d\n", s_labelVal );
                 fprintf( fp, "  _not_true_%d:\n", s_labelVal );
@@ -4653,6 +4672,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                              ( arm64Win == g_AssemblyTarget ) ? _countof( MappedRegistersArm64 ) :
                              ( arm32Linux == g_AssemblyTarget ) ? _countof( MappedRegistersArm32 ) :
                              ( x86Win == g_AssemblyTarget ) ? _countof( MappedRegistersX86 ) :
+                             ( riscv64 == g_AssemblyTarget ) ? _countof( MappedRegistersRiscV64 ) :
                              0;
 
     for ( size_t i = 0; i < varscount.size() && 0 != availableRegisters; i++ )
@@ -4668,17 +4688,22 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
             pvar->reg = MappedRegistersArm64[ availableRegisters ];
         else if ( x86Win == g_AssemblyTarget )
             pvar->reg = MappedRegistersX86[ availableRegisters ];
+        else if ( riscv64 == g_AssemblyTarget )
+            pvar->reg = MappedRegistersRiscV64[ availableRegisters ];
 
         if ( EnableTracing && g_Tracing )
             printf( "variable %s has %d references and is mapped to register %s\n",
                     varscount[ i ].name, varscount[ i ].refcount, pvar->reg.c_str() );
 
         if ( arm32Linux == g_AssemblyTarget )
-            fprintf( fp, "    @ variable %s (referenced %d times) will use register %s\n", pvar->name,
-                     varscount[ i ].refcount, pvar->reg.c_str() );
+            fprintf( fp, "   @ " );
+        else if ( riscv64 == g_AssemblyTarget )
+            fprintf( fp, "   # " );
         else
-            fprintf( fp, "    ; variable %s (referenced %d times) will use register %s\n", pvar->name,
-                     varscount[ i ].refcount, pvar->reg.c_str() );
+            fprintf( fp, "   ; " );
+
+        fprintf( fp, "variable %s (referenced %d times) will use register %s\n", pvar->name,
+                 varscount[ i ].refcount, pvar->reg.c_str() );
     }
 
     if ( x64Win == g_AssemblyTarget )
@@ -5649,8 +5674,13 @@ label_no_eq_optimization:
                             fprintf( fp, "    mov      WORD PTR ds: [%s], ax\n", GenVariableName( varname ) );
                         else if ( riscv64 == g_AssemblyTarget )
                         {
-                            fprintf( fp, "    lla      t0, %s\n", GenVariableName( varname ) );
-                            fprintf( fp, "    sw       a0, (t0)\n" );
+                            if ( IsVariableInReg( varmap, varname ) )
+                                fprintf( fp, "    mv       %s, a0\n", GenVariableReg( varmap, varname ) );
+                            else
+                            {
+                                fprintf( fp, "    lla      t0, %s\n", GenVariableName( varname ) );
+                                fprintf( fp, "    sw       a0, (t0)\n" );
+                            }
                         }
                     }
                 }
@@ -6144,6 +6174,8 @@ label_no_array_eq_optimization:
                                 fprintf( fp, "    str      %s, [x1]\n", GenVariableReg( varmap, varname ) );
                             else if ( x86Win == g_AssemblyTarget )
                                 fprintf( fp, "    mov      DWORD PTR [ebx + eax], %s\n", GenVariableReg( varmap, varname ) );
+                            else if ( riscv64 == g_AssemblyTarget )
+                                fprintf( fp, "    sw       %s, (t0)\n", GenVariableReg(varmap, varname ) );
 
                             t += 2;
                         }
@@ -6294,9 +6326,14 @@ label_no_array_eq_optimization:
                 }
                 else if ( riscv64 == g_AssemblyTarget )
                 {
-                    fprintf( fp, "    lla      t0, %s\n", GenVariableName( varname) );
-                    fprintf( fp, "    li       t1, %d\n", vals[ t + 2 ].value );
-                    fprintf( fp, "    sw       t1, (t0)\n" );
+                    if ( IsVariableInReg( varmap, varname ) )
+                        fprintf( fp, "    li       %s, %d\n", GenVariableReg( varmap, varname ), vals[ t + 2 ].value );
+                    else
+                    {
+                        fprintf( fp, "    lla      t0, %s\n", GenVariableName( varname) );
+                        fprintf( fp, "    li       t1, %d\n", vals[ t + 2 ].value );
+                        fprintf( fp, "    sw       t1, (t0)\n" );
+                    }
                 }
 
                 ForGosubItem item( true, (int) l );
@@ -6381,8 +6418,13 @@ label_no_array_eq_optimization:
                 }
                 else if ( riscv64 == g_AssemblyTarget )
                 {
-                    fprintf( fp, "    lla      t0, %s\n", GenVariableName( varname) );
-                    fprintf( fp, "    lw       t0, (t0)\n" );
+                    if ( IsVariableInReg( varmap, varname ) )
+                        fprintf( fp, "    mv       t0, %s\n", GenVariableReg( varmap, varname ) );
+                    else
+                    {
+                        fprintf( fp, "    lla      t0, %s\n", GenVariableName( varname) );
+                        fprintf( fp, "    lw       t0, (t0)\n" );
+                    }
                     fprintf( fp, "    li       t1, %d\n", vals[ t + 4 ].value );
                     fprintf( fp, "    bgt      t0, t1, after_for_loop_%zd\n", l );
                 }
@@ -6469,10 +6511,18 @@ label_no_array_eq_optimization:
                 }
                 else if ( riscv64 == g_AssemblyTarget )
                 {
-                    fprintf( fp, "    lla      t0, %s\n", GenVariableName( loopVal ) );
-                    fprintf( fp, "    lw       t1, (t0)\n" );
-                    fprintf( fp, "    addi     t1, t1, 1\n" );
-                    fprintf( fp, "    sw       t1, (t0)\n" );
+                    if ( IsVariableInReg( varmap, loopVal ) )
+                    {
+                        fprintf( fp, "    addi     %s, %s, 1\n", GenVariableReg( varmap, loopVal ),
+                                                                 GenVariableReg( varmap, loopVal ) );
+                    }
+                    else
+                    {
+                        fprintf( fp, "    lla      t0, %s\n", GenVariableName( loopVal ) );
+                        fprintf( fp, "    lw       t1, (t0)\n" );
+                        fprintf( fp, "    addi     t1, t1, 1\n" );
+                        fprintf( fp, "    sw       t1, (t0)\n" );
+                    }
                     fprintf( fp, "    j        for_loop_%d\n", item.pcReturn );
                 }
 
@@ -6922,10 +6972,19 @@ label_no_array_eq_optimization:
                 }
                 else if ( riscv64 == g_AssemblyTarget )
                 {
-                    fprintf( fp, "    lla      t0, %s\n", GenVariableName( varname ) );
-                    fprintf( fp, "    lw       a0, (t0)\n" );
-                    fprintf( fp, "    addi     a0, a0, %d\n", ( Token::INC == vals[ t + 1 ].token ) ? 1 : -1 );
-                    fprintf( fp, "    sw       a0, (t0)\n" );
+                    if ( IsVariableInReg( varmap, varname ) )
+                    {
+                        fprintf( fp, "    addi     %s, %s, %d\n", GenVariableReg( varmap, varname ),
+                                                                  GenVariableReg( varmap, varname ),
+                                                                  ( Token::INC == vals[ t + 1 ].token ) ? 1 : -1 );
+                    }
+                    else
+                    {
+                        fprintf( fp, "    lla      t0, %s\n", GenVariableName( varname ) );
+                        fprintf( fp, "    lw       a0, (t0)\n" );
+                        fprintf( fp, "    addi     a0, a0, %d\n", ( Token::INC == vals[ t + 1 ].token ) ? 1 : -1 );
+                        fprintf( fp, "    sw       a0, (t0)\n" );
+                    }
                 }
 
                 break;
@@ -10990,10 +11049,7 @@ extern int main( int argc, char *argv[] )
             strcpy_s( dot, _countof( asmfile) - ( dot - asmfile ), ".asm" );
 
         if ( riscv64 == g_AssemblyTarget )
-        {
             g_ExpressionOptimization = false;
-            useRegistersInASM = false;
-        }
 
         GenerateASM( asmfile, varmap, useRegistersInASM );
     }
