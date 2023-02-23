@@ -5148,13 +5148,9 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "  errorString:\n   .string \"internal error\\n\"\n" );
 
         if ( elapReferenced )
-            fprintf( fp, "  elapString:\n   .string \"%%d milliseconds\"\n" );
+            fprintf( fp, "  elapString:\n   .string \" microseconds\"\n" );
         if ( timeReferenced )
             fprintf( fp, "  timeString:\n   .string \"%%02d:%%02d:%%02d:%%03d\"\n" );
-
-        fprintf( fp, "  intString:\n    .string    \"%%d\"\n" );
-        fprintf( fp, "  doubleString:\n .string    \"%%lf\"\n" );
-        fprintf( fp, "  strString:\n    .string    \"%%s\"\n" );
 
         // risc-v strings have to go here
 
@@ -6858,10 +6854,7 @@ label_no_array_eq_optimization:
                 else if ( x86Win == g_AssemblyTarget )
                     fprintf( fp, "    call     printcrlf\n" );
                 else if ( riscv64 == g_AssemblyTarget )
-                {
-                    fprintf( fp, "    lla      a0, newlineString\n" );
-                    fprintf( fp, "    call     riscv_print_text\n" );
-                }
+                    fprintf( fp, "    call     print_crlf\n" );
 
                 if ( t == vals.size() )
                     break;
@@ -10128,55 +10121,129 @@ label_no_if_optimization:
         RiscVPush( fp, "ra" );
         fprintf( fp, "    jalr     a0\n" );
 
+        /**************************************************************************/
+
         fprintf( fp, "label_gosub_return:\n" );
         RiscVPop( fp, "ra" );
         fprintf( fp, "    jr       ra\n" );
+
+        /**************************************************************************/
 
         fprintf( fp, "error_exit:\n" );
         fprintf( fp, "    lla      a0, errorString\n" );
         fprintf( fp, "    call     riscv_print_text\n" );
         fprintf( fp, "    j        leave_execution\n" );
 
+        /**************************************************************************/
+
+        fprintf( fp, "print_crlf:\n" );
+        fprintf( fp, "    addi     sp, sp, -32\n" );
+        fprintf( fp, "    sd       ra, 16(sp)\n" );
+
+        fprintf( fp, "    lla      a0, newlineString\n" );
+        fprintf( fp, "    call     riscv_print_text\n" );
+
+        fprintf( fp, "    ld       ra, 16(sp)\n" );
+        fprintf( fp, "    addi     sp, sp, 32\n" );
+        fprintf( fp, "    jr       ra\n" );
+
+        /**************************************************************************/
+
         fprintf( fp, "print_int:\n" );
         fprintf( fp, "    addi     sp, sp, -32\n" );
         fprintf( fp, "    sd       ra, 16(sp)\n" );
-        fprintf( fp, "    mv       a2, a0\n" );
-        fprintf( fp, "    lla      a0, print_buffer\n" );
-        fprintf( fp, "    lla      a1, intString\n" );
-        fprintf( fp, "    call     sprintf\n" );
+
+        fprintf( fp, "    lla      a1, print_buffer\n" );
+        fprintf( fp, "    li       a2, 10\n" );
+        fprintf( fp, "    call     _my_lltoa\n" );
         fprintf( fp, "    lla      a0, print_buffer\n" );
         fprintf( fp, "    call     riscv_print_text\n" );
-        fprintf( fp, "    ld       ra, 16(sp)\n" );
-        fprintf( fp, "    addi     sp, sp, 32\n" );
-        fprintf( fp, "    jr       ra\n" );
-
-        fprintf( fp, "print_elap:\n" );
-        fprintf( fp, "    addi     sp, sp, -32\n" );
-        fprintf( fp, "    sd       ra, 16(sp)\n" );
-
-        fprintf( fp, "    call     clock\n" );
-        fprintf( fp, "    lla      t0, startTicks\n" );
-        fprintf( fp, "    ld       t0, (t0)\n" );
-        fprintf( fp, "    sub      a0, a0, t0\n" );
-        fprintf( fp, "    call     __floatundidf\n" );
-        fprintf( fp, "    mv       t0, a0\n" );
-
-        fprintf( fp, "    li       a0, 1000\n" ); // get it to ms on the K210 machine. Perhaps broken elsewhere
-        fprintf( fp, "    call     __floatundidf\n" );
-        fprintf( fp, "    mv       a1, a0\n" );
-        fprintf( fp, "    mv       a0, t0\n" );
-        fprintf( fp, "    call     __divdf3\n" );
-
-        fprintf( fp, "    mv      a2, a0\n" );
-        fprintf( fp, "    lla     a1, doubleString\n" );
-        fprintf( fp, "    lla     a0, print_buffer\n" );
-        fprintf( fp, "    call    sprintf\n" );
-        fprintf( fp, "    lla     a0, print_buffer\n" );
-        fprintf( fp, "    call    riscv_print_text\n" );
 
         fprintf( fp, "    ld       ra, 16(sp)\n" );
         fprintf( fp, "    addi     sp, sp, 32\n" );
         fprintf( fp, "    jr       ra\n" );
+
+        /**************************************************************************/
+
+        if ( elapReferenced )
+        {
+            fprintf( fp, "print_elap:\n" );
+            fprintf( fp, "    addi     sp, sp, -32\n" );
+            fprintf( fp, "    sd       ra, 16(sp)\n" );
+    
+            fprintf( fp, "    call     clock\n" );
+            fprintf( fp, "    lla      t0, startTicks\n" );
+            fprintf( fp, "    ld       t0, (t0)\n" );
+            fprintf( fp, "    sub      a0, a0, t0\n" );
+            fprintf( fp, "    lla      a1, print_buffer\n" );
+            fprintf( fp, "    li       a2, 10\n" );
+            fprintf( fp, "    call     _my_lltoa\n" );
+            fprintf( fp, "    lla      a0, print_buffer\n" );
+            fprintf( fp, "    call     riscv_print_text\n" );
+            fprintf( fp, "    lla      a0, elapString\n" );
+            fprintf( fp, "    call     riscv_print_text\n" );
+    
+            fprintf( fp, "    ld       ra, 16(sp)\n" );
+            fprintf( fp, "    addi     sp, sp, 32\n" );
+            fprintf( fp, "    jr       ra\n" );
+        }
+
+        /**************************************************************************/
+
+        fprintf( fp, "_my_lltoa:\n" );
+        fprintf( fp, "    li       t1, 9\n" );
+        fprintf( fp, "    bne      a0, zero, .my_lltoa_not_zero\n" );
+        fprintf( fp, "    li       t0, '0'\n" );
+        fprintf( fp, "    sb       t0, 0(a1)\n" );
+        fprintf( fp, "    sb       zero, 1(a1)\n" );
+        fprintf( fp, "    j        .my_lltoa_exit\n" );
+        fprintf( fp, "  .my_lltoa_not_zero:\n" );
+        fprintf( fp, "    li       t2, 0           # offset into the string\n" );
+        fprintf( fp, "    mv       t6, zero        # default to unsigned\n" );
+        fprintf( fp, "    li       t0, 0x8000000000000000\n" );
+        fprintf( fp, "    and      t0, a0, t0\n" );
+        fprintf( fp, "    beq      t0, zero, .my_lltoa_not_neg\n" );
+        fprintf( fp, "    li       t6, 1           # it's negative\n" );
+        fprintf( fp, "    neg      a0, a0          # this is just sub a0, zero, a0\n" );
+        fprintf( fp, "  .my_lltoa_not_neg:\n" );
+        fprintf( fp, "    beq      a0, zero, .my_lltoa_digits_done\n" );
+        fprintf( fp, "    rem      t0, a0, a2\n" );
+        fprintf( fp, "    bgt      t0, t1, .my_lltoa_more_than_nine\n" );
+        fprintf( fp, "    addi     t0, t0, '0'\n" );
+        fprintf( fp, "    j       .my_lltoa_after_base\n" );
+        fprintf( fp, "  .my_lltoa_more_than_nine:\n" );
+        fprintf( fp, "    addi     t0, t0, 'a' - 10\n" );
+        fprintf( fp, "  .my_lltoa_after_base:\n" );
+        fprintf( fp, "    add      t3, a1, t2\n" );
+        fprintf( fp, "    sb       t0, 0(t3)\n" );
+        fprintf( fp, "    addi     t2, t2, 1\n" );
+        fprintf( fp, "    div      a0, a0, a2\n" );
+        fprintf( fp, "    j        .my_lltoa_not_neg\n" );
+        fprintf( fp, "  .my_lltoa_digits_done:\n" );
+        fprintf( fp, "    beq      t6, zero, .my_lltoa_no_minus\n" );
+        fprintf( fp, "    li       t0, '-'\n" );
+        fprintf( fp, "    add      t3, a1, t2\n" );
+        fprintf( fp, "    sb       t0, 0(t3)\n" );
+        fprintf( fp, "    addi     t2, t2, 1\n" );
+        fprintf( fp, "  .my_lltoa_no_minus:\n" );
+        fprintf( fp, "    add      t3, a1, t2      # null-terminate the string\n" );
+        fprintf( fp, "    sb       zero, 0(t3)\n" );
+        fprintf( fp, "    mv       t4, a1          # reverse the string. t4 = left\n" );
+        fprintf( fp, "    add      t5, a1, t2      # t5 = right\n" );
+        fprintf( fp, "    addi     t5, t5, -1\n" );
+        fprintf( fp, "  .my_lltoa_reverse_next:\n" );
+        fprintf( fp, "    bge      t4, t5, .my_lltoa_exit\n" );
+        fprintf( fp, "    lbu      t0, (t4)\n" );
+        fprintf( fp, "    lbu      t1, (t5)\n" );
+        fprintf( fp, "    sb       t0, (t5)\n" );
+        fprintf( fp, "    sb       t1, (t4)\n" );
+        fprintf( fp, "    addi     t4, t4, 1\n" );
+        fprintf( fp, "    addi     t5, t5, -1\n" );
+        fprintf( fp, "    j       .my_lltoa_reverse_next\n" );
+        fprintf( fp, "  .my_lltoa_exit:\n" );
+        fprintf( fp, "    jr       ra\n" );
+
+        /**************************************************************************/
 
         fprintf( fp, "end_execution:\n" );
         if ( !g_Quiet )
@@ -10184,8 +10251,10 @@ label_no_if_optimization:
             fprintf( fp, "    lla     a0, stopString\n" );
             fprintf( fp, "    call    riscv_print_text\n" );
         }
-        fprintf( fp, "    j        leave_execution\n" );
+        fprintf( fp, "    j       leave_execution\n" );
         
+        /**************************************************************************/
+
         fprintf( fp, "leave_execution:\n" );
         fprintf( fp, "    ld      ra, 16(sp)\n" );
         fprintf( fp, "    ld      s0, 24(sp)\n" );
