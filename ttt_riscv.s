@@ -1,5 +1,4 @@
 # RISC-V version of an app to prove you can't win at tic-tac-toe.
-# This code depends on the gnu C runtime APIs for clock.
 # This code expects an extern "C" function called riscv_print_text() that can display a string.
 # riscv_print_text() will be system-specific, and may send it out a serial port or to an attached display.
 # The main entrypoint is called "bamain" and it takes no arguments. Calling bamain will be system-specific.
@@ -68,8 +67,8 @@ bamain:
 
         mv      s1, zero             # global move count -- # of board positions examined
 
-        call    clock                # remember the starting time in s3
-        mv      s3, a0
+        # the k210 CPU doesn't implement rdtime. clock() works, but creates a c-runtime dependency
+        rdcycle s3                   # remember the starting time in s3
 
         mv      a0, zero             # run with a move at position 0
         call    run_minmax
@@ -83,8 +82,10 @@ bamain:
         call    run_minmax
         add     s1, a0, s1
 
-        call    clock                # duration = end time - start time
-        sub     s3, a0, s3           # leave duration in s3
+        rdcycle a0
+        sub     s3, a0, s3           # duration = end - start. 
+        li      t0, 400              # the k210 runs at 400Mhz
+        div     s3, s3, t0          
 
         # show the number of moves examined
         mv      a0, s1
