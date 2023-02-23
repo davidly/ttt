@@ -3714,7 +3714,8 @@ void GenerateRelational( FILE * fp, map<string, Variable> const & varmap, int & 
     }
     else if ( riscv64 == g_AssemblyTarget )
     {
-        static int s_labelVal = 0;
+        // Helpful: https://stackoverflow.com/questions/64547741/how-is-risc-v-neg-instruction-imeplemented
+        // yes, the typo in the url is killing me
 
         fprintf( fp, "    mv       t0, a0\n" );
         RiscVPop( fp, "a0" );
@@ -3728,20 +3729,17 @@ void GenerateRelational( FILE * fp, map<string, Variable> const & varmap, int & 
             fprintf( fp, "    slt      a0, t0, zero\n" );
         else if ( Token::GT == op )
             fprintf( fp, "    slt      a0, zero, t0\n" );
-        else if ( Token::LE == op )
+        else // LE or GE
         {
-            fprintf( fp, "    sltiu    a0, t0, 1\n" );
-            fprintf( fp, "    slt      t1, t0, zero\n" );
-            fprintf( fp, "    or       a0, a0, t1\n" );
+            fprintf( fp, "    sltiu    a0, t0, 1\n" ); // check for ==
+
+            if ( Token::LE == op )
+                fprintf( fp, "    slt      t1, t0, zero\n" );
+            else // GE
+                fprintf( fp, "    slt      t1, zero, t0\n" );
+
+            fprintf( fp, "    or       a0, a0, t1\n" ); // either == or the L/G
         }
-        else if ( Token::GE == op )
-        {
-            fprintf( fp, "    sltiu    a0, t0, 1\n" );
-            fprintf( fp, "    slt      t1, zero, t0\n" );
-            fprintf( fp, "    or       a0, a0, t1\n" );
-        }
-        else
-            assert( false );
     }
 } //GenerateRelational
 
@@ -5184,28 +5182,28 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "bamain:\n" );
 
         fprintf( fp, "    .cfi_startproc\n" );
-        fprintf( fp, "    addi    sp, sp, -128\n" );
-        fprintf( fp, "    sd      ra, 16(sp)\n" );
-        fprintf( fp, "    sd      s0, 24(sp)\n" );
-        fprintf( fp, "    sd      s1, 32(sp)\n" );
-        fprintf( fp, "    sd      s2, 40(sp)\n" );
-        fprintf( fp, "    sd      s3, 48(sp)\n" );
-        fprintf( fp, "    sd      s4, 56(sp)\n" );
-        fprintf( fp, "    sd      s5, 64(sp)\n" );
-        fprintf( fp, "    sd      s6, 72(sp)\n" );
-        fprintf( fp, "    sd      s7, 80(sp)\n" );
-        fprintf( fp, "    sd      s8, 88(sp)\n" );
-        fprintf( fp, "    sd      s9, 96(sp)\n" );
-        fprintf( fp, "    sd      s10, 104(sp)\n" );
-        fprintf( fp, "    sd      s11, 112(sp)\n" );
+        fprintf( fp, "    addi     sp, sp, -128\n" );
+        fprintf( fp, "    sd       ra, 16(sp)\n" );
+        fprintf( fp, "    sd       s0, 24(sp)\n" );
+        fprintf( fp, "    sd       s1, 32(sp)\n" );
+        fprintf( fp, "    sd       s2, 40(sp)\n" );
+        fprintf( fp, "    sd       s3, 48(sp)\n" );
+        fprintf( fp, "    sd       s4, 56(sp)\n" );
+        fprintf( fp, "    sd       s5, 64(sp)\n" );
+        fprintf( fp, "    sd       s6, 72(sp)\n" );
+        fprintf( fp, "    sd       s7, 80(sp)\n" );
+        fprintf( fp, "    sd       s8, 88(sp)\n" );
+        fprintf( fp, "    sd       s9, 96(sp)\n" );
+        fprintf( fp, "    sd       s10, 104(sp)\n" );
+        fprintf( fp, "    sd       s11, 112(sp)\n" );
 
         if ( !g_Quiet )
         {
-            fprintf( fp, "    lla     a0, startString\n" );
-            fprintf( fp, "    call    riscv_print_text\n" );
+            fprintf( fp, "    lla      a0, startString\n" );
+            fprintf( fp, "    call     riscv_print_text\n" );
         }
 
-        fprintf( fp, "    call     clock\n" );
+        fprintf( fp, "    rdcycle  a0  # rdtime doesn't work on the K210 CPU\n" );
         fprintf( fp, "    lla      t0, startTicks\n" );
         fprintf( fp, "    sd       a0, (t0)\n" );
     }
@@ -10177,10 +10175,12 @@ label_no_if_optimization:
             fprintf( fp, "    addi     sp, sp, -32\n" );
             fprintf( fp, "    sd       ra, 16(sp)\n" );
     
-            fprintf( fp, "    call     clock\n" );
+            fprintf( fp, "    rdcycle  a0\n" );
             fprintf( fp, "    lla      t0, startTicks\n" );
             fprintf( fp, "    ld       t0, (t0)\n" );
             fprintf( fp, "    sub      a0, a0, t0\n" );
+            fprintf( fp, "    li       t0, 400  # the k210 runs at 400Mhz and rdtime doesn't work\n" );
+            fprintf( fp, "    div      a0, a0, t0\n" );
             fprintf( fp, "    lla      a1, print_buffer\n" );
             fprintf( fp, "    li       a2, 10\n" );
             fprintf( fp, "    call     _my_lltoa\n" );
@@ -10254,29 +10254,29 @@ label_no_if_optimization:
         fprintf( fp, "end_execution:\n" );
         if ( !g_Quiet )
         {
-            fprintf( fp, "    lla     a0, stopString\n" );
-            fprintf( fp, "    call    riscv_print_text\n" );
+            fprintf( fp, "    lla      a0, stopString\n" );
+            fprintf( fp, "    call     riscv_print_text\n" );
         }
-        fprintf( fp, "    j       leave_execution\n" );
+        fprintf( fp, "    j        leave_execution\n" );
         
         /**************************************************************************/
 
         fprintf( fp, "leave_execution:\n" );
-        fprintf( fp, "    ld      ra, 16(sp)\n" );
-        fprintf( fp, "    ld      s0, 24(sp)\n" );
-        fprintf( fp, "    ld      s1, 32(sp)\n" );
-        fprintf( fp, "    ld      s2, 40(sp)\n" );
-        fprintf( fp, "    ld      s3, 48(sp)\n" );
-        fprintf( fp, "    ld      s4, 56(sp)\n" );
-        fprintf( fp, "    ld      s5, 64(sp)\n" );
-        fprintf( fp, "    ld      s6, 72(sp)\n" );
-        fprintf( fp, "    ld      s7, 80(sp)\n" );
-        fprintf( fp, "    ld      s8, 88(sp)\n" );
-        fprintf( fp, "    ld      s9, 96(sp)\n" );
-        fprintf( fp, "    ld      s10, 104(sp)\n" );
-        fprintf( fp, "    ld      s11, 112(sp)\n" );
-        fprintf( fp, "    addi    sp, sp, 128\n" );
-        fprintf( fp, "    jr      ra\n" );
+        fprintf( fp, "    ld       ra, 16(sp)\n" );
+        fprintf( fp, "    ld       s0, 24(sp)\n" );
+        fprintf( fp, "    ld       s1, 32(sp)\n" );
+        fprintf( fp, "    ld       s2, 40(sp)\n" );
+        fprintf( fp, "    ld       s3, 48(sp)\n" );
+        fprintf( fp, "    ld       s4, 56(sp)\n" );
+        fprintf( fp, "    ld       s5, 64(sp)\n" );
+        fprintf( fp, "    ld       s6, 72(sp)\n" );
+        fprintf( fp, "    ld       s7, 80(sp)\n" );
+        fprintf( fp, "    ld       s8, 88(sp)\n" );
+        fprintf( fp, "    ld       s9, 96(sp)\n" );
+        fprintf( fp, "    ld       s10, 104(sp)\n" );
+        fprintf( fp, "    ld       s11, 112(sp)\n" );
+        fprintf( fp, "    addi     sp, sp, 128\n" );
+        fprintf( fp, "    jr       ra\n" );
         fprintf( fp, "    .cfi_endproc\n" );
     }
 
