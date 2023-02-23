@@ -1,5 +1,5 @@
 # RISC-V version of an app to prove you can't win at tic-tac-toe.
-# This code depends on the gnu C runtime APIs for clock, floating-point, and sprintf.
+# This code depends on the gnu C runtime APIs for clock.
 # This code expects an extern "C" function called riscv_print_text() that can display a string.
 # riscv_print_text() will be system-specific, and may send it out a serial port or to an attached display.
 # The main entrypoint is called "bamain" and it takes no arguments. Calling bamain will be system-specific.
@@ -28,14 +28,14 @@
 
 .section        .rodata
 
-  .moves_string:
-        .string "moves: %ld\n"
+  .microseconds_nl_string:
+        .string " microseconds\n"
 
-  .time_string:
-        .string "seconds: %lf\n"
+  .moves_nl_string:
+        .string " moves\n"
 
-  .iterations_string:
-        .string "iterations: %ld\n"
+  .iterations_nl_string:
+        .string " iterations\n"
 
   .running_string:
         .string "starting...\n"
@@ -84,38 +84,36 @@ bamain:
         add     s1, a0, s1
 
         call    clock                # duration = end time - start time
-        sub     s3, a0, s3
+        sub     s3, a0, s3           # leave duration in s3
 
-        lla     a0, g_string_buffer  # show the # of moves examined (a multiple of 6493)
-        lla     a1, .moves_string
-        mv      a2, s1
-        call    sprintf
+        # show the number of moves examined
+        mv      a0, s1
+        lla     a1, g_string_buffer
+        li      a2, 10
+        call    _my_lltoa
         lla     a0, g_string_buffer
         call    riscv_print_text
+        lla     a0, .moves_nl_string
+        call    riscv_print_text
 
-        mv      a0, s3               # convert the duration from integer to double
-        call    __floatundidf
-        mv      s3, a0
-
-        li      a0, 1000000          # The maixduino SiPeed board runs at 400Mhz with a 1,000,000 divisor
-        call    __floatundidf        # convert it to a double
-
-        mv      a1, a0               # divide elapsed time by the divisor
+        # show the runtime in microseconds
         mv      a0, s3
-        call    __divdf3
-
-        mv      a2, a0               # show the elapsed time in seconds
-        lla     a1, .time_string
-        lla     a0, g_string_buffer
-        call    sprintf
+        lla     a1, g_string_buffer
+        li      a2, 10
+        call    _my_lltoa
         lla     a0, g_string_buffer
         call    riscv_print_text
+        lla     a0, .microseconds_nl_string
+        call    riscv_print_text
 
-        lla     a0, g_string_buffer  # show the # of iterations
-        lla     a1, .iterations_string
-        li      a2, iterations
-        call    sprintf
+        # show the number of iterations
+        li      a0, iterations
+        lla     a1, g_string_buffer
+        li      a2, 10
+        call    _my_lltoa
         lla     a0, g_string_buffer
+        call    riscv_print_text
+        lla     a0, .iterations_nl_string
         call    riscv_print_text
 
   .ba_exit:
@@ -371,7 +369,7 @@ minmax_min:
         add     t1, s6, s9         # restore a 0 to the last move position
         sb      zero, (t1)        
 
-        li      t0, lose_score    # can't do better than losing when minimizing
+        li      t0, lose_score     # can't do better than losing when minimizing
         beq     a0, t0, .minmax_min_done  
 
         bge     a0, s5, .minmax_min_skip_value  # compare score with value
@@ -663,6 +661,72 @@ _pos8func:
         and     a0, t1, a0
 
   .pos8_func_return:
+        jr      ra
+        .cfi_endproc
+
+/* _my_lltoa a0: 8-byte signed integer, a1: 8-bit ascii string buffer, a2: base */
+.text
+        .align 3
+        .type _my_lltoa, @function
+_my_lltoa:
+        .cfi_startproc
+
+        li      t1, 9
+        bne     a0, zero, .my_lltoa_not_zero
+        li      t0, '0'
+        sb      t0, 0(a1)
+        sb      zero, 1(a1)
+        j       .my_lltoa_exit
+
+  .my_lltoa_not_zero:
+        li      t2, 0           # offset into the string
+        mv      t6, zero        # default to unsigned
+        li      t0, 0x8000000000000000
+        and     t0, a0, t0
+        beq     t0, zero, .my_lltoa_not_neg
+        li      t6, 1           # it's negative
+        neg     a0, a0          # this is just sub a0, zero, a0
+
+  .my_lltoa_not_neg:
+        beq     a0, zero, .my_lltoa_digits_done
+        rem     t0, a0, a2
+        bgt     t0, t1, .my_lltoa_more_than_nine
+        addi    t0, t0, '0'
+        j       .my_lltoa_after_base
+  .my_lltoa_more_than_nine:
+        addi    t0, t0, 'a' - 10
+  .my_lltoa_after_base:
+        add     t3, a1, t2
+        sb      t0, 0(t3)
+        addi    t2, t2, 1
+        div     a0, a0, a2
+        j       .my_lltoa_not_neg
+
+  .my_lltoa_digits_done:
+        beq     t6, zero, .my_lltoa_no_minus
+        li      t0, '-'
+        add     t3, a1, t2
+        sb      t0, 0(t3)
+        addi    t2, t2, 1
+
+  .my_lltoa_no_minus:
+        add     t3, a1, t2      # null-terminate the string
+        sb      zero, 0(t3)
+
+        mv      t4, a1          # reverse the string. t4 = left
+        add     t5, a1, t2      # t5 = right
+        addi    t5, t5, -1
+  .my_lltoa_reverse_next:
+        bge     t4, t5, .my_lltoa_exit
+        lbu     t0, (t4)
+        lbu     t1, (t5)
+        sb      t0, (t5)
+        sb      t1, (t4)
+        addi    t4, t4, 1
+        addi    t5, t5, -1
+        j       .my_lltoa_reverse_next
+
+  .my_lltoa_exit:
         jr      ra
         .cfi_endproc
 
