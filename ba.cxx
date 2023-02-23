@@ -3720,7 +3720,7 @@ void GenerateRelational( FILE * fp, map<string, Variable> const & varmap, int & 
         fprintf( fp, "    mv       t0, a0\n" );
         RiscVPop( fp, "a0" );
 
-        fprintf( fp, "    sub    t0, a0, t0\n" );
+        fprintf( fp, "    sub      t0, a0, t0\n" );
         if ( Token::EQ == op )
             fprintf( fp, "    sltiu    a0, t0, 1\n" );
         else if ( Token::NE == op )
@@ -5311,9 +5311,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                         else if ( arm32Linux == g_AssemblyTarget )
                         {
                             if ( IsVariableInReg( varmap, varname ) )
-                            {
                                 LoadArm32Constant( fp, GenVariableReg( varmap, varname ), val );
-                            }
                             else
                             {
                                 LoadArm32Constant( fp, "r0", val );
@@ -5324,9 +5322,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                         else if ( arm64Mac == g_AssemblyTarget || arm64Win == g_AssemblyTarget )
                         {
                             if ( IsVariableInReg( varmap, varname ) )
-                            {
                                 LoadArm64Constant( fp, GenVariableReg( varmap, varname ), val );
-                            }
                             else
                             {
                                 LoadArm64Constant( fp, "x0", val );
@@ -5343,6 +5339,17 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                         }
                         else if ( i8086DOS == g_AssemblyTarget )
                             fprintf( fp, "    mov      WORD PTR ds: [%s], %d\n", GenVariableName( varname ), val );
+                        else if ( riscv64 == g_AssemblyTarget )
+                        {
+                            if ( IsVariableInReg( varmap, varname ) )
+                                fprintf( fp, "    li       %s, %d\n", GenVariableReg( varmap, varname ), val );
+                            else
+                            {
+                                fprintf( fp, "    lla      t1, %s\n", GenVariableName( varname ) );
+                                fprintf( fp, "    li       t0, %d\n", val );
+                                fprintf( fp, "    sw       t0, (t1)\n" );
+                            }
+                        }
 
                         t += vals[ t ].value;
                     }
@@ -5356,13 +5363,15 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                              arm32Linux == g_AssemblyTarget || arm64Win == g_AssemblyTarget )
                             fprintf( fp, "    mov      %s, %s\n", GenVariableReg( varmap, vals[ variableToken ].strValue ),
                                                                   GenVariableReg( varmap, vals[ t + 1 ].strValue ) );
+                        else if ( riscv64 == g_AssemblyTarget )
+                            fprintf( fp, "    mv       %s, %s\n", GenVariableReg( varmap, vals[ variableToken ].strValue ),
+                                                                  GenVariableReg( varmap, vals[ t + 1 ].strValue ) );
 
                         t += vals[ t ].value;
                     }
                     else if ( mos6502Apple1 == g_AssemblyTarget &&
                               Token::VARIABLE == vals[ t + 1 ].token &&
                               2 == vals[ t ].value )
-                             
                     {
                         // e.g.: x% = y%
 
@@ -5519,6 +5528,21 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                                 fprintf( fp, "    lea      ebx, [%s]\n", GenVariableName( vals[ t + 1 ].strValue ) );
                                 fprintf( fp, "    mov      %s, [ eax + ebx ]\n", GenVariableReg( varmap, vals[ variableToken ].strValue ) );
                             }
+                        }
+                        else if ( riscv64 == g_AssemblyTarget )
+                        {
+                            fprintf( fp, "    lla      t0, %s\n", GenVariableName( vals[ t + 1 ].strValue ) );
+
+                            if ( Token::CONSTANT == vals[ t + 4 ].token )
+                                fprintf( fp, "    li       t1, %d\n", 4 * vals[ t + 4 ].value );
+                            else
+                            {
+                                fprintf( fp, "    mv       t1, %s\n", GenVariableReg( varmap, vals[ t + 4 ].strValue ) );
+                                fprintf( fp, "    slli     t1, t1, 2\n" );
+                            }
+
+                            fprintf( fp, "    add      t0, t0, t1\n" );
+                            fprintf( fp, "    lw       %s, (t0)\n", GenVariableReg( varmap, vals[ variableToken ].strValue ) );
                         }
 
                         t += vals[ t ].value;
@@ -7063,23 +7087,23 @@ label_no_array_eq_optimization:
                     break;
                 }
                 else if ( mos6502Apple1 == g_AssemblyTarget &&
-                     19 == vals.size() &&
-                     16 == vals[ t ].value &&
-                     Token::VARIABLE == vals[ t + 1 ].token &&
-                     Token::EQ ==  vals[ t + 2 ].token &&
-                     Token::OPENPAREN == vals[ t + 4 ].token &&
-                     Token::CONSTANT == vals[ t + 6 ].token &&
-                     Token::AND == vals[ t + 8 ].token &&
-                     Token::VARIABLE == vals[ t + 9 ].token &&
-                     Token::EQ == vals[ t + 10 ].token &&
-                     Token::OPENPAREN == vals[ t + 12 ].token &&
-                     Token::CONSTANT == vals[ t + 14 ].token &&
-                     Token::THEN == vals[ t + 16 ].token &&
-                     0 == vals[ t + 16 ].value &&
-                     !vals[ t + 3 ].strValue.compare( vals[ t + 11 ].strValue ) &&
-                     Token::RETURN == vals[ t + 17 ].token &&
-                     vals[ t + 6 ].value < 64 &&
-                     vals[ t + 14 ].value < 64 )
+                          19 == vals.size() &&
+                          16 == vals[ t ].value &&
+                          Token::VARIABLE == vals[ t + 1 ].token &&
+                          Token::EQ ==  vals[ t + 2 ].token &&
+                          Token::OPENPAREN == vals[ t + 4 ].token &&
+                          Token::CONSTANT == vals[ t + 6 ].token &&
+                          Token::AND == vals[ t + 8 ].token &&
+                          Token::VARIABLE == vals[ t + 9 ].token &&
+                          Token::EQ == vals[ t + 10 ].token &&
+                          Token::OPENPAREN == vals[ t + 12 ].token &&
+                          Token::CONSTANT == vals[ t + 14 ].token &&
+                          Token::THEN == vals[ t + 16 ].token &&
+                          0 == vals[ t + 16 ].value &&
+                          !vals[ t + 3 ].strValue.compare( vals[ t + 11 ].strValue ) &&
+                          Token::RETURN == vals[ t + 17 ].token &&
+                          vals[ t + 6 ].value < 64 &&
+                          vals[ t + 14 ].value < 64 )
                 {
                     // line 2020 has 19 tokens  ====>> 2020 if wi% = b%( 1 ) and wi% = b%( 2 ) then return
                     //    0 IF, value 0, strValue ''
@@ -7126,7 +7150,60 @@ label_no_array_eq_optimization:
 
                     break;
                 }
-                if ( i8086DOS == g_AssemblyTarget &&
+                else if ( riscv64 == g_AssemblyTarget &&
+                          19 == vals.size() &&
+                          16 == vals[ t ].value &&
+                          Token::VARIABLE == vals[ t + 1 ].token &&
+                          Token::EQ ==  vals[ t + 2 ].token &&
+                          Token::OPENPAREN == vals[ t + 4 ].token &&
+                          Token::CONSTANT == vals[ t + 6 ].token &&
+                          Token::AND == vals[ t + 8 ].token &&
+                          Token::VARIABLE == vals[ t + 9 ].token &&
+                          Token::EQ == vals[ t + 10 ].token &&
+                          Token::OPENPAREN == vals[ t + 12 ].token &&
+                          Token::CONSTANT == vals[ t + 14 ].token &&
+                          Token::THEN == vals[ t + 16 ].token &&
+                          0 == vals[ t + 16 ].value &&
+                          !vals[ t + 3 ].strValue.compare( vals[ t + 11 ].strValue ) &&
+                          Token::RETURN == vals[ t + 17 ].token &&
+                          vals[ t + 6 ].value < 64 &&
+                          vals[ t + 14 ].value < 64 &&
+                          IsVariableInReg( varmap, vals[ t + 1 ].strValue ) )
+                {
+                    // line 2020 has 19 tokens  ====>> 2020 if wi% = b%( 1 ) and wi% = b%( 2 ) then return
+                    //    0 IF, value 0, strValue ''
+                    //    1 EXPRESSION, value 16, strValue ''
+                    //    2 VARIABLE, value 0, strValue 'wi%'
+                    //    3 EQ, value 0, strValue ''
+                    //    4 VARIABLE, value 0, strValue 'b%'
+                    //    5 OPENPAREN, value 0, strValue ''
+                    //    6 EXPRESSION, value 2, strValue ''
+                    //    7 CONSTANT, value 1, strValue ''
+                    //    8 CLOSEPAREN, value 0, strValue ''
+                    //    9 AND, value 0, strValue ''
+                    //   10 VARIABLE, value 0, strValue 'wi%'
+                    //   11 EQ, value 0, strValue ''
+                    //   12 VARIABLE, value 0, strValue 'b%'
+                    //   13 OPENPAREN, value 0, strValue ''
+                    //   14 EXPRESSION, value 2, strValue ''
+                    //   15 CONSTANT, value 2, strValue ''
+                    //   16 CLOSEPAREN, value 0, strValue ''
+                    //   17 THEN, value 0, strValue ''
+                    //   18 RETURN, value 0, strValue ''
+
+                    fprintf( fp, "    lla      t0, %s\n", GenVariableName( vals[ t + 3 ].strValue ) );
+                    fprintf( fp, "    lw       t1, %d(t0)\n", 4 * vals[ t + 6 ].value );
+                    fprintf( fp, "    lw       t0, %d(t0)\n", 4 * vals[ t + 14 ].value );
+                    fprintf( fp, "    sub      t2, %s, t0\n", GenVariableReg( varmap, vals[ t + 1 ].strValue ) );
+                    fprintf( fp, "    sub      t3, %s, t1\n", GenVariableReg( varmap, vals[ t + 1 ].strValue ) );
+                    fprintf( fp, "    sltiu    a0, t2, 1\n" );
+                    fprintf( fp, "    sltiu    a1, t3, 1\n" );
+                    fprintf( fp, "    and      a0, a0, a1\n" );
+                    fprintf( fp, "    bne      a0, zero, label_gosub_return\n" );
+
+                    break;
+                }
+                else if ( i8086DOS == g_AssemblyTarget &&
                      19 == vals.size() &&
                      16 == vals[ t ].value &&
                      Token::VARIABLE == vals[ t + 1 ].token &&
@@ -7177,6 +7254,7 @@ label_no_array_eq_optimization:
                 else if ( i8080CPM != g_AssemblyTarget &&
                           mos6502Apple1 != g_AssemblyTarget &&
                           i8086DOS != g_AssemblyTarget &&
+                          riscv64 != g_AssemblyTarget &&
                           ( !( ( x86Win == g_AssemblyTarget ) && !g_i386Target686 ) ) &&
                           10 == vals.size() &&
                           4 == vals[ t ].value &&
@@ -7319,6 +7397,7 @@ label_no_array_eq_optimization:
                 else if ( i8080CPM != g_AssemblyTarget &&
                           mos6502Apple1 != g_AssemblyTarget &&
                           i8086DOS != g_AssemblyTarget &&
+                          riscv64 != g_AssemblyTarget &&
                           19 == vals.size() &&
                           16 == vals[ t ].value &&
                           Token::VARIABLE == vals[ t + 1 ].token &&
@@ -7468,6 +7547,7 @@ label_no_array_eq_optimization:
                           mos6502Apple1 != g_AssemblyTarget &&
                           i8086DOS != g_AssemblyTarget &&
                           arm32Linux != g_AssemblyTarget &&
+                          riscv64 != g_AssemblyTarget &&
                           15 == vals.size() &&
                           4 == vals[ t ].value &&
                           Token::VARIABLE == vals[ t + 1 ].token &&
@@ -7698,6 +7778,7 @@ label_no_array_eq_optimization:
                           i8086DOS != g_AssemblyTarget &&
                           x86Win != g_AssemblyTarget &&
                           arm32Linux != g_AssemblyTarget &&
+                          riscv64 != g_AssemblyTarget &&
                           23 == vals.size() &&
                           4 == vals[ t ].value &&
                           Token::VARIABLE == vals[ t + 1 ].token &&
@@ -7775,6 +7856,7 @@ label_no_array_eq_optimization:
                           mos6502Apple1 != g_AssemblyTarget &&
                           i8086DOS != g_AssemblyTarget &&
                           arm32Linux != g_AssemblyTarget &&
+                          riscv64 != g_AssemblyTarget &&
                           ( !( ( x86Win == g_AssemblyTarget ) && !g_i386Target686 ) ) &&
                           11 == vals.size() &&
                           4 == vals[ t ].value &&
@@ -7861,6 +7943,7 @@ label_no_array_eq_optimization:
                           mos6502Apple1 != g_AssemblyTarget &&
                           i8086DOS != g_AssemblyTarget &&
                           arm32Linux != g_AssemblyTarget &&
+                          riscv64 != g_AssemblyTarget &&
                           9 == vals.size() &&
                           6 == vals[ t ].value &&
                           Token::VARIABLE == vals[ t + 1 ].token &&
@@ -7918,6 +8001,7 @@ label_no_array_eq_optimization:
                 else if ( i8080CPM != g_AssemblyTarget &&
                           mos6502Apple1 != g_AssemblyTarget &&
                           i8086DOS != g_AssemblyTarget &&
+                          riscv64 != g_AssemblyTarget &&
                           7 == vals.size() &&
                           Token::VARIABLE == vals[ t + 1 ].token &&
                           IsVariableInReg( varmap, vals[ t + 1 ].strValue ) &&
@@ -8220,6 +8304,7 @@ label_no_array_eq_optimization:
                 else if ( i8080CPM != g_AssemblyTarget &&
                           mos6502Apple1 != g_AssemblyTarget &&
                           i8086DOS != g_AssemblyTarget &&
+                          riscv64 != g_AssemblyTarget &&
                           4 == vals[ t ].value && 
                           isOperatorRelational( vals[ t + 2 ].token ) )
                 {
@@ -8544,6 +8629,7 @@ label_no_array_eq_optimization:
                 else if ( i8080CPM != g_AssemblyTarget &&
                           mos6502Apple1 != g_AssemblyTarget &&
                           i8086DOS != g_AssemblyTarget &&
+                          riscv64 != g_AssemblyTarget &&
                           3 == vals[ t ].value && 
                           Token::NOT == vals[ t + 1 ].token && 
                           Token::VARIABLE == vals[ t + 2 ].token )
@@ -11122,9 +11208,6 @@ extern int main( int argc, char *argv[] )
             strcpy_s( dot, _countof( asmfile) - ( dot - asmfile ), ".s" );
         else
             strcpy_s( dot, _countof( asmfile) - ( dot - asmfile ), ".asm" );
-
-        if ( riscv64 == g_AssemblyTarget )
-            g_ExpressionOptimization = false;
 
         GenerateASM( asmfile, varmap, useRegistersInASM );
     }
