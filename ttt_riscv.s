@@ -16,35 +16,56 @@
 .equ tie_score,     5
 .equ iterations,    1000
 
-.section        .sbss,"aw",@nobits
-        .align  3
+.section .sbss,"aw",@nobits
 
+  .align 3
   g_board:
-        .zero   9
+    .zero   9
 
+  .align 3
   g_string_buffer:
-        .zero   128
+    .zero 128
 
-.section        .rodata
+.section .rodata
 
+  .align  3
+
+  .data
+  .type   winner_functions, @object
+  .size   winner_functions, 72
+  winner_functions:
+    .dword  _pos0func
+    .dword  _pos1func
+    .dword  _pos2func
+    .dword  _pos3func
+    .dword  _pos4func
+    .dword  _pos5func
+    .dword  _pos6func
+    .dword  _pos7func
+    .dword  _pos8func
+
+  .align  3
   .microseconds_nl_string:
-        .string " microseconds\n"
+    .string " microseconds\n"
 
+  .align  3
   .moves_nl_string:
-        .string " moves\n"
+    .string " moves\n"
 
+  .align  3
   .iterations_nl_string:
-        .string " iterations\n"
+    .string " iterations\n"
 
+  .align  3
   .running_string:
-        .string "starting...\n"
+    .string "starting...\n"
 
 /* bamain */
 
 .text
-        .align  3
-        .globl  bamain
-        .type   bamain, @function
+.align 3
+.globl bamain
+.type bamain, @function
 bamain:
         .cfi_startproc
         addi    sp, sp, -128
@@ -92,7 +113,6 @@ bamain:
         lla     a1, g_string_buffer
         li      a2, 10
         call    _my_lltoa
-        lla     a0, g_string_buffer
         call    riscv_print_text
         lla     a0, .moves_nl_string
         call    riscv_print_text
@@ -102,7 +122,6 @@ bamain:
         lla     a1, g_string_buffer
         li      a2, 10
         call    _my_lltoa
-        lla     a0, g_string_buffer
         call    riscv_print_text
         lla     a0, .microseconds_nl_string
         call    riscv_print_text
@@ -112,7 +131,6 @@ bamain:
         lla     a1, g_string_buffer
         li      a2, 10
         call    _my_lltoa
-        lla     a0, g_string_buffer
         call    riscv_print_text
         lla     a0, .iterations_nl_string
         call    riscv_print_text
@@ -137,8 +155,8 @@ bamain:
 
 /* run_minmax */
 
-        .align  3
-        .type   run_minmax, @function
+.align 3
+.type run_minmax, @function
 run_minmax:
         .cfi_startproc
         addi    sp, sp, -128
@@ -160,7 +178,6 @@ run_minmax:
         li      s8, iterations       # iteration count
 
   .run_minmax_next_iteration:
-
         mv      a3, a0               # first move
         mv      a2, zero             # depth
         li      a1, maximum_score    # beta
@@ -187,8 +204,8 @@ run_minmax:
 
 /* minmax_max */
 
-        .align  3
-        .type   minmax_max, @function
+.align 3
+.type minmax_max, @function
 minmax_max:
   /*
         a0:   alpha
@@ -291,8 +308,8 @@ minmax_max:
 
 /* minmax_min */
 
-        .align  3
-        .type   minmax_min, @function
+.align 3
+.type minmax_min, @function
 minmax_min:
   /*
         a0:   alpha
@@ -351,7 +368,6 @@ minmax_min:
         li      t6, 8              # t6 is a global constant of 8
 
   .minmax_min_loop:                # loop over all possible next moves 0..8
-        
         beq     s6, t6, .minmax_min_loadv_done
         addi    s6, s6, 1
 
@@ -398,47 +414,29 @@ minmax_min:
         jr      ra
         .cfi_endproc
 
-/* winner functions */
-
-.data
-        .align  3
-        .type   winner_functions, @object
-        .size   winner_functions, 72
-winner_functions:
-        .dword  _pos0func
-        .dword  _pos1func
-        .dword  _pos2func
-        .dword  _pos3func
-        .dword  _pos4func
-        .dword  _pos5func
-        .dword  _pos6func
-        .dword  _pos7func
-        .dword  _pos8func
-
 /* _pos0func */
+
 .text
-        .align  3
-        .type   _pos0func, @function
+  .align 3
+.type _pos0func, @function
 _pos0func:
         .cfi_startproc
-        lbu     t0, 1(s9)
         mv      t2, a0
+        lbu     t0, 1(s9)
         lbu     t1, 2(s9)
         and     a0, t0, a0
         and     a0, t1, a0
         bne     a0, zero, .pos0_func_return
 
         lbu     t0, 3(s9)
-        mv      a0, t2
         lbu     t1, 6(s9)
-        and     a0, t0, a0
+        and     a0, t0, t2
         and     a0, t1, a0
         bne     a0, zero, .pos0_func_return
 
         lbu     t0, 4(s9)
-        mv      a0, t2
         lbu     t1, 8(s9)
-        and     a0, t0, a0
+        and     a0, t0, t2
         and     a0, t1, a0
 
   .pos0_func_return:
@@ -446,22 +444,20 @@ _pos0func:
         .cfi_endproc
 
 /* _pos1func */
-.text
-        .align  3
-        .type   _pos1func, @function
+
+.type _pos1func, @function
 _pos1func:
         .cfi_startproc
-        lbu     t0, 0(s9)
         mv      t2, a0
+        lbu     t0, 0(s9)
         lbu     t1, 2(s9)
         and     a0, t0, a0
         and     a0, t1, a0
         bne     a0, zero, .pos1_func_return
 
         lbu     t0, 4(s9)
-        mv      a0, t2
         lbu     t1, 7(s9)
-        and     a0, t0, a0
+        and     a0, t0, t2
         and     a0, t1, a0
 
   .pos1_func_return:
@@ -469,29 +465,26 @@ _pos1func:
         .cfi_endproc
 
 /* _pos2func */
-.text
-        .align  3
-        .type   _pos2func, @function
+
+.type _pos2func, @function
 _pos2func:
         .cfi_startproc
-        lbu     t0, 0(s9)
         mv      t2, a0
+        lbu     t0, 0(s9)
         lbu     t1, 1(s9)
         and     a0, t0, a0
         and     a0, t1, a0
         bne     a0, zero, .pos2_func_return
 
         lbu     t0, 5(s9)
-        mv      a0, t2
         lbu     t1, 8(s9)
-        and     a0, t0, a0
+        and     a0, t0, t2
         and     a0, t1, a0
         bne     a0, zero, .pos2_func_return
 
         lbu     t0, 4(s9)
-        mv      a0, t2
         lbu     t1, 6(s9)
-        and     a0, t0, a0
+        and     a0, t0, t2
         and     a0, t1, a0
 
   .pos2_func_return:
@@ -499,22 +492,20 @@ _pos2func:
         .cfi_endproc
 
 /* _pos3func */
-.text
-        .align  3
-        .type   _pos3func, @function
+
+.type _pos3func, @function
 _pos3func:
         .cfi_startproc
-        lbu     t0, 0(s9)
         mv      t2, a0
+        lbu     t0, 0(s9)
         lbu     t1, 6(s9)
         and     a0, t0, a0
         and     a0, t1, a0
         bne     a0, zero, .pos3_func_return
 
         lbu     t0, 4(s9)
-        mv      a0, t2
         lbu     t1, 5(s9)
-        and     a0, t0, a0
+        and     a0, t0, t2
         and     a0, t1, a0
 
   .pos3_func_return:
@@ -522,36 +513,32 @@ _pos3func:
         .cfi_endproc
 
 /* _pos4func */
-.text
-        .align  3
-        .type   _pos4func, @function
+
+.type _pos4func, @function
 _pos4func:
         .cfi_startproc
-        lbu     t0, 0(s9)
         mv      t2, a0
+        lbu     t0, 0(s9)
         lbu     t1, 8(s9)
         and     a0, t0, a0
         and     a0, t1, a0
         bne     a0, zero, .pos4_func_return
 
         lbu     t0, 2(s9)
-        mv      a0, t2
         lbu     t1, 6(s9)
-        and     a0, t0, a0
+        and     a0, t0, t2
         and     a0, t1, a0
         bne     a0, zero, .pos4_func_return
 
         lbu     t0, 1(s9)
-        mv      a0, t2
         lbu     t1, 7(s9)
-        and     a0, t0, a0
+        and     a0, t0, t2
         and     a0, t1, a0
         bne     a0, zero, .pos4_func_return
 
         lbu     t0, 3(s9)
-        mv      a0, t2
         lbu     t1, 5(s9)
-        and     a0, t0, a0
+        and     a0, t0, t2
         and     a0, t1, a0
 
   .pos4_func_return:
@@ -559,22 +546,20 @@ _pos4func:
         .cfi_endproc
 
 /* _pos5func */
-.text
-        .align  3
-        .type   _pos5func, @function
+
+.type _pos5func, @function
 _pos5func:
         .cfi_startproc
-        lbu     t0, 3(s9)
         mv      t2, a0
+        lbu     t0, 3(s9)
         lbu     t1, 4(s9)
         and     a0, t0, a0
         and     a0, t1, a0
         bne     a0, zero, .pos5_func_return
 
         lbu     t0, 2(s9)
-        mv      a0, t2
         lbu     t1, 8(s9)
-        and     a0, t0, a0
+        and     a0, t0, t2
         and     a0, t1, a0
 
   .pos5_func_return:
@@ -582,30 +567,26 @@ _pos5func:
         .cfi_endproc
 
 /* _pos6func */
-.text
-        .align  3
-        .type   _pos6func, @function
+
+.type _pos6func, @function
 _pos6func:
         .cfi_startproc
-
-        lbu     t0, 0(s9)
         mv      t2, a0
+        lbu     t0, 0(s9)
         lbu     t1, 3(s9)
         and     a0, t0, a0
         and     a0, t1, a0
         bne     a0, zero, .pos6_func_return
 
         lbu     t0, 2(s9)
-        mv      a0, t2
         lbu     t1, 4(s9)
-        and     a0, t0, a0
+        and     a0, t0, t2
         and     a0, t1, a0
         bne     a0, zero, .pos6_func_return
 
         lbu     t0, 7(s9)
-        mv      a0, t2
         lbu     t1, 8(s9)
-        and     a0, t0, a0
+        and     a0, t0, t2
         and     a0, t1, a0
 
   .pos6_func_return:
@@ -613,22 +594,20 @@ _pos6func:
         .cfi_endproc
 
 /* _pos7func */
-.text
-        .align  3
-        .type   _pos7func, @function
+
+.type _pos7func, @function
 _pos7func:
         .cfi_startproc
-        lbu     t0, 1(s9)
         mv      t2, a0
+        lbu     t0, 1(s9)
         lbu     t1, 4(s9)
         and     a0, t0, a0
         and     a0, t1, a0
         bne     a0, zero, .pos7_func_return
 
         lbu     t0, 6(s9)
-        mv      a0, t2
         lbu     t1, 8(s9)
-        and     a0, t0, a0
+        and     a0, t0, t2
         and     a0, t1, a0
 
   .pos7_func_return:
@@ -636,29 +615,26 @@ _pos7func:
         .cfi_endproc
 
 /* _pos8func */
-.text
-        .align  3
-        .type   _pos8func, @function
+
+.type _pos8func, @function
 _pos8func:
         .cfi_startproc
-        lbu     t0, 0(s9)
         mv      t2, a0
+        lbu     t0, 0(s9)
         lbu     t1, 4(s9)
         and     a0, t0, a0
         and     a0, t1, a0
         bne     a0, zero, .pos8_func_return
 
         lbu     t0, 2(s9)
-        mv      a0, t2
         lbu     t1, 5(s9)
-        and     a0, t0, a0
+        and     a0, t0, t2
         and     a0, t1, a0
         bne     a0, zero, .pos8_func_return
 
         lbu     t0, 6(s9)
-        mv      a0, t2
         lbu     t1, 7(s9)
-        and     a0, t0, a0
+        and     a0, t0, t2
         and     a0, t1, a0
 
   .pos8_func_return:
@@ -666,16 +642,14 @@ _pos8func:
         .cfi_endproc
 
 /* _my_lltoa a0: 8-byte signed integer, a1: 8-bit ascii string buffer, a2: base */
-.text
-        .align 3
-        .type _my_lltoa, @function
+
+.type _my_lltoa, @function
 _my_lltoa:
         .cfi_startproc
-
         li      t1, 9
         bne     a0, zero, .my_lltoa_not_zero
         li      t0, '0'
-        sb      t0, 0(a1)
+        sb      t0, (a1)
         sb      zero, 1(a1)
         j       .my_lltoa_exit
 
@@ -684,11 +658,11 @@ _my_lltoa:
         mv      t6, zero        # default to unsigned
         li      t0, 0x8000000000000000
         and     t0, a0, t0
-        beq     t0, zero, .my_lltoa_not_neg
+        beq     t0, zero, .my_lltoa_digit_loop
         li      t6, 1           # it's negative
         neg     a0, a0          # this is just sub a0, zero, a0
 
-  .my_lltoa_not_neg:
+  .my_lltoa_digit_loop:
         beq     a0, zero, .my_lltoa_digits_done
         rem     t0, a0, a2
         bgt     t0, t1, .my_lltoa_more_than_nine
@@ -698,21 +672,21 @@ _my_lltoa:
         addi    t0, t0, 'a' - 10
   .my_lltoa_after_base:
         add     t3, a1, t2
-        sb      t0, 0(t3)
+        sb      t0, (t3)
         addi    t2, t2, 1
         div     a0, a0, a2
-        j       .my_lltoa_not_neg
+        j       .my_lltoa_digit_loop
 
   .my_lltoa_digits_done:
         beq     t6, zero, .my_lltoa_no_minus
         li      t0, '-'
         add     t3, a1, t2
-        sb      t0, 0(t3)
+        sb      t0, (t3)
         addi    t2, t2, 1
 
   .my_lltoa_no_minus:
         add     t3, a1, t2      # null-terminate the string
-        sb      zero, 0(t3)
+        sb      zero, (t3)
 
         mv      t4, a1          # reverse the string. t4 = left
         add     t5, a1, t2      # t5 = right
@@ -728,6 +702,7 @@ _my_lltoa:
         j       .my_lltoa_reverse_next
 
   .my_lltoa_exit:
+        mv      a0, a1
         jr      ra
         .cfi_endproc
 
