@@ -5177,9 +5177,15 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         }
 
         fprintf( fp, ".text\n" );
+        fprintf( fp, ".ifdef MAIXDUINO\n" );
         fprintf( fp, "  .globl bamain\n" );
         fprintf( fp, "  .type bamain, @function\n" );
-        fprintf( fp, "bamain:\n" );
+        fprintf( fp, "  bamain:\n" );
+        fprintf( fp, ".else\n" );
+        fprintf( fp, "  .globl main\n" );
+        fprintf( fp, "  .type main, @function\n" );
+        fprintf( fp, "  main:\n" );
+        fprintf( fp, ".endif\n" );
 
         fprintf( fp, "    .cfi_startproc\n" );
         fprintf( fp, "    addi     sp, sp, -128\n" );
@@ -5200,7 +5206,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         if ( !g_Quiet )
         {
             fprintf( fp, "    lla      a0, startString\n" );
-            fprintf( fp, "    call     riscv_print_text\n" );
+            fprintf( fp, "    jal      riscv_print_text\n" );
         }
 
         fprintf( fp, "    rdcycle  a0  # rdtime doesn't work on the K210 CPU\n" );
@@ -6595,7 +6601,7 @@ label_no_array_eq_optimization:
                 else if ( riscv64 == g_AssemblyTarget)
                 {
                     fprintf( fp, "    lla      a0, line_number_%d\n", vals[ t ].value );
-                    fprintf( fp, "    call     label_gosub\n" );
+                    fprintf( fp, "    jal      label_gosub\n" );
                 }
 
                 break;
@@ -6709,7 +6715,7 @@ label_no_array_eq_optimization:
                         else if ( riscv64 == g_AssemblyTarget )
                         {
                             fprintf( fp, "    lla      a0, str_%zd_%d\n", l, t + 1 );
-                            fprintf( fp, "    call     riscv_print_text\n" );
+                            fprintf( fp, "    jal      riscv_print_text\n" );
                         }
 
                         t += vals[ t ].value;
@@ -6814,7 +6820,7 @@ label_no_array_eq_optimization:
                         else if ( x86Win == g_AssemblyTarget )
                             fprintf( fp, "    call     printElapTime\n" );
                         else if ( riscv64 == g_AssemblyTarget )
-                            fprintf( fp, "    call     print_elap\n" );
+                            fprintf( fp, "    jal      print_elap\n" );
 
                         t += vals[ t ].value;
                     }
@@ -6851,7 +6857,7 @@ label_no_array_eq_optimization:
                         else if ( x86Win == g_AssemblyTarget )
                             fprintf( fp, "    call     printInt\n" );
                         else if ( riscv64 == g_AssemblyTarget )
-                            fprintf( fp, "    call     print_int\n" );
+                            fprintf( fp, "    jal      print_int\n" );
                     }
                 }
     
@@ -6882,7 +6888,7 @@ label_no_array_eq_optimization:
                 else if ( x86Win == g_AssemblyTarget )
                     fprintf( fp, "    call     printcrlf\n" );
                 else if ( riscv64 == g_AssemblyTarget )
-                    fprintf( fp, "    call     print_crlf\n" );
+                    fprintf( fp, "    jal      print_crlf\n" );
 
                 if ( t == vals.size() )
                     break;
@@ -8854,9 +8860,7 @@ label_no_if_optimization:
                     fprintf( fp, "    align    16\n" );
                 }
                 else if ( x86Win == g_AssemblyTarget )
-                {
                     fprintf( fp, "    jmp      line_number_%zd\n", l + 1 );
-                }
                 else if ( arm32Linux == g_AssemblyTarget )
                 {
                     fprintf( fp, "    b        line_number_%zd\n", l + 1 );
@@ -10221,7 +10225,7 @@ label_no_if_optimization:
 
         fprintf( fp, "error_exit:\n" );
         fprintf( fp, "    lla      a0, errorString\n" );
-        fprintf( fp, "    call     riscv_print_text\n" );
+        fprintf( fp, "    jal      riscv_print_text\n" );
         fprintf( fp, "    j        leave_execution\n" );
 
         /**************************************************************************/
@@ -10231,7 +10235,7 @@ label_no_if_optimization:
         fprintf( fp, "    sd       ra, 16(sp)\n" );
 
         fprintf( fp, "    lla      a0, newlineString\n" );
-        fprintf( fp, "    call     riscv_print_text\n" );
+        fprintf( fp, "    jal      riscv_print_text\n" );
 
         fprintf( fp, "    ld       ra, 16(sp)\n" );
         fprintf( fp, "    addi     sp, sp, 32\n" );
@@ -10245,9 +10249,9 @@ label_no_if_optimization:
 
         fprintf( fp, "    lla      a1, print_buffer\n" );
         fprintf( fp, "    li       a2, 10\n" );
-        fprintf( fp, "    call     _my_lltoa\n" );
+        fprintf( fp, "    jal      _my_lltoa\n" );
         fprintf( fp, "    lla      a0, print_buffer\n" );
-        fprintf( fp, "    call     riscv_print_text\n" );
+        fprintf( fp, "    jal      riscv_print_text\n" );
 
         fprintf( fp, "    ld       ra, 16(sp)\n" );
         fprintf( fp, "    addi     sp, sp, 32\n" );
@@ -10265,15 +10269,19 @@ label_no_if_optimization:
             fprintf( fp, "    lla      t0, startTicks\n" );
             fprintf( fp, "    ld       t0, (t0)\n" );
             fprintf( fp, "    sub      a0, a0, t0\n" );
+            fprintf( fp, ".ifdef MAIXDUINO\n" );
             fprintf( fp, "    li       t0, 400  # the k210 runs at 400Mhz and rdtime doesn't work\n" );
+            fprintf( fp, ".else\n" );
+            fprintf( fp, "    li      t0, 1     # when running on Windows with clock() as the source\n" );
+            fprintf( fp, ".endif\n" );
             fprintf( fp, "    div      a0, a0, t0\n" );
             fprintf( fp, "    lla      a1, print_buffer\n" );
             fprintf( fp, "    li       a2, 10\n" );
-            fprintf( fp, "    call     _my_lltoa\n" );
+            fprintf( fp, "    jal      _my_lltoa\n" );
             fprintf( fp, "    lla      a0, print_buffer\n" );
-            fprintf( fp, "    call     riscv_print_text\n" );
+            fprintf( fp, "    jal      riscv_print_text\n" );
             fprintf( fp, "    lla      a0, elapString\n" );
-            fprintf( fp, "    call     riscv_print_text\n" );
+            fprintf( fp, "    jal      riscv_print_text\n" );
     
             fprintf( fp, "    ld       ra, 16(sp)\n" );
             fprintf( fp, "    addi     sp, sp, 32\n" );
@@ -10341,7 +10349,7 @@ label_no_if_optimization:
         if ( !g_Quiet )
         {
             fprintf( fp, "    lla      a0, stopString\n" );
-            fprintf( fp, "    call     riscv_print_text\n" );
+            fprintf( fp, "    jal      riscv_print_text\n" );
         }
         fprintf( fp, "    j        leave_execution\n" );
         
