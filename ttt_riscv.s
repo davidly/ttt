@@ -64,9 +64,16 @@
 
 .text
 .align 3
-.globl bamain
-.type bamain, @function
-bamain:
+
+.ifdef MAIXDUINO
+  .globl bamain
+  .type bamain, @function
+  bamain:
+.else
+  .globl main
+  .type main, @function
+  main:
+.endif
         .cfi_startproc
         addi    sp, sp, -128
         sd      ra, 16(sp)
@@ -84,7 +91,7 @@ bamain:
         sd      s11, 112(sp)
 
         lla     a0, .running_string
-        call    riscv_print_text
+        jal     riscv_print_text
 
         mv      s1, zero             # global move count -- # of board positions examined
 
@@ -92,48 +99,52 @@ bamain:
         rdcycle s3                   # remember the starting time in s3
 
         mv      a0, zero             # run with a move at position 0
-        call    run_minmax
+        jal     run_minmax
         add     s1, a0, s1
 
         li      a0, 1                # run with a move at position 1
-        call    run_minmax
+        jal     run_minmax
         add     s1, a0, s1
 
         li      a0, 4                # run with a move at position 4
-        call    run_minmax
+        jal     run_minmax
         add     s1, a0, s1
 
         rdcycle a0
         sub     s3, a0, s3           # duration = end - start. 
+.ifdef MAIXDUINO
         li      t0, 400              # the k210 runs at 400Mhz
+.else
+        li      t0, 1                # when running on Windows with clock() as the source
+.endif
         div     s3, s3, t0          
 
         # show the number of moves examined
         mv      a0, s1
         lla     a1, g_string_buffer
         li      a2, 10
-        call    _my_lltoa
-        call    riscv_print_text
+        jal     _my_lltoa
+        jal     riscv_print_text
         lla     a0, .moves_nl_string
-        call    riscv_print_text
+        jal     riscv_print_text
 
         # show the runtime in microseconds
         mv      a0, s3
         lla     a1, g_string_buffer
         li      a2, 10
-        call    _my_lltoa
-        call    riscv_print_text
+        jal     _my_lltoa
+        jal     riscv_print_text
         lla     a0, .microseconds_nl_string
-        call    riscv_print_text
+        jal     riscv_print_text
 
         # show the number of iterations
         li      a0, iterations
         lla     a1, g_string_buffer
         li      a2, 10
-        call    _my_lltoa
-        call    riscv_print_text
+        jal     _my_lltoa
+        jal     riscv_print_text
         lla     a0, .iterations_nl_string
-        call    riscv_print_text
+        jal     riscv_print_text
 
   .ba_exit:
         ld      ra, 16(sp)
@@ -183,7 +194,7 @@ run_minmax:
         li      a1, maximum_score    # beta
         li      a0, minimum_score    # alpha
 
-        call    minmax_min
+        jal     minmax_min
 
         addi    s8, s8, -1
         bne     s8, zero, .run_minmax_next_iteration
@@ -273,7 +284,7 @@ minmax_max:
         mv      a1, s1             # beta
         mv      a2, s4             # next depth
         mv      a3, s6             # next move
-        call    minmax_min
+        jal     minmax_min
 
         add     t1, s6, s9         # restore a 0 to the last move position
         sb      zero, (t1)        
@@ -381,7 +392,7 @@ minmax_min:
         mv      a1, s1
         mv      a2, s4
         mv      a3, s6
-        call    minmax_max
+        jal     minmax_max
 
         add     t1, s6, s9         # restore a 0 to the last move position
         sb      zero, (t1)        
