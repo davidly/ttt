@@ -10300,12 +10300,14 @@ label_no_if_optimization:
         fprintf( fp, "  .my_lltoa_not_zero:\n" );
         fprintf( fp, "    li       t2, 0           # offset into the string\n" );
         fprintf( fp, "    mv       t6, zero        # default to unsigned\n" );
+        fprintf( fp, "    li       t0, 10          # negative numbers only exist for base 10\n" );
+        fprintf( fp, "    bne      a2, t0, .my_lltoa_digit_loop\n" );
         fprintf( fp, "    li       t0, 0x8000000000000000\n" );
         fprintf( fp, "    and      t0, a0, t0\n" );
-        fprintf( fp, "    beq      t0, zero, .my_lltoa_not_neg\n" );
+        fprintf( fp, "    beq      t0, zero, .my_lltoa_digit_loop\n" );
         fprintf( fp, "    li       t6, 1           # it's negative\n" );
         fprintf( fp, "    neg      a0, a0          # this is just sub a0, zero, a0\n" );
-        fprintf( fp, "  .my_lltoa_not_neg:\n" );
+        fprintf( fp, "  .my_lltoa_digit_loop:\n" );
         fprintf( fp, "    beq      a0, zero, .my_lltoa_digits_done\n" );
         fprintf( fp, "    rem      t0, a0, a2\n" );
         fprintf( fp, "    bgt      t0, t1, .my_lltoa_more_than_nine\n" );
@@ -10318,7 +10320,7 @@ label_no_if_optimization:
         fprintf( fp, "    sb       t0, 0(t3)\n" );
         fprintf( fp, "    addi     t2, t2, 1\n" );
         fprintf( fp, "    div      a0, a0, a2\n" );
-        fprintf( fp, "    j        .my_lltoa_not_neg\n" );
+        fprintf( fp, "    j        .my_lltoa_digit_loop\n" );
         fprintf( fp, "  .my_lltoa_digits_done:\n" );
         fprintf( fp, "    beq      t6, zero, .my_lltoa_no_minus\n" );
         fprintf( fp, "    li       t0, '-'\n" );
