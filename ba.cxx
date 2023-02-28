@@ -10213,7 +10213,7 @@ label_no_if_optimization:
     {
         fprintf( fp, "label_gosub:\n" );
         RiscVPush( fp, "ra" );
-        fprintf( fp, "    jalr     a0\n" );
+        fprintf( fp, "    jalr     ra, a0\n" );
 
         /**************************************************************************/
 
