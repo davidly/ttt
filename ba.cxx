@@ -4527,7 +4527,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "#    \n" );
         fprintf( fp, "#    extern \"C\" void bamain( void );\n" );
         fprintf( fp, "#    \n" );
-        fprintf( fp, "#    extern \"C\" void riscv_print_text( const char * pc )\n" );
+        fprintf( fp, "#    extern \"C\" void rvos_print_text( const char * pc )\n" );
         fprintf( fp, "#    {\n" );
         fprintf( fp, "#        lcd.printf( \"%%s\", pc );\n" );
         fprintf( fp, "#    }\n" );
@@ -5206,7 +5206,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         if ( !g_Quiet )
         {
             fprintf( fp, "    lla      a0, startString\n" );
-            fprintf( fp, "    jal      riscv_print_text\n" );
+            fprintf( fp, "    jal      rvos_print_text\n" );
         }
 
         fprintf( fp, "    rdcycle  a0  # rdtime doesn't work on the K210 CPU\n" );
@@ -6715,7 +6715,7 @@ label_no_array_eq_optimization:
                         else if ( riscv64 == g_AssemblyTarget )
                         {
                             fprintf( fp, "    lla      a0, str_%zd_%d\n", l, t + 1 );
-                            fprintf( fp, "    jal      riscv_print_text\n" );
+                            fprintf( fp, "    jal      rvos_print_text\n" );
                         }
 
                         t += vals[ t ].value;
@@ -10225,7 +10225,7 @@ label_no_if_optimization:
 
         fprintf( fp, "error_exit:\n" );
         fprintf( fp, "    lla      a0, errorString\n" );
-        fprintf( fp, "    jal      riscv_print_text\n" );
+        fprintf( fp, "    jal      rvos_print_text\n" );
         fprintf( fp, "    j        leave_execution\n" );
 
         /**************************************************************************/
@@ -10235,7 +10235,7 @@ label_no_if_optimization:
         fprintf( fp, "    sd       ra, 16(sp)\n" );
 
         fprintf( fp, "    lla      a0, newlineString\n" );
-        fprintf( fp, "    jal      riscv_print_text\n" );
+        fprintf( fp, "    jal      rvos_print_text\n" );
 
         fprintf( fp, "    ld       ra, 16(sp)\n" );
         fprintf( fp, "    addi     sp, sp, 32\n" );
@@ -10251,7 +10251,7 @@ label_no_if_optimization:
         fprintf( fp, "    li       a2, 10\n" );
         fprintf( fp, "    jal      _my_lltoa\n" );
         fprintf( fp, "    lla      a0, print_buffer\n" );
-        fprintf( fp, "    jal      riscv_print_text\n" );
+        fprintf( fp, "    jal      rvos_print_text\n" );
 
         fprintf( fp, "    ld       ra, 16(sp)\n" );
         fprintf( fp, "    addi     sp, sp, 32\n" );
@@ -10279,9 +10279,9 @@ label_no_if_optimization:
             fprintf( fp, "    li       a2, 10\n" );
             fprintf( fp, "    jal      _my_lltoa\n" );
             fprintf( fp, "    lla      a0, print_buffer\n" );
-            fprintf( fp, "    jal      riscv_print_text\n" );
+            fprintf( fp, "    jal      rvos_print_text\n" );
             fprintf( fp, "    lla      a0, elapString\n" );
-            fprintf( fp, "    jal      riscv_print_text\n" );
+            fprintf( fp, "    jal      rvos_print_text\n" );
     
             fprintf( fp, "    ld       ra, 16(sp)\n" );
             fprintf( fp, "    addi     sp, sp, 32\n" );
@@ -10351,7 +10351,7 @@ label_no_if_optimization:
         if ( !g_Quiet )
         {
             fprintf( fp, "    lla      a0, stopString\n" );
-            fprintf( fp, "    jal      riscv_print_text\n" );
+            fprintf( fp, "    jal      rvos_print_text\n" );
         }
         fprintf( fp, "    j        leave_execution\n" );
         
