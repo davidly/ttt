@@ -10393,18 +10393,18 @@ void ParseInputFile( const char * inputfile )
 
     long filelen = portable_filelen( fileInput.get() );
     vector<char> input( filelen + 1 );
-    size_t lread = fread( input.data(), filelen, 1, fileInput.get() );
-    if ( 1 != lread )
+    size_t lread = fread( input.data(), 1, filelen, fileInput.get() );
+    if ( 0 == lread )
     {
         printf( "unable to read input file\n" );
         Usage();
     }
 
     fileInput.Close();
-    input.data()[ filelen ] = 0;
+    input.data()[ lread ] = 0;
 
     char * pbuf = input.data();
-    char * pbeyond = pbuf + filelen;
+    char * pbeyond = pbuf + lread;
     char line[ 300 ];
     const int MaxLineLen = _countof( line ) - 1;
     int fileLine = 0;
