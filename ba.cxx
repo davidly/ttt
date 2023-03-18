@@ -10358,6 +10358,7 @@ label_no_if_optimization:
         /**************************************************************************/
 
         fprintf( fp, "leave_execution:\n" );
+        fprintf( fp, "    mv       a0, zero\n" );
         fprintf( fp, "    ld       ra, 16(sp)\n" );
         fprintf( fp, "    ld       s0, 24(sp)\n" );
         fprintf( fp, "    ld       s1, 32(sp)\n" );
