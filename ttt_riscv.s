@@ -147,6 +147,7 @@
         jal     rvos_print_text
 
   .ba_exit:
+        li      a0, 0
         ld      ra, 16(sp)
         ld      s0, 24(sp)
         ld      s1, 32(sp)

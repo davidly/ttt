@@ -6774,6 +6774,8 @@ label_no_array_eq_optimization:
                         {
                             fprintf( fp, "    call     printCurrentTime\n" );
                         }
+                        else if ( riscv64 == g_AssemblyTarget )
+                            fprintf( fp, "    jal      print_time\n" );
 
                         t += vals[ t ].value;
                     }
@@ -10259,6 +10261,24 @@ label_no_if_optimization:
 
         /**************************************************************************/
 
+        if ( timeReferenced )
+        {
+            fprintf( fp, "print_time:\n" );
+            fprintf( fp, "    addi     sp, sp, -32\n" );
+            fprintf( fp, "    sd       ra, 16(sp)\n" );
+    
+            fprintf( fp, "    lla      a0, print_buffer\n" );
+            fprintf( fp, "    jal      rvos_get_datetime\n" );
+            fprintf( fp, "    lla      a0, print_buffer\n" );
+            fprintf( fp, "    jal      rvos_print_text\n" );
+    
+            fprintf( fp, "    ld       ra, 16(sp)\n" );
+            fprintf( fp, "    addi     sp, sp, 32\n" );
+            fprintf( fp, "    jr       ra\n" );
+        }
+
+        /**************************************************************************/
+
         if ( elapReferenced )
         {
             fprintf( fp, "print_elap:\n" );
@@ -10272,7 +10292,7 @@ label_no_if_optimization:
             fprintf( fp, ".ifdef MAIXDUINO\n" );
             fprintf( fp, "    li       t0, 400  # the k210 runs at 400Mhz and rdtime doesn't work\n" );
             fprintf( fp, ".else\n" );
-            fprintf( fp, "    li      t0, 1     # when running on Windows with clock() as the source\n" );
+            fprintf( fp, "    li       t0, 1     # when running on Windows with clock() as the source\n" );
             fprintf( fp, ".endif\n" );
             fprintf( fp, "    div      a0, a0, t0\n" );
             fprintf( fp, "    lla      a1, print_buffer\n" );
@@ -10924,10 +10944,10 @@ void InterpretCode( map<string, Variable> & varmap )
                     else if ( Token::TIME == vals[ t + 1 ].token )
                     {
                         auto now = system_clock::now();
-                        auto ms = duration_cast<milliseconds>( now.time_since_epoch() ) % 1000;
+                        uint64_t ms = duration_cast<milliseconds>( now.time_since_epoch() ).count() % 1000;
                         auto timer = system_clock::to_time_t( now );
                         std::tm bt = * /*std::*/ localtime( &timer );
-                        printf( "%02d:%02d:%02d", bt.tm_hour, bt.tm_min, bt.tm_sec );
+                        printf( "%02d:%02d:%02d.%03lld", bt.tm_hour, bt.tm_min, bt.tm_sec, ms );
                         t += 2;
                     }
                     else if ( Token::ELAP == vals[ t + 1 ].token )
