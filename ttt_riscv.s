@@ -95,8 +95,12 @@
 
         mv      s1, zero             # global move count -- # of board positions examined
 
+.ifdef MAIXDUINO
         # the k210 CPU doesn't implement rdtime. clock() works, but creates a c-runtime dependency
         rdcycle s3                   # remember the starting time in s3
+.else
+        rdtime  s3
+.endif
 
         mv      a0, zero             # run with a move at position 0
         jal     run_minmax
@@ -110,13 +114,20 @@
         jal     run_minmax
         add     s1, a0, s1
 
+.ifdef MAIXDUINO
         rdcycle a0
-        sub     s3, a0, s3           # duration = end - start. 
+.else
+        rdtime  a0
+.endif
+
+        sub     s3, a0, s3           # duration = end - start.
+
 .ifdef MAIXDUINO
         li      t0, 400              # the k210 runs at 400Mhz
 .else
-        li      t0, 1                # when running on Windows with clock() as the source
+        li      t0, 1000             # result is in nanoseconds
 .endif
+
         div     s3, s3, t0          
 
         # show the number of moves examined
