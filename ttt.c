@@ -18,22 +18,26 @@
 
 #define true 1
 #define false 0
-#define bool int
 
-#define ABPrune true
-#define WinLosePrune true
-#define SCORE_WIN 6
-#define SCORE_TIE 5
-#define SCORE_LOSE  4
-#define SCORE_MAX 9
-#define SCORE_MIN 2
-#define Iterations 100
+#define ABPrune true         /* alpha beta pruning */
+#define WinLosePrune true    /* stop early on win/lose */
+#define WinFunPointers true  /* use function pointers for each move position */
+#define ScoreWin 6
+#define ScoreTie 5
+#define ScoreLose  4
+#define ScoreMax 9
+#define ScoreMin 2
+#define DefaultIterations 100
 
 #define PieceX 1
 #define PieceO 2
 #define PieceBlank 0
 
+int g_Iterations = DefaultIterations;
+
 char g_board[ 9 ];
+
+#if WinFunPointers
 
 char pos0func()
 {
@@ -146,6 +150,8 @@ pfunc_t * winner_functions[9] =
     pos8func,
 };
 
+#else /* WinFunPointers */
+
 char LookForWinner()
 {
     char p = g_board[0];
@@ -187,6 +193,8 @@ char LookForWinner()
     return PieceBlank;
 } /*LookForWinner*/
 
+#endif /* WinFunPointers */
+
 long g_Moves = 0;
 
 int MinMax( alpha, beta, depth, move ) int alpha; int beta; int depth; int move;
@@ -194,43 +202,43 @@ int MinMax( alpha, beta, depth, move ) int alpha; int beta; int depth; int move;
     int value;
     char pieceMove;
     int p, score;
+#if WinFunPointers
     pfunc_t * pf;
+#endif
 
     g_Moves++;
 
     if ( depth >= 4 )
     {
-#if 0
-        /* 1 iteration takes 3,825 ms with LookForWinner on a 4.77Mhz 8088 */
-        /*                   1,729 ms on an emulated 8080 */                         
-        p = LookForWinner();
-#else
-        /* ...compared to 3,242 ms with function pointers */
-        /*                1,506 ms on an emulated 8080 */                         
+#if WinFunPointers
+        /* function pointers are faster on all platforms by 10-20% */
+
         pf = winner_functions[ move ];
         p = (*pf)();
+#else
+        p = LookForWinner();
 #endif
 
         if ( PieceBlank != p )
         {
             if ( PieceX == p )
-                return SCORE_WIN;
+                return ScoreWin;
 
-            return SCORE_LOSE;
+            return ScoreLose;
         }
 
         if ( 8 == depth )
-            return SCORE_TIE;
+            return ScoreTie;
     }
 
     if ( depth & 1 ) 
     {
-        value = SCORE_MIN;
+        value = ScoreMin;
         pieceMove = PieceX;
     }
     else
     {
-        value = SCORE_MAX;
+        value = ScoreMax;
         pieceMove = PieceO;
     }
 
@@ -244,37 +252,39 @@ int MinMax( alpha, beta, depth, move ) int alpha; int beta; int depth; int move;
 
             if ( depth & 1 ) 
             {
-                if ( WinLosePrune && SCORE_WIN == score )
-                    return SCORE_WIN;
+#if WinLosePrune   /* #if statements must be in column 0 for MS C 1.0 */
+                if ( ScoreWin == score )
+                    return ScoreWin;
+#endif
 
                 if ( score > value )
                     value = score;
 
-                if ( ABPrune )
-                {
-                    if ( value > alpha )
-                        alpha = value;
+#if ABPrune
+                if ( value > alpha )
+                    alpha = value;
 
-                    if ( alpha >= beta )
-                        return value;
-                }
+                if ( alpha >= beta )
+                    return value;
+#endif
             }
             else
             {
-                if ( WinLosePrune && SCORE_LOSE == score )
-                    return SCORE_LOSE;
+#if WinLosePrune
+                if ( ScoreLose == score )
+                    return ScoreLose;
+#endif
 
                 if ( score < value )
                     value = score;
 
-                if ( ABPrune )
-                {
-                    if ( value < beta )
-                        beta = value;
+#if ABPrune
+                if ( value < beta )
+                    beta = value;
 
-                    if ( beta <= alpha )
-                        return value;
-                }
+                if ( beta <= alpha )
+                    return value;
+#endif
             }
         }
     }
@@ -284,15 +294,15 @@ int MinMax( alpha, beta, depth, move ) int alpha; int beta; int depth; int move;
 
 int FindSolution( position ) int position;
 {
-    int times, i;
+    int i;
 
-    for ( i = 0; i < sizeof 9; i++ )
+    for ( i = 0; i < 9; i++ )
         g_board[ i ] = PieceBlank;
 
     g_board[ position ] = PieceX;
 
-    for ( times = 0; times < Iterations; times++ )
-        MinMax( SCORE_MIN, SCORE_MAX, 0, position );
+    for ( i = 0; i < g_Iterations; i++ )
+        MinMax( ScoreMin, ScoreMax, 0, position );
 
     return 0;
 } /*FindSolution*/
@@ -307,6 +317,7 @@ struct CPMTimeValue
 void print_time_now()
 {
     struct CPMTimeValue t;
+    t.h = t.m = t.s = t.l = 0;
 
     /* This CP/M BDOS call of 105 is only implemented in NTVCM -- it's not a standard CP/M 2.2 call */
 
@@ -337,16 +348,19 @@ int print_time_now() { return 0; }
 
 int main( argc, argv ) int argc; char * argv[];
 {
+    if ( 2 == argc )
+        sscanf( argv[ 1 ], "%d", &g_Iterations );  /* no atoi in MS C 1.0 */
+
     print_time_now();
 
     FindSolution( 0 );
     FindSolution( 1 );
     FindSolution( 4 );
 
-    printf( "move count: %ld\n", g_Moves );
-    printf( "for %d iterations\n", Iterations );
-
     print_time_now();
+
+    printf( "move count:      %ld\n", g_Moves );        /* 6493 * g_Iterations */
+    printf( "iteration count: %d\n", g_Iterations );
 
     return 0;
 } /*main*/
