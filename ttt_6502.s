@@ -1,6 +1,6 @@
 ;
 ; Apple 1 / 6502 implementation of proving you can't win at tic-tac-toe.
-; Tested on th  RetroTechLyfe Apple 1 clone computer and the POM1 Apple 1 emulator.
+; Tested on the RetroTechLyfe Apple 1 clone computer and the POM1 Apple 1 emulator.
 ; The moves variable should contain 6493 decimal / 0x195d hex if it's running correctly.
 ;
 ; Assemble with sbasm30306\sbasm.py ttt.s
@@ -16,9 +16,9 @@
     .tf      ttt.hex, AP1, 8
     .or      $1000
 
-echo         .eq     $ffef
-prbyte       .eq     $ffdc
-exitapp      .eq     $ff1f
+echo         .eq     $ffef          ; sends the character in a to the console
+prbyte       .eq     $ffdc          ; sends the value in a to the console in hex
+exitapp      .eq     $ff1f          ; ends the app / returns to the Apple 1 monitor
 
 ; The Apple 1 reserves locations 0x0024 through 0x002b in the 0 page for the monitor.
 ; Put all globals in 0 page where it's faster because why not?
@@ -37,8 +37,9 @@ board8       .eq     $3a
 moves        .eq     $3b            ; # of moves examined so far
 moveshigh    .eq     $3c
 iters        .eq     $3d            ; # of iterations in the top-level loop
-wpfun        .eq     $3e            ; temporary spot for the actual winner function pointer
-wpfunhigh    .eq     $3f                           
+itershigh    .eq     $3e           
+wpfun        .eq     $3f            ; temporary spot for the actual winner function pointer
+wpfunhigh    .eq     $40                           
 
 max_score    .eq     9              ; maximum score
 min_score    .eq     2              ; minimum score
@@ -48,18 +49,20 @@ lose_score   .eq     4              ; losing score
 XPIECE       .eq     1              ; X move piece
 OPIECE       .eq     2              ; Y move piece
 BLANKPIECE   .eq     0              ; empty piece
-ITERATIONS   .eq     10             ; loop this many times
+ITERATIONS   .eq     1000           ; loop this many times
 
 start
-    lda      #$0d                   ; every apple 1 app should go to the next line
+    lda      #$0d                   ; every apple 1 app should go to the next line on the console
     jsr      echo
     lda      #$0a
     jsr      echo
 
     lda      #ITERATIONS
     sta      iters
+    lda      /ITERATIONS
+    sta      itershigh
 
-    lda      #0
+    lda      #0                     ; clear the board
     sta      board
     sta      board1
     sta      board2
@@ -82,15 +85,21 @@ _again
     lda      #4                     ; first X move in position 4
     jsr      runmm
 
+    lda      iters                                              ; loop to solve it again ITERATIONS times
+    bne      _skip_iters_hi
+    dec      itershigh
+_skip_iters_hi
     dec      iters
-    bne      _again                 ; loop while not 0
+    bne      _again
+    lda      itershigh
+    bne      _again
 
 _done
     lda      movesHigh              ; display the # of moves examined
     jsr      prbyte
     lda      moves
     jsr      prbyte
-    lda      #36                    ; print a $ to indicate the app is done
+    lda      #36                    ; print a $ to indicate the app is done. useful for measuring runtime.
     jsr      echo
     jmp      exitapp
 
@@ -111,7 +120,7 @@ runmm
     lda      #min_score     
     pha                             ; arg4: alpha
 
-    jsr      minmax_min
+    jsr      minmax_min             ; next move is O, so find the minimum score
     
     pla                             ; alpha
     pla                             ; beta
@@ -171,8 +180,7 @@ _max_loop                           ; for i = 0; i < 9; i++. i is initialized at
     beq      _max_load_value_return
 
     tay                             ; remember index i in y
-    lda      board, y               ; load the current board position value
-    cmp      #0                     ; is the board position free?
+    lda      board, y               ; load the current board position value. this sets the Z flag
     bne      _max_next_i
 
     lda      #XPIECE
@@ -285,8 +293,7 @@ _min_loop                           ; for i = 0; i < 9; i++. i is initialized at
     beq      _min_load_value_return
 
     tay                             ; remember index i in y
-    lda      board, y               ; load the current board position value
-    cmp      #0                     ; is the board position free?
+    lda      board, y               ; load the current board position value. this sets the Z flag
     bne      _min_next_i
 
     lda      #OPIECE
@@ -364,7 +371,7 @@ call_winnerproc
 
     tya
     asl                             ; double the offset because each function pointer is 2 bytes
-    clc
+    clc                             ; clear the carry flag
     adc      #winnerprocs           ; add the low byte of the list of procs
     sta      wpfunptr               ; store the low byte of the pointer to the proc
     lda      #0
@@ -378,7 +385,7 @@ call_winnerproc
     sta      wpfun+1                ; write the high byte of the function pointer
 
     pla                             ; restore A
-    jmp      (wpfun)                ; call it. (wpfun) will return to the caller
+    jmp      (wpfun)                ; call it. (wpfun) will return to the caller of this function
 
 proc0
     cmp      board1
@@ -579,8 +586,4 @@ _proc8_yes
     rts
 
 winnerprocs .dw   proc0, proc1, proc2, proc3, proc4, proc5, proc6, proc7, proc8
-
-
-
-
 
