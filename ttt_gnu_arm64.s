@@ -446,10 +446,9 @@ _pos0func:
         b.eq     pos0_return
 
         ldrb     w9, [x21, #4]
+        and      w0, w0, w9
         ldrb     w1, [x21, #8]
-        cmp      w0, w9
-        ccmp     w0, w1, #0, eq
-        csel     w0, wzr, w0, ne
+        and      w0, w0, w1
 
 pos0_return:
         ret
@@ -466,10 +465,9 @@ _pos1func:
         b.eq     pos1_return
 
         ldrb     w9, [x21, #4]
+        and      w0, w0, w9
         ldrb     w1, [x21, #7]
-        cmp      w0, w9
-        ccmp     w0, w1, #0, eq
-        csel     w0, wzr, w0, ne
+        and      w0, w0, w1
 
 pos1_return:
         ret
@@ -492,10 +490,9 @@ _pos2func:
         b.eq     pos2_return
 
         ldrb     w9, [x21, #4]
+        and      w0, w0, w9
         ldrb     w1, [x21, #6]
-        cmp      w0, w9
-        ccmp     w0, w1, #0, eq
-        csel     w0, wzr, w0, ne
+        and      w0, w0, w1
 
 pos2_return:
         ret
@@ -512,10 +509,9 @@ _pos3func:
         b.eq     pos3_return
 
         ldrb     w9, [x21, #0]
+        and      w0, w0, w9
         ldrb     w1, [x21, #6]
-        cmp      w0, w9
-        ccmp     w0, w1, #0, eq
-        csel     w0, wzr, w0, ne
+        and      w0, w0, w1
 
 pos3_return:
         ret
@@ -544,10 +540,9 @@ _pos4func:
         b.eq     pos4_return
 
         ldrb     w9, [x21, #3]
+        and      w0, w0, w9
         ldrb     w1, [x21, #5]
-        cmp      w0, w9
-        ccmp     w0, w1, #0, eq
-        csel     w0, wzr, w0, ne
+        and      w0, w0, w1
 
 pos4_return:
         ret
@@ -564,10 +559,9 @@ _pos5func:
         b.eq     pos5_return
 
         ldrb     w9, [x21, #2]
+        and      w0, w0, w9
         ldrb     w1, [x21, #8]
-        cmp      w0, w9
-        ccmp     w0, w1, #0, eq
-        csel     w0, wzr, w0, ne
+        and      w0, w0, w1
 
 pos5_return:
         ret
@@ -590,10 +584,9 @@ _pos6func:
         b.eq     pos6_return
 
         ldrb     w9, [x21, #4]
+        and      w0, w0, w9
         ldrb     w1, [x21, #2]
-        cmp      w0, w9
-        ccmp     w0, w1, #0, eq
-        csel     w0, wzr, w0, ne
+        and      w0, w0, w1
 
 pos6_return:
         ret
@@ -610,10 +603,9 @@ _pos7func:
         b.eq     pos7_return
 
         ldrb     w9, [x21, #1]
+        and      w0, w0, w9
         ldrb     w1, [x21, #4]
-        cmp      w0, w9
-        ccmp     w0, w1, #0, eq
-        csel     w0, wzr, w0, ne
+        and      w0, w0, w1
 
 pos7_return:
         ret
@@ -636,10 +628,9 @@ _pos8func:
         b.eq     pos8_return
 
         ldrb     w9, [x21, #0]
+        and      w0, w0, w9
         ldrb     w1, [x21, #4]
-        cmp      w0, w9
-        ccmp     w0, w1, #0, eq
-        csel     w0, wzr, w0, ne
+        and      w0, w0, w1
 
 pos8_return:
         ret

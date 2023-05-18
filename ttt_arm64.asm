@@ -543,7 +543,10 @@ _pos0func PROC
         ldrb     w9, [x21, #1]
         ldrb     w1, [x21, #2]
         cmp      w0, w9
-        ccmp     w0, w1, #0, eq
+        ccmp     w0, w1, #0, eq ; conditional compare. sets condition flags to result
+                                ; of comparison if condition flag (eq) is true or an
+                                ; immediate (0) otherise.
+                                ; if w1=w1 eq=true else eq=false
         b.eq     pos0_return
 
         ldrb     w9, [x21, #3]
@@ -553,10 +556,9 @@ _pos0func PROC
         b.eq     pos0_return
 
         ldrb     w9, [x21, #4]
+        and      w0, w0, w9
         ldrb     w1, [x21, #8]
-        cmp      w0, w9
-        ccmp     w0, w1, #0, eq
-        csel     w0, wzr, w0, ne
+        and      w0, w0, w1
 
 pos0_return
         ret
@@ -571,10 +573,9 @@ _pos1func PROC
         b.eq     pos1_return
 
         ldrb     w9, [x21, #4]
+        and      w0, w0, w9
         ldrb     w1, [x21, #7]
-        cmp      w0, w9
-        ccmp     w0, w1, #0, eq
-        csel     w0, wzr, w0, ne
+        and      w0, w0, w1
 
 pos1_return
         ret
@@ -595,10 +596,9 @@ _pos2func PROC
         b.eq     pos2_return
 
         ldrb     w9, [x21, #4]
+        and      w0, w0, w9
         ldrb     w1, [x21, #6]
-        cmp      w0, w9
-        ccmp     w0, w1, #0, eq
-        csel     w0, wzr, w0, ne
+        and      w0, w0, w1
 
 pos2_return
         ret
@@ -613,10 +613,9 @@ _pos3func PROC
         b.eq     pos3_return
 
         ldrb     w9, [x21, #0]
+        and      w0, w0, w9
         ldrb     w1, [x21, #6]
-        cmp      w0, w9
-        ccmp     w0, w1, #0, eq
-        csel     w0, wzr, w0, ne
+        and      w0, w0, w1
 
 pos3_return
         ret
@@ -643,10 +642,9 @@ _pos4func PROC
         b.eq     pos4_return
 
         ldrb     w9, [x21, #3]
+        and      w0, w0, w9
         ldrb     w1, [x21, #5]
-        cmp      w0, w9
-        ccmp     w0, w1, #0, eq
-        csel     w0, wzr, w0, ne
+        and      w0, w0, w1
 
 pos4_return
         ret
@@ -661,10 +659,9 @@ _pos5func PROC
         b.eq     pos5_return
 
         ldrb     w9, [x21, #2]
+        and      w0, w0, w9
         ldrb     w1, [x21, #8]
-        cmp      w0, w9
-        ccmp     w0, w1, #0, eq
-        csel     w0, wzr, w0, ne
+        and      w0, w0, w1
 
 pos5_return
         ret
@@ -686,9 +683,8 @@ _pos6func PROC
 
         ldrb     w9, [x21, #4]
         ldrb     w1, [x21, #2]
-        cmp      w0, w9
-        ccmp     w0, w1, #0, eq
-        csel     w0, wzr, w0, ne
+        and      w0, w0, w9
+        and      w0, w0, w1
 
 pos6_return
         ret
@@ -703,33 +699,13 @@ _pos7func PROC
         b.eq     pos7_return
 
         ldrb     w9, [x21, #1]
+        and      w0, w0, w9
         ldrb     w1, [x21, #4]
-        cmp      w0, w9
-        ccmp     w0, w1, #0, eq
-        csel     w0, wzr, w0, ne
+        and      w0, w0, w1
 
 pos7_return
         ret
         ENDP
-
-;  align 16
-;_pos7func PROC
-;        mov      w1, w0
-;        ldrb     w9, [x21, #6]
-;        and      w0, w0, w9
-;        ldrb     w9, [x21, #8]
-;        ands     w0, w0, w9
-;        b.ne     pos7_yes
-;
-;        mov      w0, w1
-;        ldrb     w9, [x21, #1]
-;        and      w0, w0, w9
-;        ldrb     w9, [x21, #4]
-;        and      w0, w0, w9
-;
-;pos7_yes
-;        ret
-;        ENDP
 
   align 16
 _pos8func PROC
@@ -746,10 +722,9 @@ _pos8func PROC
         b.eq     pos8_return
 
         ldrb     w9, [x21, #0]
+        and      w0, w0, w9
         ldrb     w1, [x21, #4]
-        cmp      w0, w9
-        ccmp     w0, w1, #0, eq
-        csel     w0, wzr, w0, ne
+        and      w0, w0, w1
 
 pos8_return
         ret
