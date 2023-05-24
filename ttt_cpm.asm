@@ -19,17 +19,16 @@ BDOS EQU  5
 WCONF EQU 2
 PRSTR EQU 9
 
-USEWINPROCS equ     1   ; optimization 1 means use function pointers or 0 means use winner procedure
-
-ITERATIONS  equ    10   ; # of times to run (max 32767)
-XSCO        equ     9   ; maximum score
-NSCO        equ     2   ; minimum score
-WSCO        equ     6   ; winning score
-TSCO        equ     5   ; tie score
-LSCO        equ     4   ; losing score
-XPIECE      equ     1   ; X move piece
-OPIECE      equ     2   ; Y move piece
-BLANKPIECE  equ     0   ; empty move piece
+USEWINPROCS equ     1     ; optimization 1 means use function pointers or 0 means use winner procedure
+ITERATIONS  equ     1000  ; # of times to run (max 32767)
+XSCO        equ     9     ; maximum score
+NSCO        equ     2     ; minimum score
+WSCO        equ     6     ; winning score
+TSCO        equ     5     ; tie score
+LSCO        equ     4     ; losing score
+XPIECE      equ     1     ; X move piece
+OPIECE      equ     2     ; Y move piece
+BLANKPIECE  equ     0     ; empty move piece
 
 org     100H
   AGAIN:
@@ -38,7 +37,6 @@ org     100H
         mvi     a, 0
         sta     V
         sta     I
-        sta     SC
         sta     DEPTH
         sta     ALPHA
         sta     BETA
@@ -63,7 +61,16 @@ org     100H
         cmp     l
         jnz     AGAIN
 
+        lxi     h, STRMOVES
+        call    DISPLY
         lhld    MOVES
+        call    PUTHL
+        lxi     h, CRLF
+        call    DISPLY
+
+        lxi     h, STRITERS
+        call    DISPLY
+        lxi     h, ITERATIONS
         call    PUTHL
         lxi     h, CRLF
         call    DISPLY
@@ -193,7 +200,6 @@ ENDIF
         ; A = Move position, D = alpha, E = beta, C = depth  ====> A = return score
 
         call    MinMaxMinimize
-        sta     SC                  ; save the score
 
         pop     h                   ; restore state after recursion
         shld    V                   ; restore V and DEPTH
@@ -206,11 +212,9 @@ ENDIF
         pop     h
         mvi     m, BLANKPIECE       ; restore the 0 in the board where the turn was placed
 
-        lda     SC                  ; maximize case
         cpi     WSCO                ; SC - WSCO. If zero, can't do better.
         rz
 
-        lda     SC                  ; check if we should update V with SC
         mov     b, a
         lda     V
         cmp     b                   ; V - SC
@@ -314,7 +318,6 @@ ENDIF
         ; A = Move position, D = alpha, E = beta, C = depth  ====> A = return score
 
         call    MinMaxMaximize
-        sta     SC                  ; save the score
 
         pop     h                   ; restore state after recursion
         shld    V                   ; restore V and DEPTH
@@ -327,13 +330,14 @@ ENDIF
         pop     h
         mvi     m, BLANKPIECE       ; restore the 0 in the board where the turn was placed
 
-        lda     SC
         cpi     LSCO                ; SC - LSCO. If zero, can't do worse.
         rz
 
+        mov     c, a
         lda     V                   ; check if we should update V with SC
         mov     b, a
-        lda     SC
+        mov     a, c
+        
         cmp     b                   ; SC - V
         jp      MIN$MMNOMIN
         sta     V
@@ -773,20 +777,21 @@ WINPROCS: dw    proc0, proc1, proc2, proc3, proc4, proc5, proc6, proc7, proc8
 
 ENDIF
                                     
-NEGF:   db      0                   ; Space for negative flag
-        db      '-00000'            
-NUM:    db      '$'                 ; Space for number. cp/m strings end with a dollar sign
-CRLF:   db      10,13,0
-BOARD:  db      0,0,0,0,0,0,0,0,0
-SC:     db      0                   ; score in MinMax
-I:      db      0                   ; Index in 0..8 loop in MinMax
-UNUSED: db      0                   ; unused variable. must be after I
-V:      db      0                   ; value in minmax
-DEPTH:  db      0                   ; current depth of recursion. must be after V
-ALPHA:  db      0                   ; Alpha in a/b pruning
-BETA:   db      0                   ; Beta in a/b pruning. must be after ALPHA
-MOVES:  dw      0                   ; Count of moves examined (to validate the app)
-ITERS:  dw      0                   ; iterations of running the app
+NEGF:     db      0                   ; Space for negative flag
+          db      '-00000'            
+NUM:      db      '$'                 ; Space for number. cp/m strings end with a dollar sign
+CRLF:     db      10,13,0
+STRITERS: db     'iterations: ', 0
+STRMOVES: db     'moves: ', 0
+BOARD:    db      0,0,0,0,0,0,0,0,0
+I:        db      0                   ; Index in 0..8 loop in MinMax
+UNUSED:   db      0                   ; unused variable. must be after I
+V:        db      0                   ; value in minmax
+DEPTH:    db      0                   ; current depth of recursion. must be after V
+ALPHA:    db      0                   ; Alpha in a/b pruning
+BETA:     db      0                   ; Beta in a/b pruning. must be after ALPHA
+MOVES:    dw      0                   ; Count of moves examined (to validate the app)
+ITERS:    dw      0                   ; iterations of running the app
 
 end
 
