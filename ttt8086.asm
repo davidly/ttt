@@ -7,7 +7,7 @@ dos_write_char     equ   2h
 dos_get_systemtime equ   1ah
 dos_exit           equ   4ch
 
-iterations  equ     1000   ; # of times to run (max 32767)
+iterations  equ     10   ; # of times to run (max 32767)
 max_score   equ     9    ; maximum score
 min_score   equ     2    ; minimum score
 win_score   equ     6    ; winning score
@@ -30,8 +30,6 @@ i_offset       equ  2
 
 alpha_offset   equ   8
 beta_offset    equ  10
-depth_offset   equ  12
-move_offset    equ  14
 
 CODE SEGMENT PUBLIC 'CODE'
 ORG 100h
@@ -41,8 +39,10 @@ startup PROC NEAR
         mov      WORD PTR ds: [ starttime ], dx
         mov      WORD PTR ds: [ starttime + 2 ], cx
 
+        lea      si, ds: [ offset board ]  ; global board pointer
+
 again:
-        mov      WORD PTR ds: [moves], 0
+        xor      bx, bx     ; zero the global move count
 
         ; run for the 3 unique first moves
 
@@ -57,6 +57,8 @@ again:
         cmp      ds: [ iters ], iterations
         jne      again
 
+        push     bx
+
         call     printelap
         mov      dx, offset secondsmsg
         call     printstring
@@ -64,7 +66,7 @@ again:
         mov      dx, offset movesmsg
         call     printstring
 
-        mov      ax, ds: [MOVES]
+        pop      ax
         call     printint
         call     printcrlf
 
@@ -84,186 +86,92 @@ runmm PROC NEAR
         ; make the first move
         mov       di, ax
         push      di
-        lea       si, ds: [ offset board + di ]
-        mov       BYTE PTR [si], x_piece
+        mov       BYTE PTR [ offset board + di ], x_piece
 
-        push      di                ; move location
-        xor       ax, ax
-        push      ax                ; depth
+        ; alpha and beta passed on the stack
+        ; current move in di
+        ; current depth in cx
+        ; global move count in bx
+        ; global board pointer in si
+
+        xor       cx, cx            ; depth in cx
         mov       ax, max_score     ; pushing constants didn't start until the 80186
         push      ax                ; beta
         mov       ax, min_score
         push      ax                ; alpha
 
         call      minmax_min
-        add       sp, 8
+        add       sp, 4
 
         ; restore the board at the first move position
 
         pop       di
-        lea       si, ds: [ offset board + di ]
-        mov       BYTE PTR ds: [si], blank_piece
+        mov       BYTE PTR ds: [ offset board + di ], blank_piece
 
         ret
 runmm ENDP
 
-debugit PROC NEAR
-        push     bp
-        sub      sp, 6              ; allocate space for local variables
-        mov      bp, sp             ; set bp to the stack location
-        push     ax
-        push     bx
-        push     cx
-        push     dx
-        push     di
-        push     si
-
-        mov      ax, [ bp + alpha_offset ]
-        call     printint
-        call     printcommasp
-
-        mov      ax, [ bp + beta_offset ]
-        call     printint
-        call     printcommasp
-
-        mov      ax, [ bp + depth_offset ]
-        call     printint
-        call     printcommasp
-
-        mov      ax, [ bp + move_offset ]
-        call     printint
-        call     printcommasp
-
-        xor      ax, ax
-        lea      si, ds: [ offset board ]
-        mov      al, ds: [ si + 0 ]
-        call     printint
-
-        xor      ax, ax
-        lea      si, ds: [ offset board ]
-        mov      al, ds: [ si + 1 ]
-        call     printint
-
-        xor      ax, ax
-        lea      si, ds: [ offset board ]
-        mov      al, ds: [ si + 2 ]
-        call     printint
-
-        xor      ax, ax
-        lea      si, ds: [ offset board ]
-        mov      al, ds: [ si + 3 ]
-        call     printint
-
-        xor      ax, ax
-        lea      si, ds: [ offset board ]
-        mov      al, ds: [ si + 4 ]
-        call     printint
-
-        xor      ax, ax
-        lea      si, ds: [ offset board ]
-        mov      al, ds: [ si + 5 ]
-        call     printint
-
-        xor      ax, ax
-        lea      si, ds: [ offset board ]
-        mov      al, ds: [ si + 6 ]
-        call     printint
-
-        xor      ax, ax
-        lea      si, ds: [ offset board ]
-        mov      al, ds: [ si + 7 ]
-        call     printint
-
-        xor      ax, ax
-        lea      si, ds: [ offset board ]
-        mov      al, ds: [ si + 8 ]
-        call     printint
-
-        call     printcrlf
-
-        pop      si
-        pop      di
-        pop      dx
-        pop      cx
-        pop      bx
-        pop      ax
-        add      sp, 6              ; cleanup stack for locals
-        pop      bp
-        ret
-debugit ENDP
-
 minmax_max PROC NEAR
         push     bp
-        sub      sp, 4              ; allocate space for local variables
+        sub      sp, 4              ; allocate space for local variables i and value
         mov      bp, sp             ; set bp to the stack location
 
-;        push     [ bp + move_offset ]
-;        push     [ bp + depth_offset ]
-;        push     [ bp + beta_offset ]
-;        push     [ bp + alpha_offset ]
-;        call     debugit
-;        add      sp, 8
+        inc      bx                 ; increment global move count
 
-        inc      WORD PTR ds: [ moves ]
+        cmp      cx, 4
+        jl       SHORT _max_no_winner_check
 
-        cmp      WORD PTR [ bp + depth_offset ], 4
-        jl       _max_no_winner_check
-
-        lea      si, ds: [offset board]
-        mov      di, [ bp + move_offset ]
         shl      di, 1
         mov      ax, o_piece
         call     ds: WORD PTR [ offset winprocs + di ]
 
         cmp      al, o_piece
         mov      ax, lose_score
-        je       _max_just_return_ax
+        je       SHORT _max_just_return_ax
 
   _max_no_winner_check:
         mov      WORD PTR [ bp + value_offset ], min_score
-        mov      WORD PTR [ bp + i_offset ], -1
+        mov      di, -1
 
   _max_loop:
-        inc      WORD PTR [ bp + i_offset ]
-        mov      si, [ bp + i_offset ]
-        cmp      si, 9
-        je       _max_load_value_return
+        inc      di
+        cmp      di, 9
+        je       SHORT _max_load_value_return
 
-        cmp      BYTE PTR ds: [ offset board + si ], 0
-        jne      _max_loop
+        mov      WORD PTR [ bp + i_offset ], di
+        cmp      BYTE PTR ds: [ offset board + di ], 0
+        jne      SHORT _max_loop
 
-        mov      BYTE PTR ds: [ offset board + si ], x_piece
+        mov      BYTE PTR ds: [ offset board + di ], x_piece
 
-        push     si
-        mov      ax, [ bp + depth_offset ]
-        inc      ax
-        push     ax
+        inc      cx
         push     [ bp + beta_offset ]
         push     [ bp + alpha_offset ]
 
         call     minmax_min
-        add      sp, 8              ; cleanup stack for arguments
+        add      sp, 4              ; cleanup stack for arguments
+        dec      cx
 
-        mov      si, [ bp + i_offset ]
-        mov      BYTE PTR ds: [ offset board + si ], 0
+        mov      di, [ bp + i_offset ]
+        mov      BYTE PTR ds: [ offset board + di ], 0
 
         cmp      ax, win_score
-        je       _max_just_return_ax
+        je       SHORT _max_just_return_ax
 
         cmp      ax, [ bp + value_offset ]
-        jle      _max_ab_prune
+        jle      SHORT _max_ab_prune
         mov      [ bp + value_offset ], ax
 
   _max_ab_prune:
         mov      ax, [ bp + value_offset ]
         cmp      ax, [ bp + alpha_offset ]
-        jle      _max_check_beta
+        jle      SHORT _max_check_beta
         mov      [ bp + alpha_offset ], ax
 
   _max_check_beta:
         mov      ax, [ bp + alpha_offset ]
         cmp      ax, [ bp + beta_offset ]
-        jl       _max_loop
+        jl       SHORT _max_loop
 
   _max_load_value_return:
         mov      ax, [ bp + value_offset ]
@@ -276,73 +184,69 @@ minmax_max ENDP
 
 minmax_min PROC NEAR
         push     bp
-        sub      sp, 4              ; allocate space for local variables
+        sub      sp, 4              ; allocate space for local variables i and value
         mov      bp, sp             ; set bp to the stack location
 
-        inc      WORD PTR ds: [ moves ]
+        inc      bx                 ; increment global move count
 
-        cmp      WORD PTR [ bp + depth_offset ], 4
-        jl       _min_no_winner_check
+        cmp      cx, 4
+        jl       SHORT _min_no_winner_check
 
-        lea      si, ds: [offset board]
-        mov      di, [ bp + move_offset ]
         shl      di, 1
         mov      ax, x_piece
         call     ds: WORD PTR [ offset winprocs + di ]
 
         cmp      al, x_piece
         mov      ax, win_score
-        je       _min_just_return_ax
+        je       SHORT _min_just_return_ax
 
-        cmp      WORD PTR [ bp + depth_offset ], 8
+        cmp      cx, 8
         mov      ax, tie_score
-        je       _min_just_return_ax
+        je       SHORT _min_just_return_ax
 
   _min_no_winner_check:
         mov      WORD PTR [ bp + value_offset ], max_score
-        mov      WORD PTR [ bp + i_offset ], -1
+        mov      di, -1
 
   _min_loop:
-        inc      WORD PTR [ bp + i_offset ]
-        mov      si, [ bp + i_offset ]
-        cmp      si, 9
-        je       _min_load_value_return
+        inc      di
+        cmp      di, 9
+        je       SHORT _min_load_value_return
 
-        cmp      BYTE PTR ds: [ offset board + si ], 0
-        jne      _min_loop
+        mov      WORD PTR [ bp + i_offset ], di
+        cmp      BYTE PTR ds: [ offset board + di ], 0
+        jne      SHORT _min_loop
 
-        mov      BYTE PTR ds: [ offset board + si ], o_piece
+        mov      BYTE PTR ds: [ offset board + di ], o_piece
 
-        push     si
-        mov      ax, [ bp + depth_offset ]
-        inc      ax
-        push     ax
+        inc      cx
         push     [ bp + beta_offset ]
         push     [ bp + alpha_offset ]
 
         call     minmax_max
-        add      sp, 8              ; cleanup stack for arguments
+        add      sp, 4              ; cleanup stack for arguments
+        dec      cx
 
-        mov      si, [ bp + i_offset ]
-        mov      BYTE PTR ds: [ offset board + si ], 0
+        mov      di, [ bp + i_offset ]
+        mov      BYTE PTR ds: [ offset board + di ], 0
 
         cmp      ax, lose_score
-        je      _min_just_return_ax
+        je       SHORT _min_just_return_ax
 
         cmp      ax, [ bp + value_offset ]
-        jge      _min_ab_prune
+        jge      SHORT _min_ab_prune
         mov      [ bp + value_offset ], ax
 
   _min_ab_prune:
         mov      ax, [ bp + value_offset ]
         cmp      ax, [ bp + beta_offset ]
-        jge      _min_check_alpha
+        jge      SHORT _min_check_alpha
         mov      [ bp + beta_offset ], ax
 
   _min_check_alpha:
         mov      ax, [ bp + beta_offset ]
         cmp      ax, [ bp + alpha_offset ]
-        jg       _min_loop
+        jg       SHORT _min_loop
 
   _min_load_value_return:
         mov      ax, [ bp + value_offset ]
@@ -357,7 +261,6 @@ minmax_min ENDP
 
 winner PROC NEAR
         xor      ax, ax
-        lea      si, ds: [offset board]
         mov      al, [ si ]
         cmp      al, 0
         je       _win_check_3
@@ -859,7 +762,6 @@ commaspmsg    db      ', ',0
 board         db      0,0,0,0,0,0,0,0,0
 
 align 2
-moves      dw      0        ; Count of moves examined 
 iters      dw      0        ; iterations of running the app
 
 align 4
