@@ -39,7 +39,10 @@ moveshigh    .eq     $3c
 iters        .eq     $3d            ; # of iterations in the top-level loop
 itershigh    .eq     $3e           
 wpfun        .eq     $3f            ; temporary spot for the actual winner function pointer
-wpfunhigh    .eq     $40                           
+wpfunhigh    .eq     $40
+arg_move     .eq     $41            ; argument to min/max, but no need to be on stack
+arg_depth    .eq     $42            ; same
+local_score  .eq     $43            ; just a place to temporarily stash the score
 
 max_score    .eq     9              ; maximum score
 min_score    .eq     2              ; minimum score
@@ -112,9 +115,9 @@ runmm
     sta      board, x               ; store the move on the board
 
     txa                             ; restore move location to a
-    pha                             ; arg1: the move location 0-8
-    lda      #0             
-    pha                             ; arg2: depth
+    sta      arg_move               ; arg1: move
+    lda      #0
+    sta      arg_depth              ; arg2: depth
     lda      #max_score     
     pha                             ; arg3: beta
     lda      #min_score     
@@ -124,8 +127,6 @@ runmm
     
     pla                             ; alpha
     pla                             ; beta
-    pla                             ; depth
-    pla                             ; move
 
     pla                             ; restore move location
     tax                             ; move location in x
@@ -134,87 +135,80 @@ runmm
 
     rts
 
-minmax_arg_move     .eq  $0109
-minmax_arg_depth    .eq  $0108
-minmax_arg_beta     .eq  $0107
-minmax_arg_alpha    .eq  $0106
-; gap of 2 for return address   ( 4 and 5 )
-minmax_local_i      .eq  $0103
-minmax_local_score  .eq  $0102
+minmax_arg_beta     .eq  $0106
+minmax_arg_alpha    .eq  $0105
+; gap of 2 for return address   ( 3 and 4 )
+minmax_local_i      .eq  $0102
 minmax_local_value  .eq  $0101
 ; return score in a
 
+;
+; Max
+;
+
 minmax_max
-    lda      #0                     ; initialize local variables to 0
-    pha                             ; allocate space for I
-    pha                             ; allocate space for Score
-    pha                             ; allocate space for Value
-
-    tsx                             ; put the current stack pointer in X to reference variables
-
     inc      moves
     bne      _max_skip_moves_high
     inc      moveshigh
 _max_skip_moves_high
 
-    lda      minmax_arg_depth, x
+    lda      arg_depth
     cmp      #4                     ; can't be a winner if < 4 moves so far
     bmi      _max_no_winner_check
 
-    ldy      minmax_arg_move, x     ; y has the proc to call 0..8
-    lda      #OPIECE                ; a has the most recent piece to move
+    lda      arg_move               ; a has the proc to call 0..8
+    ldx      #OPIECE                ; x has the most recent piece to move
     jsr      call_winnerproc
 
-    cmp      #OPIECE                ; if O won, return win
+    cmp      #OPIECE                ; if O won, return loss
     bne      _max_no_winner_check
-    ldy      #lose_score            ; return a losing score since O won.
-    jmp      _max_load_y_return
+    lda      #lose_score            ; return a losing score since O won.
+    rts
 
 _max_no_winner_check
+    lda      #$ff                   ; initialize local variables to 0xff
+    pha                             ; allocate space for I
+    pha                             ; allocate space for Value
+    tsx                             ; put the current stack pointer in X to reference variables
+
     lda      #min_score             ; maximize for X's move
     sta      minmax_local_value, x
 
 _max_loop                           ; for i = 0; i < 9; i++. i is initialized at function entry.
+    inc      minmax_local_i, x      ; increment i
     lda      minmax_local_i, x
     cmp      #9
     beq      _max_load_value_return
 
     tay                             ; remember index i in y
     lda      board, y               ; load the current board position value. this sets the Z flag
-    bne      _max_next_i
+    bne      _max_loop
 
     lda      #XPIECE
     sta      board, y               ; update the board with the move
 
-    tya
-    pha                             ; arg1: the move
-    lda      minmax_arg_depth, x
-    clc
-    adc      #1
-    pha                             ; arg2: the depth ( current + 1 )
+    sty      arg_move
+    inc      arg_depth              ; increment for recursion
     lda      minmax_arg_beta, x
     pha                             ; arg3: beta
     lda      minmax_arg_alpha, x
     pha                             ; arg4: alpha
 
     jsr      minmax_min             ; recurse
-    tay                             ; save result in y
-    
+    sta      local_score            ; save the score
+
+    dec      arg_depth              ; restore to pre-recursion
     pla                             ; alpha
     pla                             ; beta
-    pla                             ; depth
-    pla                             ; move
 
     tsx                             ; restore x to the stack pointer location
-    tya                             ; restore minmax result to a
-    sta      minmax_local_score, x  ; update score with the result
 
     lda      minmax_local_i, x      ; load I
     tay                             ; save I in y for indexing
     lda      #BLANKPIECE
     sta      board, y               ; restore blank move to the board
 
-    lda      minmax_local_score, x  ; load the score
+    lda      local_score            ; load the score
     cmp      #win_score
     beq      _max_return_a          ; can't do better than winning
 
@@ -234,100 +228,91 @@ _max_check_beta
     lda      minmax_arg_alpha, x    ; load alpha
     cmp      minmax_arg_beta, x     ; compare alpha with beta
     bpl      _max_load_value_return ; beta pruning. bpl is >=
-
-_max_next_i
-    inc      minmax_local_i, x      ; increment i
     jmp      _max_loop              ; loop for the next i
     
-_max_load_value_return
-    lda      minmax_local_value, x  ; load value for return
 _max_return_a
-    tay                             ; save a in y because a is trashed by cleaning the stack
-_max_load_y_return
-    pla                             ; deallocate i
-    pla                             ; deallocate score
+    sta      minmax_local_value, x
+_max_load_value_return
+    ldy      minmax_local_value, x  ; load value for return
     pla                             ; deallocate value
+    pla                             ; deallocate i
     tya                             ; score is in y
     rts                             ; return to sender
 
+;
+; Min
+;
+
 minmax_min
-    lda      #0                     ; initialize local variables to 0
-    pha                             ; allocate space for I
-    pha                             ; allocate space for Score
-    pha                             ; allocate space for Value
-
-    tsx                             ; put the current stack pointer in X to reference variables
-
     inc      moves
     bne      _min_skip_moves_high
     inc      moveshigh
 _min_skip_moves_high
 
-    lda      minmax_arg_depth, x
+    lda      arg_depth
     cmp      #4                     ; can't be a winner if < 4 moves so far
     bmi      _min_no_winner_check
 
-    ldy      minmax_arg_move, x     ; y has the proc to call 0..8
-    lda      #XPIECE                ; a has the most recent piece to move
+    lda      arg_move               ; y has the proc to call 0..8
+    ldx      #XPIECE                ; a has the most recent piece to move
     jsr      call_winnerproc
 
     cmp      #XPIECE                ; if X won, return win
     bne      _min_no_winner
-    ldy      #win_score
-    jmp      _min_load_y_return
+    lda      #win_score
+    rts
 
 _min_no_winner
-    lda      minmax_arg_depth, x
+    lda      arg_depth
     cmp      #8                     ; the board is full
     bne      _min_no_winner_check   ; can't beq to return because it's too far away
-    ldy      #tie_score             ; potentially wasted load
-    jmp      _min_load_y_return     ; cat's game
+    lda      #tie_score             ; cat's game
+    rts
 
 _min_no_winner_check
+    lda      #$ff                   ; initialize local variables to ff
+    pha                             ; allocate space for I
+    pha                             ; allocate space for Value
+    tsx                             ; put the current stack pointer in X to reference variables
+
     lda      #max_score             ; depth is even, so minimize for O's move
     sta      minmax_local_value, x
 
 _min_loop                           ; for i = 0; i < 9; i++. i is initialized at function entry.
+    inc      minmax_local_i, x      ; increment i
     lda      minmax_local_i, x
     cmp      #9
     beq      _min_load_value_return
 
     tay                             ; remember index i in y
     lda      board, y               ; load the current board position value. this sets the Z flag
-    bne      _min_next_i
+    bne      _min_loop
 
     lda      #OPIECE
     sta      board, y               ; update the board with the move
 
-    tya
-    pha                             ; arg1: the move
-    lda      minmax_arg_depth, x
-    clc
-    adc      #1
-    pha                             ; arg2: the depth ( current + 1 )
+    sty      arg_move
+    inc      arg_depth              ; increment for recursion
     lda      minmax_arg_beta, x
     pha                             ; arg3: beta
     lda      minmax_arg_alpha, x
     pha                             ; arg4: alpha
 
     jsr      minmax_max             ; recurse
-    tay                             ; save result in y
-    
+    sta      local_score            ; save the score
+
+    dec      arg_depth
     pla                             ; alpha
     pla                             ; beta
-    pla                             ; depth
-    pla                             ; move
 
     tsx                             ; restore x to the stack pointer location
-    tya                             ; restore minmax result to a
-    sta      minmax_local_score, x  ; update score with the result
 
     lda      minmax_local_i, x      ; load I
     tay                             ; save I in y for indexing
     lda      #BLANKPIECE
     sta      board, y               ; restore blank move to the board
 
-    lda      minmax_local_score, x  ; load the score
+    lda      local_score            ; load the score
     cmp      #lose_score
     beq      _min_return_a          ; can't do worse than a losing score
 
@@ -345,31 +330,23 @@ _min_check_alpha
     lda      minmax_arg_alpha, x    ; load alpha
     cmp      minmax_arg_beta, x     ; compare alpha with beta
     bpl      _min_load_value_return ; alpha pruning. bpl is >=
-
-_min_next_i
-    inc      minmax_local_i, x      ; increment i
     jmp      _min_loop              ; loop for the next i
     
-_min_load_value_return
-    lda      minmax_local_value, x  ; load value for return
 _min_return_a
-    tay                             ; save a in y because a is trashed by cleaning the stack
-_min_load_y_return
-    pla                             ; deallocate i
-    pla                             ; deallocate score
+    sta      minmax_local_value, x
+_min_load_value_return
+    ldy      minmax_local_value, x  ; load value for return
     pla                             ; deallocate value
+    pla                             ; deallocate i
     tya                             ; score is in y
     rts                             ; return to sender
 
 call_winnerproc
-    ; the proc to call is in y 0..8
-    ; the piece last moved is in a -- XPIECE or OPIECE
-
-    pha                             ; save A
+    ; A: the proc to call 0..8
+    ; X: the piece last moved -- XPIECE or OPIECE
 
     ; store the proc to call in wpfun and wpfunhigh: proc0..proc8
 
-    tya
     asl                             ; double the offset because each function pointer is 2 bytes
     clc                             ; clear the carry flag
     adc      #winnerprocs           ; add the low byte of the list of procs
@@ -377,6 +354,7 @@ call_winnerproc
     lda      #0
     adc      /winnerprocs           ; load the high byte with a carry if needed from the low bytes
     sta      wpfunptr+1             ; store the high byte of the pointer to the proc
+
     ldy      #0
     lda      (wpfunptr), y          ; read the low byte of the function pointer
     sta      wpfun                  ; write the low byte of the function pointer
@@ -384,7 +362,7 @@ call_winnerproc
     lda      (wpfunptr), y          ; read the high byte of the function pointer
     sta      wpfun+1                ; write the high byte of the function pointer
 
-    pla                             ; restore A
+    txa                             ; put the piece to move in a xpiece or opiece
     jmp      (wpfun)                ; call it. (wpfun) will return to the caller of this function
 
 proc0
