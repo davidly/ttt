@@ -7,7 +7,7 @@ dos_write_char     equ   2h
 dos_get_systemtime equ   1ah
 dos_exit           equ   4ch
 
-iterations  equ     10   ; # of times to run (max 32767)
+iterations  equ     10000   ; # of times to run (max 32767)
 max_score   equ     9    ; maximum score
 min_score   equ     2    ; minimum score
 win_score   equ     6    ; winning score
@@ -134,14 +134,14 @@ minmax_max PROC NEAR
         mov      di, -1
 
   _max_loop:
-        inc      di
-        cmp      di, 9
+        cmp      di, 8
         je       SHORT _max_load_value_return
+        inc      di
 
-        mov      WORD PTR [ bp + i_offset ], di
         cmp      BYTE PTR ds: [ offset board + di ], 0
         jne      SHORT _max_loop
 
+        mov      WORD PTR [ bp + i_offset ], di
         mov      BYTE PTR ds: [ offset board + di ], x_piece
 
         inc      cx
@@ -209,14 +209,14 @@ minmax_min PROC NEAR
         mov      di, -1
 
   _min_loop:
-        inc      di
-        cmp      di, 9
+        cmp      di, 8
         je       SHORT _min_load_value_return
+        inc      di
 
-        mov      WORD PTR [ bp + i_offset ], di
         cmp      BYTE PTR ds: [ offset board + di ], 0
         jne      SHORT _min_loop
 
+        mov      WORD PTR [ bp + i_offset ], di
         mov      BYTE PTR ds: [ offset board + di ], o_piece
 
         inc      cx
