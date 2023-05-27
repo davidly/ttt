@@ -14,20 +14,17 @@ TSCO        equ        5   ; tie score
 LSCO        equ        4   ; losing score
 XPIECE      equ        1   ; X move piece
 OPIECE      equ        2   ; Y move piece
-BLANKPIECE  equ        0   ; empty piece
-MINVALS     equ   00902h   ; xsco and opiece when minimizing
-MAXVALS     equ   00201h   ; nsco and xpiece when maximizing
+BLANKPIECE  equ        0   ; empty move piece
 
         aseg
         org     0c738h  ; 51000 decimal
- 
+        
 AGAIN:
         lxi     h, 0
         shld    MOVES               ; set to 0 each iteration to avoid overflow
         mvi     a, 0
         sta     V
         sta     I
-        sta     SC
         sta     DEPTH
         sta     ALPHA
         sta     BETA
@@ -61,7 +58,6 @@ AGAIN:
 
 RUNMM:                              ; Run the MINMAX function for a given board
                                     ; D = alpha, E = beta, C = depth
-        mov     d, a
         mvi     b, 0                ; store the first move
         mov     c, a
         lxi     h, BOARD
@@ -69,7 +65,6 @@ RUNMM:                              ; Run the MINMAX function for a given board
         mvi     m, XPIECE
         push    h                   ; save the pointer to the move location for later
 
-        mov     a, d                ; where the first move is: 0, 1, or 4
         mvi     d, NSCO             ; alpha
         mvi     e, XSCO             ; beta
         mvi     c, 0                ; depth
@@ -81,7 +76,7 @@ RUNMM:                              ; Run the MINMAX function for a given board
         ret
 
 MM_MMAX:                            ; the recursive scoring function
-        mov     b, a                ; save the move position
+        mov     b, a                ; save where the move was taken
         mov     a, c                ; save depth, alpha, and beta from c, d, and e
         sta     DEPTH
         mov     l, d
@@ -108,9 +103,9 @@ X_SKIPWIN:
         mvi     a, NSCO             ; maximizing odd depths
         sta     V
         mvi     a, 0                ; the variable I will go from 0..8
-        sta     I
 
 X_MMLOOP:
+        sta     I
         mvi     b, 0                ; check if we can write to this board position
         mov     c, a
         lxi     h, BOARD
@@ -128,7 +123,7 @@ X_MMLOOP:
         push    h
         mov     d, l                ; alpha
         mov     e, h                ; beta
-        lhld    I                   ; I in l and PM in h
+        lhld    I                   ; I in l and (unused) in h
         push    h
         lhld    V                   ; V in l and DEPTH in h
         push    h
@@ -139,24 +134,21 @@ X_MMLOOP:
         ; D = alpha, E = beta, C = depth, A = return score
 
         call    MM_MIN
-        sta     SC                  ; save the score
-
+        
         pop     h                   ; restore state after recursion
         shld    V                   ; restore V and DEPTH
         mov     d, h                ; save DEPTH
         pop     h                   
-        shld    I                   ; restore I and PM
+        shld    I                   ; restore I and (unused)
         pop     h
         shld    ALPHA               ; restore ALPHA and BETA
 
         pop     h
         mvi     m, BLANKPIECE       ; restore the 0 in the board where the turn was placed
 
-        lda     SC                  ; maximize case
         cpi     WSCO                ; V - WSCO. If zero, can't do better.
         rz
 
-        lda     SC                  ; check if we should update V with SC
         mov     b, a
         lda     V
         cmp     b                   ; V - SC
@@ -181,7 +173,6 @@ X_MMNOALP:
 X_MMLEND:
         lda     I
         inr     a
-        sta     I
         cpi     9                   ; a - 9.  Want to loop for 0..8
         jm      X_MMLOOP
 
@@ -189,7 +180,7 @@ X_MMLEND:
         ret
 
 MM_MIN:                             ; the recursive scoring function
-        mov     b, a                ; save the move position
+        mov     b, a                ; save where the move was taken
         mov     a, c                ; save depth, alpha, and beta from c, d, and e
         sta     DEPTH
         mov     l, d
@@ -221,9 +212,9 @@ N_SKIPWIN:
         mvi     a, XSCO
         sta     V
         mvi     a, 0                ; the variable I will go from 0..8
-        sta     I
 
 N_MMLOOP:
+        sta     I
         mvi     b, 0                ; check if we can write to this board position
         mov     c, a
         lxi     h, BOARD
@@ -241,7 +232,7 @@ N_MMLOOP:
         push    h
         mov     d, l                ; alpha
         mov     e, h                ; beta
-        lhld    I                   ; I in l and PM in h
+        lhld    I                   ; I in l and (unused) in h
         push    h
         lhld    V                   ; V in l and DEPTH in h
         push    h
@@ -252,26 +243,25 @@ N_MMLOOP:
         ; D = alpha, E = beta, C = depth, A = return score
 
         call    MM_MMAX
-        sta     SC                  ; save the score
 
         pop     h                   ; restore state after recursion
         shld    V                   ; restore V and DEPTH
         mov     d, h                ; save DEPTH
         pop     h                   
-        shld    I                   ; restore I and PM
+        shld    I                   ; restore I and (unused)
         pop     h
         shld    ALPHA               ; restore ALPHA and BETA
 
         pop     h
         mvi     m, BLANKPIECE       ; restore the 0 in the board where the turn was placed
 
-        lda     SC
         cpi     LSCO                ; V - LSCO. If zero, can't do worse.
         rz
 
+        mov     c, a
         lda     V                   ; check if we should update V with SC
         mov     b, a
-        lda     SC
+        mov     a, c
         cmp     b                   ; SC - V
         jp      N_MMNOMIN
         sta     V
@@ -291,7 +281,6 @@ N_MMNOBET:
 N_MMLEND:
         lda     I
         inr     a
-        sta     I
         cpi     9                   ; a - 9.  Want to loop for 0..8
         jm      N_MMLOOP
 
@@ -600,9 +589,8 @@ NUM:    db      0                   ; trs-80 strings are null-terminated
 STRWIN: db      'winner ', 0
 CRLF:   db      10,13,0
 BOARD:  db      0,0,0,0,0,0,0,0,0
-SC:     db      0                   ; score in MinMax
 I:      db      0                   ; Index in 0..8 loop in MinMax
-PM:     db      0                   ; Unused for now. must be after I
+UNUSED: db      0                   ; unused variable. must be after I
 V:      db      0                   ; value in minmax
 DEPTH:  db      0                   ; current depth of recursion. must be after V
 ALPHA:  db      0                   ; Alpha in a/b pruning
