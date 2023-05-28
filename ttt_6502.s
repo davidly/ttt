@@ -23,8 +23,6 @@ exitapp      .eq     $ff1f          ; ends the app / returns to the Apple 1 moni
 ; The Apple 1 reserves locations 0x0024 through 0x002b in the 0 page for the monitor.
 ; Put all globals in 0 page where it's faster because why not?
 
-wpfunptr     .eq     $30            ; temporary spot for the function pointer pointer. occupies 30 and 31 in the 0-page
-wpfunptrhigh .eq     $31
 board        .eq     $32
 board1       .eq     $33
 board2       .eq     $34
@@ -40,9 +38,27 @@ iters        .eq     $3d            ; # of iterations in the top-level loop
 itershigh    .eq     $3e           
 wpfun        .eq     $3f            ; temporary spot for the actual winner function pointer
 wpfunhigh    .eq     $40
-arg_move     .eq     $41            ; argument to min/max, but no need to be on stack
-arg_depth    .eq     $42            ; same
-local_score  .eq     $43            ; just a place to temporarily stash the score
+depth        .eq     $41            ; global for the current depth
+local_score  .eq     $42            ; just a place to temporarily stash the score
+
+winp0_lo     .eq     $43            ; these will all contain pointers to functions
+winp0_hi     .eq     $44
+winp1_lo     .eq     $45
+winp1_hi     .eq     $46
+winp2_lo     .eq     $47
+winp2_hi     .eq     $48
+winp3_lo     .eq     $49
+winp3_hi     .eq     $4a
+winp4_lo     .eq     $4b
+winp4_hi     .eq     $4c
+winp5_lo     .eq     $4d
+winp5_hi     .eq     $4e
+winp6_lo     .eq     $4f
+winp6_hi     .eq     $50
+winp7_lo     .eq     $51
+winp7_hi     .eq     $52
+winp8_lo     .eq     $53
+winp8_hi     .eq     $54
 
 max_score    .eq     9              ; maximum score
 min_score    .eq     2              ; minimum score
@@ -55,20 +71,55 @@ BLANKPIECE   .eq     0              ; empty piece
 ITERATIONS   .eq     10             ; loop this many times
 
 start
-    jmp      _past_winprocs
-
-; put winprocs here, where they won't cross a 256-byte boundary (assuming start is reasonable) so lookups are cheaper.
-
-winnerprocs .dw   proc0, proc1, proc2, proc3, proc4, proc5, proc6, proc7, proc8
-
-_past_winprocs
     lda      #$0d                   ; every apple 1 app should go to the next line on the console
     jsr      echo
     lda      #$0a
     jsr      echo
 
-    lda      /winnerprocs           ; load the high byte of winnerprocs
-    sta      wpfunptrhigh           ; store the high byte of the pointer to the proc
+    lda      #proc0                 ; put all the function pointers in the 0-page so they can be called faster
+    sta      winp0_lo+0
+    lda      /proc0
+    sta      winp0_lo+1
+
+    lda      #proc1
+    sta      winp0_lo+2
+    lda      /proc1
+    sta      winp0_lo+3
+
+    lda      #proc2
+    sta      winp0_lo+4
+    lda      /proc2
+    sta      winp0_lo+5
+
+    lda      #proc3
+    sta      winp0_lo+6
+    lda      /proc3
+    sta      winp0_lo+7
+
+    lda      #proc4
+    sta      winp0_lo+8
+    lda      /proc4
+    sta      winp0_lo+9
+
+    lda      #proc5
+    sta      winp0_lo+$a
+    lda      /proc5
+    sta      winp0_lo+$b
+
+    lda      #proc6
+    sta      winp0_lo+$c
+    lda      /proc6
+    sta      winp0_lo+$d
+
+    lda      #proc7
+    sta      winp0_lo+$e
+    lda      /proc7
+    sta      winp0_lo+$f
+
+    lda      #proc8
+    sta      winp0_lo+$10
+    lda      /proc8
+    sta      winp0_lo+$11
 
     lda      #ITERATIONS
     sta      iters
@@ -98,7 +149,7 @@ _again
     lda      #4                     ; first X move in position 4
     jsr      runmm
 
-    lda      iters                                              ; loop to solve it again ITERATIONS times
+    lda      iters                  ; loop to solve it again ITERATIONS times
     bne      _skip_iters_hi
     dec      itershigh
 _skip_iters_hi
@@ -125,9 +176,9 @@ runmm
     sta      board, x               ; store the move on the board
 
     txa                             ; restore move location to a
-    sta      arg_move               ; arg1: move
+    tay                             ; arg1: move
     lda      #0
-    sta      arg_depth              ; arg2: depth
+    sta      depth                  ; arg2: depth
     lda      #max_score     
     pha                             ; arg3: beta
     lda      #min_score     
@@ -152,9 +203,10 @@ minmax_local_i      .eq  $0102
 minmax_local_value  .eq  $0101
 ; return score in a
 
-;
-; Max
-;
+; Max arguments: alpha -- stack
+;                beta  -- stack
+;                depth -- depth global variable
+;                move  -- Y register
 
 minmax_max
     inc      moves
@@ -162,12 +214,12 @@ minmax_max
     inc      moveshigh
 
 _max_skip_moves_high
-    lda      arg_depth
+    lda      depth
     cmp      #4                     ; can't be a winner if < 4 moves so far
     bmi      _max_no_winner_check
 
-    lda      arg_move               ; a has the proc to call 0..8
-    ldx      #OPIECE                ; x has the most recent piece to move
+    tya                             ; y has the move position
+    ldy      #OPIECE                ; x has the most recent piece to move
     jsr      call_winnerproc
 
     cmp      #OPIECE                ; if O won, return loss
@@ -183,8 +235,7 @@ _max_no_winner_check
     ldy      #$ff                   ; y has i for the for loop below
 
 _max_loop                           ; for i = 0; i < 9; i++. i is initialized at function entry.
-    tya
-    cmp      #8
+    cpy      #8
     beq      _max_load_value_return
     iny
 
@@ -197,8 +248,7 @@ _max_loop                           ; for i = 0; i < 9; i++. i is initialized at
     lda      #XPIECE
     sta      board, y               ; update the board with the move
 
-    sty      arg_move
-    inc      arg_depth              ; increment for recursion
+    inc      depth                  ; increment for recursion
     lda      minmax_arg_beta, x
     pha                             ; arg3: beta
     lda      minmax_arg_alpha, x
@@ -207,10 +257,9 @@ _max_loop                           ; for i = 0; i < 9; i++. i is initialized at
     jsr      minmax_min             ; recurse
     sta      local_score            ; save the score
 
-    dec      arg_depth              ; restore to pre-recursion
+    dec      depth                  ; restore to pre-recursion
     pla                             ; alpha
     pla                             ; beta
-
     tsx                             ; restore x to the stack pointer location
 
     lda      minmax_local_i, x      ; load I
@@ -249,9 +298,10 @@ _max_return_a
     tya                             ; score is in y
     rts                             ; return to sender
 
-;
-; Min
-;
+; Min arguments: alpha -- stack
+;                beta  -- stack
+;                depth -- depth global variable
+;                move  -- Y register
 
 minmax_min
     inc      moves
@@ -259,12 +309,12 @@ minmax_min
     inc      moveshigh
 
 _min_skip_moves_high
-    lda      arg_depth
+    lda      depth
     cmp      #4                     ; can't be a winner if < 4 moves so far
     bmi      _min_no_winner_check
 
-    lda      arg_move               ; y has the proc to call 0..8
-    ldx      #XPIECE                ; a has the most recent piece to move
+    tya                             ; y has the move position
+    ldy      #XPIECE                ; a has the most recent piece to move
     jsr      call_winnerproc
 
     cmp      #XPIECE                ; if X won, return win
@@ -273,7 +323,7 @@ _min_skip_moves_high
     rts
 
 _min_no_winner
-    lda      arg_depth
+    lda      depth
     cmp      #8                     ; the board is full
     bne      _min_no_winner_check   ; can't beq to return because it's too far away
     lda      #tie_score             ; cat's game
@@ -287,8 +337,7 @@ _min_no_winner_check
     ldy      #$ff                   ; y has i for the for loop below
 
 _min_loop                           ; for i = 0; i < 9; i++. i is initialized at function entry.
-    tya
-    cmp      #8
+    cpy      #8
     beq      _min_load_value_return
     iny
 
@@ -301,8 +350,7 @@ _min_loop                           ; for i = 0; i < 9; i++. i is initialized at
     lda      #OPIECE
     sta      board, y               ; update the board with the move
 
-    sty      arg_move
-    inc      arg_depth              ; increment for recursion
+    inc      depth                  ; increment for recursion
     lda      minmax_arg_beta, x
     pha                             ; arg3: beta
     lda      minmax_arg_alpha, x
@@ -311,10 +359,9 @@ _min_loop                           ; for i = 0; i < 9; i++. i is initialized at
     jsr      minmax_max             ; recurse
     sta      local_score            ; save the score
 
-    dec      arg_depth
+    dec      depth                  ; restore depth
     pla                             ; alpha
     pla                             ; beta
-
     tsx                             ; restore x to the stack pointer location
 
     lda      minmax_local_i, x      ; load I
@@ -353,27 +400,17 @@ _min_return_a
 
 call_winnerproc
     ; A: the proc to call 0..8
-    ; X: the piece last moved -- XPIECE or OPIECE
-    ; store the proc to call in wpfun and wpfunhigh: proc0..proc8
+    ; Y: the piece last moved -- XPIECE or OPIECE
 
-    asl                             ; double the offset because each function pointer is 2 bytes
-    clc                             ; clear the carry flag
-    adc      #winnerprocs           ; add the low byte of the list of procs
-    sta      wpfunptr               ; store the low byte of the pointer to the proc
+    asl
+    tax
+    lda     winp0_lo, x
+    sta     wpfun
 
-    ; wpfunptrhigh is already initialized
-    ;    lda      #0
-    ;    adc      /winnerprocs           ; load the high byte with a carry if needed from the low bytes
-    ;    sta      wpfunptrhigh           ; store the high byte of the pointer to the proc
+    lda     winp0_hi, x
+    sta     wpfunhigh
 
-    ldy      #0
-    lda      (wpfunptr), y          ; read the low byte of the function pointer
-    sta      wpfun                  ; write the low byte of the function pointer
-    iny
-    lda      (wpfunptr), y          ; read the high byte of the function pointer
-    sta      wpfunhigh              ; write the high byte of the function pointer
-
-    txa                             ; put the piece to move in a xpiece or opiece
+    tya                             ; put the piece to move in A: xpiece or opiece
     jmp      (wpfun)                ; call it. (wpfun) will return to the caller of this function
 
 proc0
