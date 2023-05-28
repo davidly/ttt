@@ -172,10 +172,9 @@ _done
 runmm
     pha                             ; save the move location
     tax                             ; save move location in x
-    lda      #XPIECE
-    sta      board, x               ; store the move on the board
+    ldy      #XPIECE
+    sty      board, x               ; store the move on the board
 
-    txa                             ; restore move location to a
     tay                             ; arg1: move
     lda      #0
     sta      depth                  ; arg2: depth
@@ -236,7 +235,7 @@ _max_no_winner_check
 
 _max_loop                           ; for i = 0; i < 9; i++. i is initialized at function entry.
     cpy      #8
-    beq      _max_load_value_return
+    beq      _max_return_value
     iny
 
     lda      board, y               ; load the current board position value. this sets the Z flag
@@ -262,8 +261,7 @@ _max_loop                           ; for i = 0; i < 9; i++. i is initialized at
     pla                             ; beta
     tsx                             ; restore x to the stack pointer location
 
-    lda      minmax_local_i, x      ; load I
-    tay                             ; save I in y for indexing
+    ldy      minmax_local_i, x      ; load I
     lda      #BLANKPIECE
     sta      board, y               ; restore blank move to the board
 
@@ -286,16 +284,16 @@ _max_ab_prune
 _max_check_beta
     lda      minmax_arg_alpha, x    ; load alpha
     cmp      minmax_arg_beta, x     ; compare alpha with beta
-    bpl      _max_load_value_return ; beta pruning. bpl is >=
+    bpl      _max_return_value      ; beta pruning. bpl is >=
     jmp      _max_loop              ; loop for the next i
     
-_max_load_value_return
+_max_return_value
     lda      minmax_local_value, x  ; load value for return
 _max_return_a
     tay
     pla                             ; deallocate value
-    pla                             ; deallocate i
-    tya                             ; score is in y
+    pla                             ; deallocate i. plb can set D and have side-effects later
+    tya
     rts                             ; return to sender
 
 ; Min arguments: alpha -- stack
@@ -338,7 +336,7 @@ _min_no_winner_check
 
 _min_loop                           ; for i = 0; i < 9; i++. i is initialized at function entry.
     cpy      #8
-    beq      _min_load_value_return
+    beq      _min_return_value
     iny
 
     lda      board, y               ; load the current board position value. this sets the Z flag
@@ -364,8 +362,7 @@ _min_loop                           ; for i = 0; i < 9; i++. i is initialized at
     pla                             ; beta
     tsx                             ; restore x to the stack pointer location
 
-    lda      minmax_local_i, x      ; load I
-    tay                             ; save I in y for indexing
+    ldy      minmax_local_i, x      ; load I
     lda      #BLANKPIECE
     sta      board, y               ; restore blank move to the board
 
@@ -386,23 +383,23 @@ _min_ab_prune
 _min_check_alpha
     lda      minmax_arg_alpha, x    ; load alpha
     cmp      minmax_arg_beta, x     ; compare alpha with beta
-    bpl      _min_load_value_return ; alpha pruning. bpl is >=
+    bpl      _min_return_value      ; alpha pruning. bpl is >=
     jmp      _min_loop              ; loop for the next i
     
-_min_load_value_return
+_min_return_value
     lda      minmax_local_value, x  ; load value for return
 _min_return_a
     tay
     pla                             ; deallocate value
     pla                             ; deallocate i
-    tya                             ; score is in y
+    tya
     rts                             ; return to sender
 
 call_winnerproc
     ; A: the proc to call 0..8
     ; Y: the piece last moved -- XPIECE or OPIECE
 
-    asl
+    asl                             ; each function pointer is 2 bytes long
     tax
     lda     winp0_lo, x
     sta     wpfun
