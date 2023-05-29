@@ -7,7 +7,7 @@ dos_write_char     equ   2h
 dos_get_systemtime equ   1ah
 dos_exit           equ   4ch
 
-iterations  equ     10000   ; # of times to run (max 32767)
+iterations  equ     1000   ; # of times to run (max 32767)
 max_score   equ     9    ; maximum score
 min_score   equ     2    ; minimum score
 win_score   equ     6    ; winning score
@@ -25,8 +25,8 @@ i_offset       equ  2
 
 ; arguments to minmax relative to bp/sp
 ; space between locals and arguments:
-;   2 or 4 bytes for return pc if minmax is NEAR or FAR (it's NEAR here)
-;   2 bytes to save BP
+; 4-5  2 or 4 bytes for return pc if minmax is NEAR or FAR (it's NEAR here)
+; 6-7  2 bytes to save BP
 
 alpha_offset   equ   8
 beta_offset    equ  10
@@ -571,7 +571,6 @@ proc1 PROC NEAR
 
   proc1_no:
     xor     ax, ax
-    ret
 
   proc1_yes:
     ret
@@ -598,7 +597,6 @@ proc2 PROC NEAR
 
   proc2_no:
     xor      ax, ax
-    ret
 
   proc2_yes:
     ret
@@ -619,7 +617,6 @@ proc3 PROC NEAR
 
   proc3_no:
     xor     ax, ax
-    ret
 
   proc3_yes:
     ret
@@ -652,7 +649,6 @@ proc4 PROC NEAR
 
   proc4_no:
     xor     ax, ax
-    ret
 
   proc4_yes:
     ret
@@ -673,7 +669,6 @@ proc5 PROC NEAR
 
   proc5_no:
     xor      ax, ax
-    ret
 
   proc5_yes:
     ret
@@ -700,7 +695,6 @@ proc6 PROC NEAR
 
   proc6_no:
     xor      ax, ax
-    ret
 
   proc6_yes:
     ret
@@ -721,7 +715,6 @@ proc7 PROC NEAR
 
   proc7_no:
     xor     ax, ax
-    ret
 
   proc7_yes:
     ret
@@ -748,7 +741,6 @@ proc8 PROC NEAR
 
   proc8_no:
     xor      ax, ax
-    ret
 
   proc8_yes:
     ret
