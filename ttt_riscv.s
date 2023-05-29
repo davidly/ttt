@@ -14,7 +14,7 @@
 .equ win_score,     6
 .equ lose_score,    4
 .equ tie_score,     5
-.equ iterations,    1000
+.equ iterations,    10
 
 .section .sbss,"aw",@nobits
 
@@ -182,7 +182,7 @@
 .type run_minmax, @function
 run_minmax:
         .cfi_startproc
-        addi    sp, sp, -128
+        addi    sp, sp, -64
         sd      ra, 16(sp)
         sd      s0, 24(sp)
         sd      s1, 32(sp)
@@ -197,12 +197,12 @@ run_minmax:
         sb      t1, (t0)             # make the first move
 
         lla     s10, winner_functions
-        mv      s11, zero            # move count for this thread
+        mv      s11, zero            # global move count for this thread
+        mv      s7, zero             # global depth for this thread
         li      s8, iterations       # iteration count
 
   .run_minmax_next_iteration:
-        mv      a3, a0               # first move
-        mv      a2, zero             # depth
+        mv      a2, a0               # first move
         li      a1, maximum_score    # beta
         li      a0, minimum_score    # alpha
 
@@ -221,7 +221,7 @@ run_minmax:
         ld      s1, 32(sp)
         ld      s2, 40(sp)
         ld      s3, 48(sp)
-        addi    sp, sp, 128
+        addi    sp, sp, 64
         jr      ra
         .cfi_endproc
 
@@ -233,99 +233,98 @@ minmax_max:
   /*
         a0:   alpha
         a1:   beta
-        a2:   depth
-        a3:   move
+        a2:   move
         s0:   alpha local
         s1:   beta local
-        s2:   *unused* and not saved
-        s3:   *unused* and not saved
-        s4:   next depth
-        s5:   value local variable
-        s6:   loop local variable i
-        s7:   the piece to move
+        s2:   value local variable
+        s3:   i loop local variable
+        s4:   *unused* and not saved
+        s5:   *unused* and not saved
+        s6:   *unused* and not saved
+        s7:   global depth
         s8:   global iteration count
         s9:   global the board for this thread
         s10:  global winner function table
         s11:  global move count for this thread
   */
         .cfi_startproc
-        addi    sp, sp, -128
+        addi    sp, sp, -64
         sd      ra, 16(sp)
         sd      s0, 24(sp)
-        sd      s1, 32(sp)
-        sd      s4, 56(sp)         # save space for s2 and s3 if they are used in the future
-        sd      s5, 64(sp)
-        sd      s6, 72(sp)
-        sd      s7, 80(sp)
 
         addi    s11, s11, 1        # increment move count
         mv      s0, a0             # save alpha
 
         li      t0, 3              # only check for a winner if > 4 moves taken so far
-        ble     a2, t0, .minmax_max_skip_winner
+        ble     s7, t0, .minmax_max_skip_winner
 
         li      a0, o_piece        # call the winner function for the most recent move
-        slli    t0, a3, 3          # function offset is 8 * the move position
+        slli    t0, a2, 3          # function offset is 8 * the move position
         add     t0, t0, s10
         ld      t0, (t0)
         jalr    ra, t0
 
+        mv      t1, a0
         li      t0, o_piece
-        li      s5, lose_score
-        beq     a0, t0, .minmax_max_loadv_done
+        li      a0, lose_score
+        beq     t1, t0, .minmax_max_fast_exit
 
   .minmax_max_skip_winner:
+        sd      s1, 32(sp)
+        sd      s2, 40(sp)
+        sd      s3, 48(sp)
+
         mv      s1, a1             # save beta
-        addi    s4, a2, 1          # next depth
-        li      s7, x_piece        # making x moves below
-        li      s5, minimum_score  # min because we're maximizing
-        li      s6, -1             # start the loop with I at -1
+        li      s2, minimum_score  # min because we're maximizing
+        li      s3, -1             # start the loop with I at -1
         li      t6, 8              # t6 is a global constant of 8
 
   .minmax_max_loop:                # loop over all possible next moves 0..8
-        beq     s6, t6, .minmax_max_loadv_done            
-        addi    s6, s6, 1
+        beq     s3, t6, .minmax_max_loadv_done            
+        addi    s3, s3, 1
 
-        add     t1, s6, s9         # is this move position free?
+        add     t1, s3, s9         # is this move position free?
         lbu     t0, (t1)
         bne     t0, zero, .minmax_max_loop
 
-        sb      s7, (t1)           # make the move
+        li      t0, x_piece        # making x moves below
+        sb      t0, (t1)           # make the move
 
         mv      a0, s0             # recurse to the min. alpha
         mv      a1, s1             # beta
-        mv      a2, s4             # next depth
-        mv      a3, s6             # next move
+        addi    s7, s7, 1          # next depth
+        mv      a2, s3             # next move
         jal     minmax_min
 
-        add     t1, s6, s9         # restore a 0 to the last move position
+        addi    s7, s7, -1         # restore depth
+        add     t1, s3, s9         # restore a 0 to the last move position
         sb      zero, (t1)        
 
         li      t0, win_score      # can't do better than winning when maximizing
         beq     a0, t0, .minmax_max_done  
 
-        ble     a0, s5, .minmax_max_skip_value  # compare score with value
-        mv      s5, a0             # update value with the new high score
+        ble     a0, s2, .minmax_max_skip_value  # compare score with value
+        mv      s2, a0             # update value with the new high score
 
   .minmax_max_skip_value:
-        ble     s5, s0, .minmax_max_skip_alpha   # compare value with alpha
-        mv      s0, s5             # update alpha with value
+        ble     s2, s0, .minmax_max_skip_alpha   # compare value with alpha
+        mv      s0, s2             # update alpha with value
 
   .minmax_max_skip_alpha:
         blt     s0, s1, .minmax_max_loop  # alpha pruning
 
   .minmax_max_loadv_done:
-        mv      a0, s5             # return value
+        mv      a0, s2             # return value
 
   .minmax_max_done:
+        ld      s1, 32(sp)
+        ld      s2, 40(sp)
+        ld      s3, 48(sp)
+
+  .minmax_max_fast_exit:
         ld      ra, 16(sp)
         ld      s0, 24(sp)
-        ld      s1, 32(sp)
-        ld      s4, 56(sp)
-        ld      s5, 64(sp)
-        ld      s6, 72(sp)
-        ld      s7, 80(sp)
-        addi    sp, sp, 128
+        addi    sp, sp, 64
         jr      ra
         .cfi_endproc
 
@@ -337,103 +336,102 @@ minmax_min:
   /*
         a0:   alpha
         a1:   beta
-        a2:   depth
-        a3:   move
+        a2:   move
         s0:   alpha local
         s1:   beta local
-        s2:   *unused* and not saved
-        s3:   *unused* and not saved
-        s4:   next depth
-        s5:   value local variable
-        s6:   loop local variable i
-        s7:   the piece to move
+        s2:   value local variable
+        s3:   i loop local variable
+        s4:   *unused* and not saved
+        s5:   *unused* and not saved
+        s6:   *unused* and not saved
+        s7:   global depth
         s8:   global iteration count
         s9:   global the board for this thread
         s10:  global winner function table
         s11:  global move count for this thread
   */
         .cfi_startproc
-        addi    sp, sp, -128
+        addi    sp, sp, -64
         sd      ra, 16(sp)
         sd      s0, 24(sp)
-        sd      s1, 32(sp)
-        sd      s4, 56(sp)         # save space for s2 and s3 if they are used in the future
-        sd      s5, 64(sp)
-        sd      s6, 72(sp)
-        sd      s7, 80(sp)
 
         addi    s11, s11, 1        # increment move count
         mv      s0, a0             # save alpha
 
         li      t0, 3              # only check for a winner if > 4 moves taken so far
-        ble     a2, t0, .minmax_min_skip_winner
+        ble     s7, t0, .minmax_min_skip_winner
         
         li      a0, x_piece        # call the winner function for the most recent move
-        slli    t0, a3, 3          # function offset is 8 * the move position
+        slli    t0, a2, 3          # function offset is 8 * the move position
         add     t0, t0, s10
         ld      t0, (t0)
         jalr    ra, t0
 
+        mv      t1, a0
         li      t0, x_piece
-        li      s5, win_score
-        beq     a0, t0, .minmax_min_loadv_done
+        li      a0, win_score
+        beq     t1, t0, .minmax_min_fast_exit
 
         li      t0, 8
-        li      s5, tie_score
-        beq     a2, t0, .minmax_min_loadv_done
+        li      a0, tie_score
+        beq     s7, t0, .minmax_min_fast_exit
         
   .minmax_min_skip_winner:
+        sd      s1, 32(sp)
+        sd      s2, 40(sp)
+        sd      s3, 48(sp)
+
         mv      s1, a1             # save beta
-        addi    s4, a2, 1          # next depth
-        li      s7, o_piece        # making o moves below
-        li      s5, maximum_score  # max because we're minimizing
-        li      s6, -1             # start the loop with I at -1
+        li      s2, maximum_score  # max because we're minimizing
+        li      s3, -1             # start the loop with I at -1
         li      t6, 8              # t6 is a global constant of 8
 
   .minmax_min_loop:                # loop over all possible next moves 0..8
-        beq     s6, t6, .minmax_min_loadv_done
-        addi    s6, s6, 1
+        beq     s3, t6, .minmax_min_loadv_done
+        addi    s3, s3, 1
 
-        add     t1, s6, s9         # is this move position free?
+        add     t1, s3, s9         # is this move position free?
         lbu     t0, (t1)
         bne     t0, zero, .minmax_min_loop
 
-        sb      s7, (t1)           # make the move
+        li      t0, o_piece        # making o moves below
+        sb      t0, (t1)           # make the move
 
         mv      a0, s0             # recurse to the max
         mv      a1, s1
-        mv      a2, s4
-        mv      a3, s6
+        addi    s7, s7, 1          # next depth
+        mv      a2, s3
         jal     minmax_max
 
-        add     t1, s6, s9         # restore a 0 to the last move position
+        add     t1, s3, s9         # restore a 0 to the last move position
         sb      zero, (t1)        
 
+        addi    s7, s7, -1         # restore depth
         li      t0, lose_score     # can't do better than losing when minimizing
         beq     a0, t0, .minmax_min_done  
 
-        bge     a0, s5, .minmax_min_skip_value  # compare score with value
-        mv      s5, a0             # update value with the new low score
+        bge     a0, s2, .minmax_min_skip_value  # compare score with value
+        mv      s2, a0             # update value with the new low score
 
   .minmax_min_skip_value:
-        bge     s5, s1, .minmax_min_skip_beta   # compare value with beta
-        mv      s1, s5             # update beta with value
+        bge     s2, s1, .minmax_min_skip_beta   # compare value with beta
+        mv      s1, s2             # update beta with value
 
   .minmax_min_skip_beta:
         bgt     s1, s0, .minmax_min_loop  # beta pruning
 
   .minmax_min_loadv_done:
-        mv      a0, s5             # return value
+        mv      a0, s2             # return value
 
   .minmax_min_done:
+        ld      s1, 32(sp)
+        ld      s2, 40(sp)
+        ld      s3, 48(sp)
+
+  .minmax_min_fast_exit:
         ld      ra, 16(sp)
         ld      s0, 24(sp)
-        ld      s1, 32(sp)
-        ld      s4, 56(sp)
-        ld      s5, 64(sp)
-        ld      s6, 72(sp)
-        ld      s7, 80(sp)
-        addi    sp, sp, 128
+        addi    sp, sp, 64
         jr      ra
         .cfi_endproc
 
