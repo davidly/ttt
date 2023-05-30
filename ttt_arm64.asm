@@ -375,10 +375,8 @@ _minmax_max PROC
     ; x27: for loop local variable I
     ; x28: the piece to move
 
-    stp      x26, x25, [sp, #-64]!      
-    stp      x24, x23, [sp, #16]        
-    stp      x28, x27, [sp, #32]         
-    stp      x29, x30, [sp, #48]        
+    stp      x24, x23, [sp, #-64]!      
+    stp      x30, x29, [sp, #48]
     add      x29, sp, #48               
 
     add      x19, x19, 1                ; increment global move count
@@ -394,13 +392,16 @@ _minmax_max PROC
 
     cmp      w0, o_piece                ; did O win?
     mov      w0, lose_score             ; move regardless of whether we'll branch
-    b.eq     _minmax_max_done
+    b.eq     _minmax_max_fast_exit
 
 _minmax_max_skip_winner
+    stp      x26, x25, [sp, #16]        
+    stp      x28, x27, [sp, #32]
+
     add      x25, x2, 1                 ; next depth
-    mov      w28, x_piece               ; making X moves below
     mov      w26, minimum_score         ; the value is minimum because we're maximizing
     mov      x27, -1                    ; avoid a jump by starting the for loop I at -1
+    mov      w28, x_piece               ; making X moves below
 
 _minmax_max_top_of_loop
     cmp      x27, 8                     ; check before the increment
@@ -439,10 +440,12 @@ _minmax_max_loadv_done
     mov      x0, x26                    ; load the return value with value
   
 _minmax_max_done
-    ldp      x29, x30, [sp, #48]         
-    ldp      x28, x27, [sp, #32]        
-    ldp      x24, x23, [sp, #16]        
-    ldp      x26, x25, [sp], #64        
+    ldp      x28, x27, [sp, #32]
+    ldp      x26, x25, [sp, #16]
+
+_minmax_max_fast_exit
+    ldp      x30, x29, [sp, #48]        
+    ldp      x24, x23, [sp], #64
     ret
     ENDP
 
@@ -463,10 +466,8 @@ _minmax_min PROC
     ; x27: for loop local variable I
     ; x28: the piece to move
 
-    stp      x26, x25, [sp, #-64]!      
-    stp      x24, x23, [sp, #16]        
-    stp      x28, x27, [sp, #32]        
-    stp      x29, x30, [sp, #48]       
+    stp      x24, x23, [sp, #-64]!      
+    stp      x30, x29, [sp, #48]
     add      x29, sp, #48               
 
     add      x19, x19, 1                ; update global move count
@@ -482,17 +483,20 @@ _minmax_min PROC
 
     cmp      w0, x_piece                ; did X win?
     mov      w0, win_score              ; move this regardless of the result
-    b.eq     _minmax_min_done
+    b.eq     _minmax_min_fast_exit
 
     cmp      x2, 8                      ; recursion can only go 8 deep
     mov      x0, tie_score
-    b.eq     _minmax_min_done
+    b.eq     _minmax_min_fast_exit
 
 _minmax_min_skip_winner
+    stp      x26, x25, [sp, #16]        
+    stp      x28, x27, [sp, #32]
+
     add      x25, x2, 1                 ; next depth
-    mov      w28, o_piece               ; making O moves below
     mov      w26, maximum_score         ; the value is maximum because we're minimizing
     mov      x27, -1                    ; avoid a jump by starting the for loop I at -1
+    mov      w28, o_piece               ; making O moves below
 
 _minmax_min_top_of_loop
     cmp      x27, 8                     ; check before the increment
@@ -531,10 +535,13 @@ _minmax_min_loadv_done
     mov      x0, x26                    ; load the return value with value
   
 _minmax_min_done
-    ldp      x29, x30, [sp, #48]        
-    ldp      x28, x27, [sp, #32]        
-    ldp      x24, x23, [sp, #16]        
-    ldp      x26, x25, [sp], #64        
+    ldp      x28, x27, [sp, #32]
+    ldp      x26, x25, [sp, #16]
+
+_minmax_min_fast_exit
+    ldp      x30, x29, [sp, #48]        
+    ldp      x24, x23, [sp], #64
+
     ret
     ENDP
 
