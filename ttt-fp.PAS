@@ -1,4 +1,5 @@
 { App to prove you can't win at Tic-Tac-Toe }
+{ use of byte instead of integer should be faster, but it's not }
 
 program ttt;
 
@@ -47,11 +48,11 @@ var x : integer;
 begin
     x := board[0];
     if ( ( ( x = board[1] ) and ( x = board[2] )  ) or
-	 ( ( x = board[3] ) and ( x = board[6] ) ) or
-	 ( ( x = board[4] ) and ( x = board[8] ) ) ) then
-	func0 := x
+         ( ( x = board[3] ) and ( x = board[6] ) ) or
+         ( ( x = board[4] ) and ( x = board[8] ) ) ) then
+        func0 := x
     else
-	func0 := pieceBlank;
+        func0 := pieceBlank;
 end;
 
 function func1 : integer;
@@ -59,10 +60,10 @@ var x : integer;
 begin
     x := board[1];
     if ( ( ( x = board[0] ) and ( x = board[2] )  ) or
-	 ( ( x = board[4] ) and ( x = board[7] ) ) ) then
-	func1 := x
+         ( ( x = board[4] ) and ( x = board[7] ) ) ) then
+        func1 := x
     else
-	func1 := pieceBlank;
+        func1 := pieceBlank;
 end;
 
 function func2 : integer;
@@ -70,11 +71,11 @@ var x : integer;
 begin
     x := board[2];
     if ( ( ( x = board[0] ) and ( x = board[1] )  ) or
-	 ( ( x = board[5] ) and ( x = board[8] ) ) or
-	 ( ( x = board[4] ) and ( x = board[6] ) ) ) then
-	func2 := x
+         ( ( x = board[5] ) and ( x = board[8] ) ) or
+         ( ( x = board[4] ) and ( x = board[6] ) ) ) then
+        func2 := x
     else
-	func2 := pieceBlank;
+        func2 := pieceBlank;
 end;
 
 function func3 : integer;
@@ -82,10 +83,10 @@ var x : integer;
 begin
     x := board[3];
     if ( ( ( x = board[4] ) and ( x = board[5] )  ) or
-	 ( ( x = board[0] ) and ( x = board[6] ) ) ) then
-	func3 := x
+         ( ( x = board[0] ) and ( x = board[6] ) ) ) then
+        func3 := x
     else
-	func3 := pieceBlank;
+        func3 := pieceBlank;
 end;
 
 function func4 : integer;
@@ -93,12 +94,12 @@ var x : integer;
 begin
     x := board[4];
     if ( ( ( x = board[0] ) and ( x = board[8] )  ) or
-	 ( ( x = board[2] ) and ( x = board[6] ) ) or
-	 ( ( x = board[1] ) and ( x = board[7] ) ) or
-	 ( ( x = board[3] ) and ( x = board[5] ) ) ) then
-	func4 := x
+         ( ( x = board[2] ) and ( x = board[6] ) ) or
+         ( ( x = board[1] ) and ( x = board[7] ) ) or
+         ( ( x = board[3] ) and ( x = board[5] ) ) ) then
+        func4 := x
     else
-	func4 := pieceBlank;
+        func4 := pieceBlank;
 end;
 
 function func5 : integer;
@@ -106,10 +107,10 @@ var x : integer;
 begin
     x := board[5];
     if ( ( ( x = board[3] ) and ( x = board[4] )  ) or
-	 ( ( x = board[2] ) and ( x = board[8] ) ) ) then
-	func5 := x
+         ( ( x = board[2] ) and ( x = board[8] ) ) ) then
+        func5 := x
     else
-	func5 := pieceBlank;
+        func5 := pieceBlank;
 end;
 
 function func6 : integer;
@@ -117,11 +118,11 @@ var x : integer;
 begin
     x := board[6];
     if ( ( ( x = board[7] ) and ( x = board[8] )  ) or
-	 ( ( x = board[0] ) and ( x = board[3] ) ) or
-	 ( ( x = board[4] ) and ( x = board[2] ) ) ) then
-	func6 := x
+         ( ( x = board[0] ) and ( x = board[3] ) ) or
+         ( ( x = board[4] ) and ( x = board[2] ) ) ) then
+        func6 := x
     else
-	func6 := pieceBlank;
+        func6 := pieceBlank;
 end;
 
 function func7 : integer;
@@ -129,10 +130,10 @@ var x : integer;
 begin
     x := board[7];
     if ( ( ( x = board[6] ) and ( x = board[8] )  ) or
-	 ( ( x = board[1] ) and ( x = board[4] ) ) ) then
-	func7 := x
+         ( ( x = board[1] ) and ( x = board[4] ) ) ) then
+        func7 := x
     else
-	func7 := pieceBlank;
+        func7 := pieceBlank;
 end;
 
 function func8 : integer;
@@ -140,11 +141,11 @@ var x : integer;
 begin
     x := board[8];
     if ( ( ( x = board[6] ) and ( x = board[7] )  ) or
-	 ( ( x = board[2] ) and ( x = board[5] ) ) or
-	 ( ( x = board[0] ) and ( x = board[4] ) ) ) then
-	func8 := x
+         ( ( x = board[2] ) and ( x = board[5] ) ) or
+         ( ( x = board[0] ) and ( x = board[4] ) ) ) then
+        func8 := x
     else
-	func8 := pieceBlank;
+        func8 := pieceBlank;
 end;
 
 function lookForWinner : integer;
@@ -157,7 +158,7 @@ begin
   if pieceBlank <> t then
   begin
     if ( ( ( t = board[1] ) and ( t = board[2] ) ) or
-	 ( ( t = board[3] ) and ( t = board[6] ) ) ) then
+         ( ( t = board[3] ) and ( t = board[6] ) ) ) then
       p := t;
   end;
 
@@ -171,28 +172,28 @@ begin
     begin
       t := board[2];
       if ( t = board[5] ) and ( t = board[8] ) then
-	p := t;
+        p := t;
 
       if pieceBlank = p then
       begin
-	t := board[3];
-	if ( t = board[4] ) and ( t = board[5] ) then
-	  p := t;
+        t := board[3];
+        if ( t = board[4] ) and ( t = board[5] ) then
+          p := t;
 
-	if pieceBlank = p then
-	begin
-	  t := board[6];
-	  if ( t = board[7] ) and ( t = board[8] ) then
-	    p := t;
+        if pieceBlank = p then
+        begin
+          t := board[6];
+          if ( t = board[7] ) and ( t = board[8] ) then
+            p := t;
 
-	  if pieceBlank = p then
-	  begin
-	    t := board[4];
-	    if ( ( ( t = board[0] ) and ( t = board[8] ) ) or
-		 ( ( t = board[2] ) and ( t = board[6] ) ) ) then
-	      p := t;
-	  end;
-	end;
+          if pieceBlank = p then
+          begin
+            t := board[4];
+            if ( ( ( t = board[0] ) and ( t = board[8] ) ) or
+                 ( ( t = board[2] ) and ( t = board[6] ) ) ) then
+              p := t;
+          end;
+        end;
       end;
     end;
   end;
@@ -204,22 +205,20 @@ function minmax( alpha: integer; beta: integer; depth: integer; move : integer )
 var
   p, value, pieceMove, score : integer;
   done: boolean;
-  funptr : pointer;
 begin
   evaluated := evaluated + 1;
   value := 0;
   if depth >= 4 then
   begin
-    funptr := scoreFuncs[ move ];
-    p := TScoreFunc( funptr );
-    { p := LookForWinner;  LookForWinner is about 10% slower than using function pointers }
+    p := TScoreFunc( scoreFuncs[ move ] );
+    { p := LookForWinner;  this is 10% slower than using function pointers }
 
     if p <> pieceBlank then
     begin
       if p = pieceX then
-	value := scoreWin
+        value := scoreWin
       else
-	value := scoreLose
+        value := scoreLose
     end
     else if depth = 8 then
       value := scoreTie;
@@ -243,24 +242,24 @@ begin
     repeat
       if board[ p ] = pieceBlank then
       begin
-	board[ p ] := pieceMove;
-	score := minmax( alpha, beta, depth + 1, p );
-	board[ p ] := pieceBlank;
+        board[ p ] := pieceMove;
+        score := minmax( alpha, beta, depth + 1, p );
+        board[ p ] := pieceBlank;
 
-	if ( 0 <> ( depth and 1 ) ) then
-	begin
-	  if ( score > value ) then value := score;
-	  if ( value > alpha ) then alpha := value;
-	  if ( alpha >= beta ) or ( value = scoreWin ) then
-	    done := true;
-	end
-	else
-	begin
-	  if ( score < value ) then value := score;
-	  if ( value < beta ) then beta := value;
-	  if ( beta <= alpha ) or ( value = scoreLose ) then
-	    done := true;
-	end;
+        if ( 0 <> ( depth and 1 ) ) then
+        begin
+          if ( score > value ) then value := score;
+          if ( value > alpha ) then alpha := value;
+          if ( alpha >= beta ) or ( value = scoreWin ) then
+            done := true;
+        end
+        else
+        begin
+          if ( score < value ) then value := score;
+          if ( value < beta ) then beta := value;
+          if ( beta <= alpha ) or ( value = scoreLose ) then
+            done := true;
+        end;
       end;
       p := p + 1;
       if p > 8 then done := true;
@@ -271,8 +270,7 @@ begin
 end;
 
 procedure runit( move : integer );
-var
-  score: integer;
+var score : integer;
 begin
   board[move] := pieceX;
   score := minmax( scoreMin, scoreMax, 0, move );
@@ -280,9 +278,13 @@ begin
 end;
 
 var
-  i: integer;
-  b: integer;
+  i, errpos, loops: integer;
 begin
+  loops := Iterations;
+
+  if 0 <> Length( ParamStr( 1 ) ) then
+    Val( ParamStr( 1 ), loops, errpos );
+
   for i := 0 to 8 do
     board[i] := pieceBlank;
 
@@ -298,7 +300,7 @@ begin
 
   get_time( timeStart );
 
-  for i := 1 to Iterations do
+  for i := 1 to loops do
   begin
     runit( 0 );
     runit( 1 );
@@ -308,6 +310,6 @@ begin
   get_time( timeEnd );
   print_elapsed_time( timeStart, timeEnd );
 
-  Write( 'moves evaluated: ' ); Write( evaluated ); WriteLn;
-  Write( 'iterations: ' ); Write( iterations ); WriteLn;
+  WriteLn( 'moves evaluated: ', evaluated );
+  WriteLn( 'iterations: ', iterations );
 end.
