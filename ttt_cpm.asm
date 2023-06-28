@@ -45,7 +45,7 @@ org     100h
         dad     d                   ; now hl points just beyond the argument
         mvi     m, 0                ; null-terminate the tail string
         lxi     h, TAILCOUNT + 1    ; convert the tail string in hl to a number in hl
-        call    atoi                ; null-terminated string in hl => integer in hl
+        call    atou                ; null-terminated string in hl => unsigned integer in hl
         shld    LOOPS               ; store the value for use in the loop below
 
         mov     a, l                ; if they asked for 0 or it wasn't a number, do nothing
@@ -158,14 +158,18 @@ MinMaxMaximize:                     ; the recursive scoring function
   MAX$SKIPWIN:
         mvi     a, NSCO             ; maximizing odd depths, so start with minimum score
         sta     V
-        lxi     d, 0                ; the variable I will go from 0..8
+        lxi     d, 00ffh            ; the variable I will go from 0..8
 
   MAX$MMLOOP:
+        mov     a, e
+        cpi     8
+        jz      MAX$MMDONE
+        inr     e
         lxi     h, BOARD
         dad     d
         xra     a                   ; BLANKPIECE is 0
         cmp     m
-        jnz     MAX$MMLEND
+        jnz     MAX$MMLOOP
 
         mvi     m, XPIECE           ; make the move
 
@@ -215,18 +219,13 @@ MinMaxMaximize:                     ; the recursive scoring function
         lda     BETA
         cmp     m                   ; Beta - Alpha
         jz      MAX$MMPRUNE         ; there is no jump if > 0 on 8080
-        jp      MAX$MMLEND
+        jp      MAX$MMLOOP
 
   MAX$MMPRUNE:
         lda     V
         ret                         ; Alpha pruning
 
-  MAX$MMLEND:
-        inr     e
-        mov     a, e
-        cpi     9                   ; a - 9.  Want to loop for 0..8
-        jm      MAX$MMLOOP
-
+  MAX$MMDONE:
         lda     V
         ret
 
@@ -257,14 +256,18 @@ MinMaxMinimize:                     ; the recursive scoring function
   MIN$SKIPWIN:
         mvi     a, XSCO             ; minimizing, so start with maximum score
         sta     V
-        lxi     d, 0                ; the variable I will go from 0..8
+        lxi     d, 00ffh            ; the variable I will go from 0..8
 
   MIN$MMLOOP:
+        mov     a, e
+        cpi     8
+        jz      MIN$MMDONE
+        inr     e
         lxi     h, BOARD
         dad     d
         xra     a                   ; BLANKPIECE is 0
         cmp     m
-        jnz     MIN$MMLEND
+        jnz     MIN$MMLOOP
 
         mvi     m, OPIECE           ; make the move
 
@@ -312,16 +315,11 @@ MinMaxMinimize:                     ; the recursive scoring function
         mov     b, a
         lda     ALPHA
         cmp     b                   ; Alpha - Beta
-        jm      MIN$MMLEND
-        lda     V		    ; beta pruning
+        jm      MIN$MMLOOP
+        lda     V                   ; beta pruning
         ret
 
-  MIN$MMLEND:
-        inr     e
-        mov     a, e
-        cpi     9                   ; a - 9.  Want to loop for 0..8
-        jm      MIN$MMLOOP
-
+  MIN$MMDONE:
         lda     V
         ret
 
@@ -626,17 +624,17 @@ imul:
         pop      b
         ret
 
-atoi:                               ; in: hl points to string. out: hl has integer value. positive base-10 is assumed
+atou:                               ; in: hl points to string. out: hl has integer value. positive base-10 is assumed
         push   b
         push   d
         lxi    b, 0                 ; running total is in bc
 
-  AtoiNext:
+  atouNext:
         mov    a, m                 ; check if we're at the end of string or the data isn't a number
         cpi    '0'
-        jm     AtoiDone             ; < '0' isn't a digit
+        jm     atouDone             ; < '0' isn't a digit
         cpi    '9' + 1
-        jp     AtoiDone             ; > '9' isn't a digit
+        jp     atouDone             ; > '9' isn't a digit
 
         lxi    d, 10                ; multiply what we have so far by 10
         push   h
@@ -656,9 +654,9 @@ atoi:                               ; in: hl points to string. out: hl has integ
         mov    b, a
 
         inx    h                    ; move to the next character
-        jmp    AtoiNext             ; and process it
+        jmp    atouNext             ; and process it
 
-  AtoiDone:
+  atouDone:
         mov    h, b                 ; the result goes in hl
         mov    l, c
         pop    d
