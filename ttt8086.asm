@@ -1,3 +1,5 @@
+; 8086 version of app that proves you can't win at tic-tac-toe
+
         .model tiny
         .stack
 
@@ -7,15 +9,15 @@ dos_write_char     equ   2h
 dos_get_systemtime equ   1ah
 dos_exit           equ   4ch
 
-iterations  equ     1000   ; # of times to run (max 32767)
-max_score   equ     9    ; maximum score
-min_score   equ     2    ; minimum score
-win_score   equ     6    ; winning score
-tie_score   equ     5    ; tie score
-lose_score  equ     4    ; losing score
-x_piece     equ     1    
-o_piece     equ     2    
-blank_piece equ     0
+default_iterations  equ     10   ; # of times to run (max 32767)
+max_score           equ     9    ; maximum score
+min_score           equ     2    ; minimum score
+win_score           equ     6    ; winning score
+tie_score           equ     5    ; tie score
+lose_score          equ     4    ; losing score
+x_piece             equ     1    
+o_piece             equ     2    
+blank_piece         equ     0
 
 ; these variables are all 1-byte, but 8086 requires push/pop be 2 bytes at a time
 ; local variables in minmax relative to bp/sp
@@ -34,15 +36,35 @@ beta_offset    equ  10
 CODE SEGMENT PUBLIC 'CODE'
 ORG 100h
 startup PROC NEAR
+        mov      di, 0
+        mov      ds: [ di + totaliters ], default_iterations
         xor      ax, ax
-        int      1ah
-        mov      WORD PTR ds: [ starttime ], dx
-        mov      WORD PTR ds: [ starttime + 2 ], cx
+        cmp      ax, [ di + 128 ]   ; command tail length is 128 bytes into the PSP
+        jz       done_with_arguments
+
+        mov      cx, 129            ; string is guaranteed to be 0x0d terminated by DOS
+        call     atou               ; pointer to string in cx, unsigned integer result in ax
+        mov      ds: [ di + totaliters ], ax
+        cmp      ax, 0
+        jnz      done_with_arguments
+
+        mov      dx, offset zeroitersmsg   ; the argument isn't valid; show error and exit
+        call     printstring
+
+        mov      al, 1
+        mov      ah, dos_exit
+        int      21h
+
+done_with_arguments:
+        xor      ax, ax
+        int      dos_get_systemtime
+        mov      word ptr ds: [ starttime ], dx
+        mov      word ptr ds: [ starttime + 2 ], cx
 
         lea      si, ds: [ offset board ]  ; global board pointer
 
 again:
-        xor      bx, bx     ; zero the global move count
+        xor      bx, bx             ; zero the global move count
 
         ; run for the 3 unique first moves
 
@@ -53,8 +75,9 @@ again:
         mov      ax, 4
         call     runmm
 
-        inc      WORD PTR ds: [ iters ]
-        cmp      ds: [ iters ], iterations
+        inc      word ptr ds: [ iters ]
+        mov      ax, ds: [ totaliters ]
+        cmp      ax, ds: [ iters ]
         jne      again
 
         push     bx
@@ -86,7 +109,7 @@ runmm PROC NEAR
         ; make the first move
         mov       di, ax
         push      di
-        mov       BYTE PTR [ offset board + di ], x_piece
+        mov       byte ptr ds: [ offset board + di ], x_piece
 
         ; alpha and beta passed on the stack
         ; current move in di
@@ -106,7 +129,7 @@ runmm PROC NEAR
         ; restore the board at the first move position
 
         pop       di
-        mov       BYTE PTR ds: [ offset board + di ], blank_piece
+        mov       byte ptr ds: [ offset board + di ], blank_piece
 
         ret
 runmm ENDP
@@ -123,14 +146,14 @@ minmax_max PROC NEAR
 
         shl      di, 1
         mov      ax, o_piece
-        call     ds: WORD PTR [ offset winprocs + di ]
+        call     word ptr ds: [ offset winprocs + di ]
 
         cmp      al, o_piece
         mov      ax, lose_score
         je       SHORT _max_just_return_ax
 
   _max_no_winner_check:
-        mov      WORD PTR [ bp + value_offset ], min_score
+        mov      word ptr [ bp + value_offset ], min_score
         mov      di, -1
 
   _max_loop:
@@ -138,11 +161,11 @@ minmax_max PROC NEAR
         je       SHORT _max_load_value_return
         inc      di
 
-        cmp      BYTE PTR ds: [ offset board + di ], 0
+        cmp      byte ptr ds: [ offset board + di ], 0
         jne      SHORT _max_loop
 
-        mov      WORD PTR [ bp + i_offset ], di
-        mov      BYTE PTR ds: [ offset board + di ], x_piece
+        mov      word ptr [ bp + i_offset ], di
+        mov      byte ptr ds: [ offset board + di ], x_piece
 
         inc      cx
         push     [ bp + beta_offset ]
@@ -153,7 +176,7 @@ minmax_max PROC NEAR
         dec      cx
 
         mov      di, [ bp + i_offset ]
-        mov      BYTE PTR ds: [ offset board + di ], 0
+        mov      byte ptr ds: [ offset board + di ], 0
 
         cmp      ax, win_score
         je       SHORT _max_just_return_ax
@@ -194,7 +217,7 @@ minmax_min PROC NEAR
 
         shl      di, 1
         mov      ax, x_piece
-        call     ds: WORD PTR [ offset winprocs + di ]
+        call     word ptr ds: [ offset winprocs + di ]
 
         cmp      al, x_piece
         mov      ax, win_score
@@ -205,7 +228,7 @@ minmax_min PROC NEAR
         je       SHORT _min_just_return_ax
 
   _min_no_winner_check:
-        mov      WORD PTR [ bp + value_offset ], max_score
+        mov      word ptr [ bp + value_offset ], max_score
         mov      di, -1
 
   _min_loop:
@@ -213,11 +236,11 @@ minmax_min PROC NEAR
         je       SHORT _min_load_value_return
         inc      di
 
-        cmp      BYTE PTR ds: [ offset board + di ], 0
+        cmp      byte ptr ds: [ offset board + di ], 0
         jne      SHORT _min_loop
 
-        mov      WORD PTR [ bp + i_offset ], di
-        mov      BYTE PTR ds: [ offset board + di ], o_piece
+        mov      word ptr [ bp + i_offset ], di
+        mov      byte ptr ds: [ offset board + di ], o_piece
 
         inc      cx
         push     [ bp + beta_offset ]
@@ -228,7 +251,7 @@ minmax_min PROC NEAR
         dec      cx
 
         mov      di, [ bp + i_offset ]
-        mov      BYTE PTR ds: [ offset board + di ], 0
+        mov      byte ptr ds: [ offset board + di ], 0
 
         cmp      ax, lose_score
         je       SHORT _min_just_return_ax
@@ -344,6 +367,37 @@ winner PROC NEAR
   _win_return:
         ret
 winner ENDP
+
+atou PROC NEAR ; string input in cx. unsigned 16-bit integer result in ax
+        push    di
+        push    bx
+        mov     bx, 0               ; running total is in bx
+        mov     di, cx
+        mov     cx, 10
+
+atouNext:
+        cmp     byte ptr [ di ], '0'     ; if not a digit, we're done. Works with null and 0x0d terminated strings
+        jb      atouDone
+        cmp     byte ptr [ di ], '9' + 1
+        jge     atouDone
+
+        mov     ax, bx
+        mul     cx
+        mov     bx, ax
+
+        xor     ah, ah
+        mov     al, byte ptr [ di ]
+        sub     ax, '0'
+        add     bx, ax
+        inc     di
+        jmp     atouNext
+
+atouDone:
+        mov     ax, bx
+        pop     bx
+        pop     di
+        ret
+atou ENDP
 
 ; print the integer in ax
 
@@ -463,16 +517,16 @@ printelap PROC NEAR
         push     di
         push     si
         xor      ax, ax
-        int      1ah
-        mov      WORD PTR ds: [ scratchpad ], dx
-        mov      WORD PTR ds: [ scratchpad + 2 ], cx
+        int      dos_get_systemtime
+        mov      word ptr ds: [ scratchpad ], dx
+        mov      word ptr ds: [ scratchpad + 2 ], cx
         mov      dl, 0
-        mov      ax, WORD PTR ds: [ scratchpad ]
-        mov      bx, WORD PTR ds: [ starttime ]
+        mov      ax, word ptr ds: [ scratchpad ]
+        mov      bx, word ptr ds: [ starttime ]
         sub      ax, bx
         mov      word ptr ds: [ result ], ax
-        mov      ax, WORD PTR ds: [ scratchpad + 2 ]
-        mov      bx, WORD PTR ds: [ starttime + 2 ]
+        mov      ax, word ptr ds: [ scratchpad + 2 ]
+        mov      bx, word ptr ds: [ starttime + 2 ]
         sbb      ax, bx
         mov      word ptr ds: [ result + 2 ], ax
         mov      dx, word ptr ds: [ result + 2 ]
@@ -510,7 +564,7 @@ printstring PROC NEAR
 
   _psnext:
       
-        mov      al, BYTE PTR ds: [ di ]
+        mov      al, byte ptr ds: [ di ]
         cmp      al, 0
         je       _psdone
         mov      dx, ax
@@ -749,12 +803,14 @@ proc8 ENDP
 crlfmsg       db      13,10,0
 secondsmsg    db      ' seconds',13,10,0
 iterationsmsg db      'iterations: ',0
+zeroitersmsg  db      'iterations argument must be 1..32767',13,10,0
 movesmsg      db      'moves: ',0
 commaspmsg    db      ', ',0
 board         db      0,0,0,0,0,0,0,0,0
 
 align 2
-iters      dw      0        ; iterations of running the app
+iters      dw      0        ; iterations of running the app so far
+totaliters dw      0        ; # of iterations to run in total
 
 align 4
 scratchpad dd      0
