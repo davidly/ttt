@@ -629,6 +629,13 @@ atou:                               ; in: hl points to string. out: hl has integ
         push   d
         lxi    b, 0                 ; running total is in bc
 
+  atouSpaceLoop:                    ; skip past spaces
+        mov    a, m
+        cpi    ' '
+        jnz    atouNext
+        inx    h
+        jmp    atouSpaceLoop
+
   atouNext:
         mov    a, m                 ; check if we're at the end of string or the data isn't a number
         cpi    '0'
