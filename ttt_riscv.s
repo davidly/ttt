@@ -14,7 +14,7 @@
 .equ win_score,     6
 .equ lose_score,    4
 .equ tie_score,     5
-.equ iterations,    1000
+.equ iterations,    10
 
 .section .sbss,"aw",@nobits
 
@@ -307,16 +307,12 @@ minmax_max:
         sb      zero, (t0)        
 
         beq     a0, s5, .minmax_max_done  # can't do better than winning when maximizing 
-
-        ble     a0, s2, .minmax_max_skip_value  # compare score with value
-        mv      s2, a0             # update value with the new high score
-
-  .minmax_max_skip_value:
-        ble     s2, s0, .minmax_max_skip_alpha   # compare value with alpha
-        mv      s0, s2             # update alpha with value
-
-  .minmax_max_skip_alpha:
-        blt     s0, s1, .minmax_max_loop  # alpha pruning
+        ble     a0, s2, .minmax_max_loop  # compare score with value
+        mv      s2, a0                    # update value with the new high score
+        bge     a0, s1, .minmax_max_done  # compare value with beta and return if >=
+        ble     a0, s0, .minmax_max_loop  # compare value with alpha and loop if <=
+        mv      s0, a0                    # update alpha with value
+        j       .minmax_max_loop          
 
   .minmax_max_loadv_done:
         mv      a0, s2             # return value
@@ -412,16 +408,12 @@ minmax_min:
         sb      zero, (t0)        
 
         beq     a0, s6, .minmax_min_done  # can't do better than losing when minimizing
-
-        bge     a0, s2, .minmax_min_skip_value  # compare score with value
-        mv      s2, a0             # update value with the new low score
-
-  .minmax_min_skip_value:
-        bge     s2, s1, .minmax_min_skip_beta   # compare value with beta
-        mv      s1, s2             # update beta with value
-
-  .minmax_min_skip_beta:
-        bgt     s1, s0, .minmax_min_loop  # beta pruning
+        bge     a0, s2, .minmax_min_loop  # compare score with value
+        mv      s2, a0                    # update value with the new high score
+        ble     a0, s0, .minmax_min_done  # compare value with alpha and return if <=
+        bge     a0, s1, .minmax_min_loop  # compare value with beta and loop if >=
+        mv      s1, a0                    # update beta with value
+        j       .minmax_min_loop          
 
   .minmax_min_loadv_done:
         mv      a0, s2             # return value

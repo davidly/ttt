@@ -169,19 +169,21 @@ def min_max( board, alpha, beta, depth, move ):
                     return score_win
                 if score > value:
                     value = score
-                if value > alpha:
-                    alpha = value
-                if alpha >= beta:
-                    return value
+                    if value >= beta:
+                        return value
+                    if value > alpha:
+                        alpha = value
+                    if alpha >= beta:
+                        return value
             else:
                 if score_lose == score:
                     return score_lose
                 if score < value:
                     value = score
-                if value < beta:
-                    beta = value
-                if beta <= alpha:
-                    return value
+                    if value <= alpha:
+                        return value
+                    if value < beta:
+                        beta = value
     return value
 
 def run_board( move ):

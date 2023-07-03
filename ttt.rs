@@ -272,16 +272,15 @@ fn min_max( b: &mut board::Board, mut alpha: i32, mut beta: i32, depth: i32, mov
 
                 if score > value {
                     value = score;
-                }
 
-                if AB_PRUNE
-                {
-                    if value > alpha {
-                        alpha = value;
-                    }
-
-                    if alpha >= beta {
-                        return value;
+                    if AB_PRUNE
+                    {
+                        if value >= beta {
+                            return value;
+                        }
+                        if value > alpha {
+                            alpha = value;
+                        }
                     }
                 }
             }
@@ -293,16 +292,15 @@ fn min_max( b: &mut board::Board, mut alpha: i32, mut beta: i32, depth: i32, mov
 
                 if score < value {
                     value = score;
-                }
 
-                if AB_PRUNE
-                {
-                    if value < beta {
-                        beta = value;
-                    }
-
-                    if beta <= alpha {
-                        return value;
+                    if AB_PRUNE
+                    {
+                        if value <= alpha {
+                            return value;
+                        }
+                        if value < beta {
+                            beta = value;
+                        }
                     }
                 }
             }

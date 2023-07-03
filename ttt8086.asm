@@ -178,23 +178,21 @@ minmax_max PROC NEAR
         mov      di, [ bp + i_offset ]
         mov      byte ptr ds: [ offset board + di ], 0
 
-        cmp      ax, win_score
+        cmp      ax, win_score		    ; can't do better than winning
         je       SHORT _max_just_return_ax
 
-        cmp      ax, [ bp + value_offset ]
-        jle      SHORT _max_ab_prune
-        mov      [ bp + value_offset ], ax
+        cmp      ax, [ bp + value_offset ]	     ; compare score with value
+        jle      SHORT _max_loop
 
-  _max_ab_prune:
-        mov      ax, [ bp + value_offset ]
-        cmp      ax, [ bp + alpha_offset ]
-        jle      SHORT _max_check_beta
-        mov      [ bp + alpha_offset ], ax
+        mov      [ bp + value_offset ], ax           ; update value with score
+        cmp      ax, [ bp + beta_offset ]	     ; compare value with beta
+        jge      SHORT _max_just_return_ax           ; beta pruning
 
-  _max_check_beta:
-        mov      ax, [ bp + alpha_offset ]
-        cmp      ax, [ bp + beta_offset ]
-        jl       SHORT _max_loop
+        cmp      ax, [ bp + alpha_offset ]	     ; compare value with alpha
+        jle      SHORT _max_loop
+
+        mov      [ bp + alpha_offset ], ax            ; update alpha with value
+        jmp      SHORT _max_loop
 
   _max_load_value_return:
         mov      ax, [ bp + value_offset ]
@@ -253,23 +251,21 @@ minmax_min PROC NEAR
         mov      di, [ bp + i_offset ]
         mov      byte ptr ds: [ offset board + di ], 0
 
-        cmp      ax, lose_score
+        cmp      ax, lose_score			     ; can't do better than losing
         je       SHORT _min_just_return_ax
 
-        cmp      ax, [ bp + value_offset ]
-        jge      SHORT _min_ab_prune
-        mov      [ bp + value_offset ], ax
+        cmp      ax, [ bp + value_offset ]	     ; compare score with value
+        jge      SHORT _min_loop
 
-  _min_ab_prune:
-        mov      ax, [ bp + value_offset ]
-        cmp      ax, [ bp + beta_offset ]
-        jge      SHORT _min_check_alpha
-        mov      [ bp + beta_offset ], ax
+        mov      [ bp + value_offset ], ax           ; update value with score
+        cmp      ax, [ bp + alpha_offset ]	     ; compare value with alpha
+        jle      SHORT _min_just_return_ax           ; alpha pruning
 
-  _min_check_alpha:
-        mov      ax, [ bp + beta_offset ]
-        cmp      ax, [ bp + alpha_offset ]
-        jg       SHORT _min_loop
+        cmp      ax, [ bp + beta_offset ]	     ; compare value with beta
+        jge      SHORT _min_loop
+
+        mov      [ bp + beta_offset ], ax            ; update beta with value
+        jmp      SHORT _min_loop
 
   _min_load_value_return:
         mov      ax, [ bp + value_offset ]

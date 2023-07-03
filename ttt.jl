@@ -198,12 +198,12 @@ function min_max( board, alpha, beta, depth, move )
                 end
                 if score > value
                     value = score
-                end
-                if value > alpha
-                    alpha = value
-                end
-                if alpha >= beta
-                    return value
+                    if value >= beta
+                        return value
+                    end
+                    if value > alpha
+                        alpha = value
+                    end
                 end
             else
                 if score_lose == score
@@ -211,12 +211,12 @@ function min_max( board, alpha, beta, depth, move )
                 end
                 if score < value
                     value = score
-                end
-                if value < beta
-                    beta = value
-                end
-                if beta <= alpha
-                    return value
+                    if value <= alpha
+                        return value
+                    end
+                    if value < beta
+                        beta = value
+                    end
                 end
             end
         end

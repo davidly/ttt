@@ -430,7 +430,7 @@ minmax_max PROC
     ; r11: unused
     ; r12: unused except by some WINPROCS
     ; r13: global minmax call count
-    ; r14: Value
+    ; r14: unused
     ; r15: reserved for global loop of 10000 calls
 
     inc     r13                             ; r13 is a global variable with the # of calls to minmax_max and minmax_min
@@ -438,7 +438,7 @@ minmax_max PROC
     ; NOTE: rcx, and rdx aren't saved in spill locations until actually needed. Don't trash them until after skip_winner
 
     cmp     r8, 3                           ; # of pieces on board is 1 + depth. So >= 4 means at least 5 moves played
-    jle     SHORT minmax_max_skip_winner    ; if too few moves, there can't be a winner yet
+    jle     short minmax_max_skip_winner    ; if too few moves, there can't be a winner yet
 
     ; the win procs expect the board in r10
     mov     rax, o_piece                    ; rax contains the player with the latest move on input
@@ -454,24 +454,26 @@ minmax_max PROC
     mov     [rbp + A_SPILL_OFFSET], rcx     ; alpha saved in the spill location
     mov     [rbp + B_SPILL_OFFSET], rdx     ; beta saved in the spill location
 
-    mov     r14, minimum_score              ; minimum possible score. maximizing, so find a score higher than this
+    mov     rax, minimum_score
+    mov     [rbp - V_OFFSET], rax           ; minimum possible score. maximizing, so find a score higher than this
     mov     r9, -1                          ; r9 is I in the for loop 0..8. avoid a jump by starting at -1
 
     align   16
   minmax_max_top_of_loop:
     cmp     r9, 8                           ; 8 because the board is 0..8. check before incrementing
-    je      SHORT minmax_max_loadv_done
+    je      short minmax_max_loadv_done
     inc     r9
 
     cmp     BYTE PTR [r10 + r9], 0          ; is the board position free?
-    jne     SHORT minmax_max_top_of_loop    ; move to the next spot on the board
+    jne     short minmax_max_top_of_loop    ; move to the next spot on the board
 
     mov     BYTE PTR [r10 + r9], x_piece    ; make the move
 
-    ; prepare arguments for recursing. rcx (alpha) and rdx (beta) are already set
+    ; prepare arguments alpha rcx, beta rdx, depth r8, and move r9 for recursing.
+    mov     rcx, [rbp + A_SPILL_OFFSET]     ; load alpha
+    mov     rdx, [rbp + B_SPILL_OFFSET]     ; load beta
     inc     r8                              ; next depth 1..8
     mov     [rbp - I_OFFSET], r9            ; save i -- the for loop variable
-    mov     [rbp - V_OFFSET], r14           ; save V -- value of the current board position
 
     ; unlike win64 calling conventions, no registers are preserved aside from r8 and globals in r10, r12, r13, and r15
     call    minmax_min                      ; score is in rax on return
@@ -480,28 +482,26 @@ minmax_max PROC
     mov     r9, [rbp - I_OFFSET]            ; restore i
     mov     BYTE PTR [r10 + r9], 0          ; Restore the move on the board to 0 from X
 
-    cmp     rax, win_score
-    je      SHORT minmax_max_done           ; can't do better than winning score when maximizing
+    cmp     rax, win_score                  ; compare score with the winning score
+    je      short minmax_max_done           ; can't do better than winning score when maximizing
 
-    mov     r14, [rbp - V_OFFSET]           ; load V
-    cmp     rax, r14                        ; compare SC with V
-    cmovg   r14, rax                        ; keep latest V in r14
+    cmp     rax, [rbp - V_OFFSET]           ; compare score with value
+    jle     short minmax_max_top_of_loop
+
+    mov     [rbp - V_OFFSET], rax           ; update value with score
+    cmp     rax, [rbp + B_SPILL_OFFSET]     ; compare value with beta
+    jge     short minmax_max_done           ; beta pruning
 
     lea     rdi, [rbp + A_SPILL_OFFSET]     ; save address of alpha
-    mov     rcx, [rdi]                      ; load alpha
-    cmp     rcx, r14                        ; compare alpha with V
-    cmovl   rcx, r14                        ; only update alpha if alpha is less than V
+    cmp     rax, [rdi]                      ; compare value with alpha
+    jle     short minmax_max_top_of_loop
 
-    mov     rdx, [rbp + B_SPILL_OFFSET]     ; load beta
-    cmp     rcx, rdx                        ; compare alpha (rcx) with beta (rdx)
-    jge     SHORT minmax_max_loadv_done     ; alpha pruning if alpha >= beta
-    mov     [rdi], rcx                      ; update alpha with V or the same alpha value (to avoid a jump). no cmov for writing to memory
-
-    jmp     minmax_max_top_of_loop
+    mov     [rdi], rax                      ; update alpha with value
+    jmp     short minmax_max_top_of_loop
 
     align   16
   minmax_max_loadv_done:
-    mov     rax, r14                        ; load V then return
+    mov     rax, [rbp - V_OFFSET]           ; load V then return
 
   minmax_max_done:
     leave
@@ -524,7 +524,7 @@ minmax_min PROC
     ; r11: unused
     ; r12: unused except by some WINPROCS
     ; r13: global minmax call count
-    ; r14: Value
+    ; r14: unused
     ; r15: reserved for global loop of 10000 calls
 
     inc     r13                             ; r13 is a global variable with the # of calls to minmax_max and minmax_min
@@ -532,7 +532,7 @@ minmax_min PROC
     ; NOTE: rcx, and rdx aren't saved in spill locations until actually needed. Don't trash them until after skip_winner
 
     cmp     r8, 3                           ; # of pieces on board is 1 + depth. So >= 4 means at least 5 moves played
-    jle     SHORT minmax_min_skip_winner    ; if too few moves, there can't be a winner yet
+    jle     short minmax_min_skip_winner    ; if too few moves, there can't be a winner yet
 
     ; the win procs expect the board in r10
     mov     rax, x_piece                    ; rax contains the player with the latest move on input
@@ -552,24 +552,26 @@ minmax_min PROC
     mov     [rbp + A_SPILL_OFFSET], rcx     ; alpha saved in the spill location
     mov     [rbp + B_SPILL_OFFSET], rdx     ; beta saved in the spill location
  
-    mov     r14, maximum_score              ; maximum possible score; minimizing, so find a score lower than this
+    mov     rax, maximum_score
+    mov     [rbp - V_OFFSET], rax           ; maximum possible score; minimizing, so find a score lower than this 
     mov     r9, -1                          ; r9 is I in the for loop 0..8. avoid a jump by starting at -1
 
     align   16
   minmax_min_top_of_loop:
     cmp     r9, 8                           ; 8 because the board is 0..8. check before incrementing
-    je      SHORT minmax_min_loadv_done
+    je      short minmax_min_loadv_done
     inc     r9
 
     cmp     BYTE PTR [r10 + r9], 0          ; is the board position free?
-    jne     SHORT minmax_min_top_of_loop    ; move to the next spot on the board
+    jne     short minmax_min_top_of_loop    ; move to the next spot on the board
 
     mov     BYTE PTR [r10 + r9], o_piece    ; make the move
 
-    ; prepare arguments for recursing. rcx (alpha) and rdx (beta) are already set
+    ; prepare arguments alpha rcx, beta rdx, depth r8, and move r9 for recursing.
+    mov     rcx, [rbp + A_SPILL_OFFSET]     ; load alpha
+    mov     rdx, [rbp + B_SPILL_OFFSET]     ; load beta
     inc     r8                              ; next depth 1..8
     mov     [rbp - I_OFFSET], r9            ; save i -- the for loop variable
-    mov     [rbp - V_OFFSET], r14           ; save V -- value of the current board position
 
     ; unlike win64 calling conventions, no registers are preserved aside from r8 and globals in r10, r12, r13, and r15
     call    minmax_max                      ; score is in rax on return
@@ -579,27 +581,25 @@ minmax_min PROC
     mov     BYTE PTR [r10 + r9], 0          ; Restore the move on the board to 0 from O
 
     cmp     rax, lose_score
-    je      SHORT minmax_min_done           ; can't do better than losing score when minimizing
+    je      short minmax_min_done           ; can't do better than losing score when minimizing
 
-    mov     r14, [rbp - V_OFFSET]           ; load V
-    cmp     rax, r14                        ; compare SC with v
-    cmovl   r14, rax                        ; keep latest V in r14
+    cmp     rax, [rbp - V_OFFSET]           ; compare score with value
+    jge     short minmax_min_top_of_loop
+
+    mov     [rbp - V_OFFSET], rax           ; update value with score
+    cmp     rax, [rbp + A_SPILL_OFFSET]     ; compare value with alpha
+    jle     short minmax_min_done           ; alpha pruning
 
     lea     rdi, [rbp + B_SPILL_OFFSET]     ; save address of beta
-    mov     rdx, [rdi]                      ; load beta
-    cmp     rdx, r14                        ; compare beta with V
-    cmovg   rdx, r14                        ; if V is less than Beta, update Beta
+    cmp     rax, [rdi]                      ; compare value with beta
+    jge     short minmax_min_top_of_loop
 
-    mov     rcx, [rbp + A_SPILL_OFFSET ]    ; load alpha
-    cmp     rdx, rcx                        ; compare beta (rdx) with alpha (rcx)
-    jle     SHORT minmax_min_loadv_done     ; beta pruning if beta <= alpha
-    mov     [rdi], rdx                      ; update beta with a new value or the same value (to avoid a jump). no cmov for writing to memory
-
-    jmp     minmax_min_top_of_loop
+    mov     [rdi], rax                      ; update beta with value
+    jmp     short minmax_min_top_of_loop    ; loop for the next i
 
     align   16
   minmax_min_loadv_done:
-    mov     rax, r14                        ; load V then return
+    mov     rax, [rbp - V_OFFSET]           ; load V then return
 
   minmax_min_done:
     leave
@@ -611,12 +611,12 @@ proc0 PROC
     mov     bl, al
     and     al, [r10 + 1]
     and     al, [r10 + 2]
-    jnz     SHORT proc0_yes
+    jnz     short proc0_yes
 
     mov     al, bl
     and     al, [r10 + 3]
     and     al, [r10 + 6]
-    jnz     SHORT proc0_yes
+    jnz     short proc0_yes
 
     mov     al, bl
     and     al, [r10 + 4]
@@ -631,7 +631,7 @@ proc1 PROC
     mov     bl, al
     and     al, [r10 + 0]
     and     al, [r10 + 2]
-    jnz     SHORT proc1_yes
+    jnz     short proc1_yes
 
     mov     al, bl
     and     al, [r10 + 4]
@@ -646,12 +646,12 @@ proc2 PROC
     mov     bl, al
     and     al, [r10 + 0]
     and     al, [r10 + 1]
-    jnz     SHORT proc2_yes
+    jnz     short proc2_yes
 
     mov     al, bl
     and     al, [r10 + 5]
     and     al, [r10 + 8]
-    jnz     SHORT proc2_yes
+    jnz     short proc2_yes
 
     mov     al, bl
     and     al, [r10 + 4]
@@ -666,7 +666,7 @@ proc3 PROC
     mov     bl, al
     and     al, [r10 + 0]
     and     al, [r10 + 6]
-    jnz     SHORT proc3_yes
+    jnz     short proc3_yes
 
     mov     al, bl
     and     al, [r10 + 4]
@@ -681,17 +681,17 @@ proc4 PROC
     mov     bl, al
     and     al, [r10 + 0]
     and     al, [r10 + 8]
-    jnz     SHORT proc4_yes
+    jnz     short proc4_yes
 
     mov     al, bl
     and     al, [r10 + 2]
     and     al, [r10 + 6]
-    jnz     SHORT proc4_yes
+    jnz     short proc4_yes
 
     mov     al, bl
     and     al, [r10 + 1]
     and     al, [r10 + 7]
-    jnz     SHORT proc4_yes
+    jnz     short proc4_yes
 
     mov     al, bl
     and     al, [r10 + 3]
@@ -706,7 +706,7 @@ proc5 PROC
     mov     bl, al
     and     al, [r10 + 3]
     and     al, [r10 + 4]
-    jnz     SHORT proc5_yes
+    jnz     short proc5_yes
 
     mov     al, bl
     and     al, [r10 + 2]
@@ -721,12 +721,12 @@ proc6 PROC
     mov     bl, al
     and     al, [r10 + 4]
     and     al, [r10 + 2]
-    jnz     SHORT proc6_yes
+    jnz     short proc6_yes
 
     mov     al, bl
     and     al, [r10 + 0]
     and     al, [r10 + 3]
-    jnz     SHORT proc6_yes
+    jnz     short proc6_yes
 
     mov     al, bl
     and     al, [r10 + 7]
@@ -741,7 +741,7 @@ proc7 PROC
     mov     bl, al
     and     al, [r10 + 1]
     and     al, [r10 + 4]
-    jnz     SHORT proc7_yes
+    jnz     short proc7_yes
 
     mov     al, bl
     and     al, [r10 + 6]
@@ -756,12 +756,12 @@ proc8 PROC
     mov     bl, al
     and     al, [r10 + 0]
     and     al, [r10 + 4]
-    jnz     SHORT proc8_yes
+    jnz     short proc8_yes
 
     mov     al, bl
     and     al, [r10 + 2]
     and     al, [r10 + 5]
-    jnz     SHORT proc8_yes
+    jnz     short proc8_yes
 
     mov     al, bl
     and     al, [r10 + 6]

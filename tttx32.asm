@@ -420,7 +420,7 @@ TTTThreadProc PROC
     call     minmax_min                                    ; x just moved, so miminimize now
 
     dec      DWORD PTR [ebp - 4]
-    jne      SHORT TTT_ThreadProc_loop
+    jne      short TTT_ThreadProc_loop
 
     lock     add DWORD PTR [moveCount], esi
 
@@ -445,7 +445,7 @@ minmax_max PROC
     inc      esi
 
     cmp      ecx, 3                                        ; only look for a winner if enough pieces are played
-    jle      SHORT minmax_max_skip_winner
+    jle      short minmax_max_skip_winner
 
     mov      al, o_piece
     call     DWORD PTR [ winprocs + edx * 4 ]
@@ -465,11 +465,11 @@ minmax_max PROC
 
   minmax_max_top_of_loop:
     cmp      edx, 8                                        ; done iterating all the moves?
-    je       SHORT minmax_max_loadv_done
+    je       short minmax_max_loadv_done
     inc      edx 
 
     cmp      BYTE PTR [ edi + edx ], 0                     ; is that move free on the board?
-    jne      SHORT minmax_max_top_of_loop
+    jne      short minmax_max_top_of_loop
     mov      DWORD PTR [ ebp - LOCAL_I_OFFSET ], edx
 
     mov      BYTE PTR [ edi + edx ], x_piece               ; make the move
@@ -485,37 +485,21 @@ minmax_max PROC
     mov      BYTE PTR [ edi + edx ], blank_piece
 
     cmp      eax, win_score                                ; if we won, exit early
-    je       SHORT minmax_max_done
+    je       short minmax_max_done
 
-    mov      ebx, DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ]   ; update value based on the score
-    cmp      eax, ebx
+    cmp      eax, DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ]   ; compare score with value
+    jle      short minmax_max_top_of_loop
 
-    IFDEF USE686
-        cmovg    ebx, eax
-        mov      DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ], ebx
-    ELSE
-        jle      minmax_max_no_v_update
-        mov      ebx, eax
-        mov      DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ], ebx
-      minmax_max_no_v_update:
-    ENDIF
+    mov      DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ], eax   ; update value with score
+    cmp      eax, DWORD PTR [ ebp + ARG_BETA_OFFSET ]      ; compare value with beta
+    jge      short minmax_max_done
 
-    mov      eax, DWORD PTR [ ebp + ARG_ALPHA_OFFSET ]
-    cmp      eax, ebx
-
-    IFDEF USE686
-        cmovl    eax, ebx
-    ELSE
-        jge      minmax_max_no_alpha_update
-        mov      eax, ebx
-      minmax_max_no_alpha_update:
-    ENDIF
-
-    cmp      eax, DWORD PTR [ ebp + ARG_BETA_OFFSET ]      ; compare alpha with beta
-    jge      SHORT minmax_max_loadv_done                   ; alpha prune
-    mov      DWORD PTR [ ebp + ARG_ALPHA_OFFSET ], eax     ; this may just update with the same value
-
-    jmp      SHORT minmax_max_top_of_loop
+    lea      ebx, [ ebp + ARG_ALPHA_OFFSET ]               ; save address of alpha
+    cmp      eax, [ebx]                                    ; compare value with alpha
+    jle      short minmax_max_top_of_loop
+    
+    mov      [ebx], eax                                    ; update alpha
+    jmp      short minmax_max_top_of_loop
 
   minmax_max_loadv_done:
     mov      eax, DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ]
@@ -540,7 +524,7 @@ minmax_min PROC
     inc      esi
     
     cmp      ecx, 3                                        ; only look for a winner if enough pieces are played
-    jle      SHORT minmax_min_skip_winner
+    jle      short minmax_min_skip_winner
 
     mov      al, x_piece
     call     DWORD PTR [ winprocs + edx * 4 ]
@@ -566,11 +550,11 @@ minmax_min PROC
 
   minmax_min_top_of_loop:
     cmp      edx, 8
-    je       SHORT minmax_min_loadv_done
+    je       short minmax_min_loadv_done
     inc      edx 
 
     cmp      BYTE PTR [ edi + edx ], 0
-    jne      SHORT minmax_min_top_of_loop
+    jne      short minmax_min_top_of_loop
     mov      DWORD PTR [ ebp - LOCAL_I_OFFSET ], edx
 
     mov      BYTE PTR [ edi + edx ], o_piece               ; make the move
@@ -586,37 +570,22 @@ minmax_min PROC
     mov      BYTE PTR [ edi + edx ], blank_piece
 
     cmp      eax, lose_score                               ; if we lost, exit early
-    je       SHORT minmax_min_done
+    je       short minmax_min_done
 
-    mov      ebx, DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ]   ; update value based on the score
-    cmp      eax, ebx
+    cmp      eax, DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ]   ; compare score with value
+    jge      short minmax_min_top_of_loop
 
-    IFDEF USE686
-        cmovl    ebx, eax
-        mov      DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ], ebx
-    ELSE
-        jge      minmax_min_no_v_update
-        mov      ebx, eax
-        mov      DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ], ebx
-      minmax_min_no_v_update:
-    ENDIF
+    mov      DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ], eax   ; update value with score
+    cmp      eax, DWORD PTR [ ebp + ARG_ALPHA_OFFSET ]     ; compare value with alpha
+    jle      short minmax_min_done
 
-    mov      eax, DWORD PTR [ ebp + ARG_BETA_OFFSET ]
-    cmp      eax, ebx
+    lea      ebx, [ ebp + ARG_BETA_OFFSET ]                ; save address of beta
+    cmp      eax, [ebx]                                    ; compare value with beta
+    jge      short minmax_min_top_of_loop
+    
+    mov      [ebx], eax                                    ; update beta
+    jmp      short minmax_min_top_of_loop
 
-    IFDEF USE686
-        cmovg    eax, ebx
-    ELSE
-        jle      minmax_min_no_beta_update
-        mov      eax, ebx
-      minmax_min_no_beta_update:
-    ENDIF
-
-    cmp      eax, DWORD PTR [ ebp + ARG_ALPHA_OFFSET ]     ; compare beta with alpha
-    jle      SHORT minmax_min_loadv_done                   ; beta prune
-    mov      DWORD PTR [ ebp + ARG_BETA_OFFSET ], eax      ; this may just update with the same value
-
-    jmp      SHORT minmax_min_top_of_loop
 
   minmax_min_loadv_done:
     mov      eax, DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ]
@@ -632,12 +601,12 @@ proc0 PROC
     mov     bl, al
     and     al, [edi + 1]
     and     al, [edi + 2]
-    jnz     SHORT proc0_yes
+    jnz     short proc0_yes
 
     mov     al, bl
     and     al, [edi + 3]
     and     al, [edi + 6]
-    jnz     SHORT proc0_yes
+    jnz     short proc0_yes
 
     mov     al, bl
     and     al, [edi + 4]
@@ -652,7 +621,7 @@ proc1 PROC
     mov     bl, al
     and     al, [edi + 0]
     and     al, [edi + 2]
-    jnz     SHORT proc1_yes
+    jnz     short proc1_yes
 
     mov     al, bl
     and     al, [edi + 4]
@@ -667,12 +636,12 @@ proc2 PROC
     mov     bl, al
     and     al, [edi + 0]
     and     al, [edi + 1]
-    jnz     SHORT proc2_yes
+    jnz     short proc2_yes
 
     mov     al, bl
     and     al, [edi + 5]
     and     al, [edi + 8]
-    jnz     SHORT proc2_yes
+    jnz     short proc2_yes
 
     mov     al, bl
     and     al, [edi + 4]
@@ -687,7 +656,7 @@ proc3 PROC
     mov     bl, al
     and     al, [edi + 0]
     and     al, [edi + 6]
-    jnz     SHORT proc3_yes
+    jnz     short proc3_yes
 
     mov     al, bl
     and     al, [edi + 4]
@@ -702,17 +671,17 @@ proc4 PROC
     mov     bl, al
     and     al, [edi + 0]
     and     al, [edi + 8]
-    jnz     SHORT proc4_yes
+    jnz     short proc4_yes
 
     mov     al, bl
     and     al, [edi + 2]
     and     al, [edi + 6]
-    jnz     SHORT proc4_yes
+    jnz     short proc4_yes
 
     mov     al, bl
     and     al, [edi + 1]
     and     al, [edi + 7]
-    jnz     SHORT proc4_yes
+    jnz     short proc4_yes
 
     mov     al, bl
     and     al, [edi + 3]
@@ -727,7 +696,7 @@ proc5 PROC
     mov     bl, al
     and     al, [edi + 3]
     and     al, [edi + 4]
-    jnz     SHORT proc5_yes
+    jnz     short proc5_yes
 
     mov     al, bl
     and     al, [edi + 2]
@@ -742,12 +711,12 @@ proc6 PROC
     mov     bl, al
     and     al, [edi + 4]
     and     al, [edi + 2]
-    jnz     SHORT proc6_yes
+    jnz     short proc6_yes
 
     mov     al, bl
     and     al, [edi + 0]
     and     al, [edi + 3]
-    jnz     SHORT proc6_yes
+    jnz     short proc6_yes
 
     mov     al, bl
     and     al, [edi + 7]
@@ -762,7 +731,7 @@ proc7 PROC
     mov     bl, al
     and     al, [edi + 1]
     and     al, [edi + 4]
-    jnz     SHORT proc7_yes
+    jnz     short proc7_yes
 
     mov     al, bl
     and     al, [edi + 6]
@@ -777,12 +746,12 @@ proc8 PROC
     mov     bl, al
     and     al, [edi + 0]
     and     al, [edi + 4]
-    jnz     SHORT proc8_yes
+    jnz     short proc8_yes
 
     mov     al, bl
     and     al, [edi + 2]
     and     al, [edi + 5]
-    jnz     SHORT proc8_yes
+    jnz     short proc8_yes
 
     mov     al, bl
     and     al, [edi + 6]

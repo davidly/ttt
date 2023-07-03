@@ -125,7 +125,7 @@ RunMinMax:                          ; Run the MINMAX function for a given first 
 
 ; The 8080 has no simple way to address arguments or local variables relative to sp.
 ; The approach here is to:
-;   1) pass arguments:
+;   1) pass arguments in registers:
 ;           a - depth
 ;           b - move position
 ;           l - alpha
@@ -160,16 +160,16 @@ MinMaxMaximize:                     ; the recursive scoring function
         sta     V
         lxi     d, 00ffh            ; the variable I will go from 0..8
 
-  MAX$MMLOOP:
+  MAX$LOOP:
         mov     a, e
         cpi     8
-        jz      MAX$MMDONE
+        jz      MAX$DONE
         inr     e
         lxi     h, BOARD
         dad     d
         xra     a                   ; BLANKPIECE is 0
         cmp     m
-        jnz     MAX$MMLOOP
+        jnz     MAX$LOOP
 
         mvi     m, XPIECE           ; make the move
 
@@ -201,31 +201,25 @@ MinMaxMaximize:                     ; the recursive scoring function
         cpi     WSCO                ; SC - WSCO. If zero, can't do better.
         rz
 
-        mov     b, a
-        lxi     h, V                
-        mov     a, m
-        cmp     b                   ; V - SC
-        jp      MAX$MMNOMAX         ; jp is >= 0. The comparision is backwards due to no jle or jgz on 8080
-        mov     m, b                ; update V with the new best score
-        mov     a, b                ; keep the latest V in a
+        lxi     h, V
+        cmp     m                   ; compare score with value
+        jz      MAX$LOOP            ; no j <= instruction on 8080
+        jm      MAX$LOOP
 
-  MAX$MMNOMAX:
-        lxi     h, ALPHA
-        cmp     m                   ; V - ALPHA
-        jm      MAX$MMNOALP
-        mov     m, a                ; new alpha
+        mov     m, a                ; update value with score
+        lxi     h, BETA
+        cmp     m                   ; compare value with beta
+        rp                          ; beta pruning
 
-  MAX$MMNOALP:
-        lda     BETA
-        cmp     m                   ; Beta - Alpha
-        jz      MAX$MMPRUNE         ; there is no jump if > 0 on 8080
-        jp      MAX$MMLOOP
+        lxi     h, ALPHA            ; save the address of alpha
+        cmp     m                   ; compare value with alpha
+        jz      MAX$LOOP            ; no j <= instruction on 8080
+        jm      MAX$LOOP
 
-  MAX$MMPRUNE:
-        lda     V
-        ret                         ; Alpha pruning
+        mov     m, a                ; update alpha with value
+        jmp     MAX$LOOP
 
-  MAX$MMDONE:
+  MAX$DONE:
         lda     V
         ret
 
@@ -258,16 +252,16 @@ MinMaxMinimize:                     ; the recursive scoring function
         sta     V
         lxi     d, 00ffh            ; the variable I will go from 0..8
 
-  MIN$MMLOOP:
+  MIN$LOOP:
         mov     a, e
         cpi     8
-        jz      MIN$MMDONE
+        jz      MIN$DONE
         inr     e
         lxi     h, BOARD
         dad     d
         xra     a                   ; BLANKPIECE is 0
         cmp     m
-        jnz     MIN$MMLOOP
+        jnz     MIN$LOOP
 
         mvi     m, OPIECE           ; make the move
 
@@ -299,27 +293,24 @@ MinMaxMinimize:                     ; the recursive scoring function
         cpi     LSCO                ; SC - LSCO. If zero, can't do worse.
         rz
 
-        lxi     h, V                
-        cmp     m                   ; SC - V
-        jp      MIN$MMNOMIN
-        mov     m, a                ; update V with the new low score
+        lxi     h, V
+        cmp     m                   ; compare score with value
+        jp      MIN$LOOP
 
-  MIN$MMNOMIN:
-        mov     a, m                ; load latest V
-        lxi     h, BETA
-        cmp     m                   ; V - Beta
-        jp      MIN$MMNOBET
-        mov     m, a                ; new beta
+        mov     m, a                ; update value with score
+        lxi     h, ALPHA
+        cmp     m                   ; compare value with alpha
+        rz                          ; alpha pruning
+        rmi                         ; alpha pruning
 
-  MIN$MMNOBET:
-        mov     b, a
-        lda     ALPHA
-        cmp     b                   ; Alpha - Beta
-        jm      MIN$MMLOOP
-        lda     V                   ; beta pruning
-        ret
+        lxi     h, BETA             ; save address of beta
+        cmp     m                   ; compare value with beta
+        jp      MIN$LOOP
 
-  MIN$MMDONE:
+        mov     m, a                ; update beta with value
+        jmp     MIN$LOOP
+
+  MIN$DONE:
         lda     V
         ret
 

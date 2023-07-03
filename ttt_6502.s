@@ -68,7 +68,7 @@ lose_score   .eq     4              ; losing score
 XPIECE       .eq     1              ; X move piece
 OPIECE       .eq     2              ; Y move piece
 BLANKPIECE   .eq     0              ; empty piece
-ITERATIONS   .eq     10             ; loop this many times
+ITERATIONS   .eq     1000             ; loop this many times
 
 start
     lda      #$0d                   ; every apple 1 app should go to the next line on the console
@@ -270,21 +270,17 @@ _max_loop                           ; for i = 0; i < 9; i++. i is initialized at
     beq      _max_return_a          ; can't do better than winning
 
     cmp      minmax_local_value, x  ; compare score with value
-    beq      _max_ab_prune          ; 6502 has no <= branch, and swapping args requires another load
-    bmi      _max_ab_prune
+    beq      _max_loop              ; 6502 has no <= branch, and swapping args requires another load
+    bmi      _max_loop
+
     sta      minmax_local_value, x  ; update value with the better score
+    cmp      minmax_arg_beta, x     ; compare value with beta
+    bpl      _max_return_a          ; beta pruning
 
-_max_ab_prune
-    lda      minmax_local_value, x  ; load value
     cmp      minmax_arg_alpha, x    ; compare value with alpha
-    beq      _max_check_beta        ; 6502 has no <= branch, and swapping args requires another load
-    bmi      _max_check_beta
+    beq      _max_loop              ; 6502 has no <= branch, and swapping args requires another load
+    bmi      _max_loop
     sta      minmax_arg_alpha, x    ; update alpha with value
-
-_max_check_beta
-    lda      minmax_arg_alpha, x    ; load alpha
-    cmp      minmax_arg_beta, x     ; compare alpha with beta
-    bpl      _max_return_value      ; beta pruning. bpl is >=
     jmp      _max_loop              ; loop for the next i
     
 _max_return_value
@@ -371,19 +367,17 @@ _min_loop                           ; for i = 0; i < 9; i++. i is initialized at
     beq      _min_return_a          ; can't do worse than a losing score
 
     cmp      minmax_local_value, x  ; compare score with value
-    bpl      _min_ab_prune
+    bpl      _min_loop              ; 
+
     sta      minmax_local_value, x  ; update value with the better score
+    cmp      minmax_arg_alpha, x    ; compare value with alpha
+    beq      _min_return_a          ; alpha pruning
+    bmi      _min_return_a          ; alpha pruning
 
-_min_ab_prune
-    lda      minmax_local_value, x  ; load value
     cmp      minmax_arg_beta, x     ; compare value with beta
-    bpl      _min_check_alpha
-    sta      minmax_arg_beta, x     ; update beta with value
+    bpl      _min_loop              ;
 
-_min_check_alpha
-    lda      minmax_arg_alpha, x    ; load alpha
-    cmp      minmax_arg_beta, x     ; compare alpha with beta
-    bpl      _min_return_value      ; alpha pruning. bpl is >=
+    sta      minmax_arg_beta, x     ; update beta with value
     jmp      _min_loop              ; loop for the next i
     
 _min_return_value

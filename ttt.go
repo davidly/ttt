@@ -272,14 +272,14 @@ func minmax( board [9] int, alpha int, beta int, depth int, move int ) int {
 
                 if ( score > value ) {
                     value = score;
-                }
 
-                if ( value > alpha ) {
-                    alpha = value;
-                }
-
-                if ( alpha >= beta ) {
-                    return value;
+                    if ( value >= beta ) {
+                        return value;
+                    }
+                    if ( value > alpha ) {
+                        alpha = value;
+                    }
+    
                 }
             } else {
                 if ( SCORE_LOSE == score ) {
@@ -288,14 +288,13 @@ func minmax( board [9] int, alpha int, beta int, depth int, move int ) int {
 
                 if ( score < value ) {
                     value = score;
-                }
 
-                if ( value < beta ) {
-                    beta = value;
-                }
-
-                if ( beta <= alpha ) {
-                    return value;
+                    if ( value <= alpha ) {
+                        return value;
+                    }
+                    if ( value < beta ) {
+                        beta = value;
+                    }
                 }
             }
         }
