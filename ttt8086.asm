@@ -39,7 +39,7 @@ startup PROC NEAR
         mov      di, 0
         mov      ds: [ di + totaliters ], default_iterations
         xor      ax, ax
-        cmp      ax, [ di + 128 ]   ; command tail length is 128 bytes into the PSP
+        cmp      al, byte ptr [ di + 128 ]   ; command tail length is 128 bytes into the PSP
         jz       done_with_arguments
 
         mov      cx, 129            ; string is guaranteed to be 0x0d terminated by DOS
@@ -178,17 +178,17 @@ minmax_max PROC NEAR
         mov      di, [ bp + i_offset ]
         mov      byte ptr ds: [ offset board + di ], 0
 
-        cmp      ax, win_score		    ; can't do better than winning
+        cmp      ax, win_score              ; can't do better than winning
         je       SHORT _max_just_return_ax
 
-        cmp      ax, [ bp + value_offset ]	     ; compare score with value
+        cmp      ax, [ bp + value_offset ]           ; compare score with value
         jle      SHORT _max_loop
 
         mov      [ bp + value_offset ], ax           ; update value with score
-        cmp      ax, [ bp + beta_offset ]	     ; compare value with beta
+        cmp      ax, [ bp + beta_offset ]            ; compare value with beta
         jge      SHORT _max_just_return_ax           ; beta pruning
 
-        cmp      ax, [ bp + alpha_offset ]	     ; compare value with alpha
+        cmp      ax, [ bp + alpha_offset ]           ; compare value with alpha
         jle      SHORT _max_loop
 
         mov      [ bp + alpha_offset ], ax            ; update alpha with value
@@ -251,17 +251,17 @@ minmax_min PROC NEAR
         mov      di, [ bp + i_offset ]
         mov      byte ptr ds: [ offset board + di ], 0
 
-        cmp      ax, lose_score			     ; can't do better than losing
+        cmp      ax, lose_score                      ; can't do better than losing
         je       SHORT _min_just_return_ax
 
-        cmp      ax, [ bp + value_offset ]	     ; compare score with value
+        cmp      ax, [ bp + value_offset ]           ; compare score with value
         jge      SHORT _min_loop
 
         mov      [ bp + value_offset ], ax           ; update value with score
-        cmp      ax, [ bp + alpha_offset ]	     ; compare value with alpha
+        cmp      ax, [ bp + alpha_offset ]           ; compare value with alpha
         jle      SHORT _min_just_return_ax           ; alpha pruning
 
-        cmp      ax, [ bp + beta_offset ]	     ; compare value with beta
+        cmp      ax, [ bp + beta_offset ]            ; compare value with beta
         jge      SHORT _min_loop
 
         mov      [ bp + beta_offset ], ax            ; update beta with value
@@ -370,6 +370,12 @@ atou PROC NEAR ; string input in cx. unsigned 16-bit integer result in ax
         mov     bx, 0               ; running total is in bx
         mov     di, cx
         mov     cx, 10
+
+skipspaces:
+        cmp     byte ptr [di ], ' '
+        jne     atouNext
+        inc     di
+        jmp     skipspaces
 
 atouNext:
         cmp     byte ptr [ di ], '0'     ; if not a digit, we're done. Works with null and 0x0d terminated strings
