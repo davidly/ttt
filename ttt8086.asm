@@ -27,7 +27,7 @@ i_offset       equ  2
 
 ; arguments to minmax relative to bp/sp
 ; space between locals and arguments:
-; 4-5  2 or 4 bytes for return pc if minmax is NEAR or FAR (it's NEAR here)
+; 4-5  2 or 4 bytes for return pc if minmax is near or far (it's near here)
 ; 6-7  2 bytes to save BP
 
 alpha_offset   equ   8
@@ -35,7 +35,7 @@ beta_offset    equ  10
 
 CODE SEGMENT PUBLIC 'CODE'
 ORG 100h
-startup PROC NEAR
+startup proc near
         mov      di, 0
         mov      ds: [ di + totaliters ], default_iterations
         xor      ax, ax
@@ -103,9 +103,9 @@ again:
         mov      al, 0
         mov      ah, dos_exit
         int      21h
-startup ENDP
+startup endp
 
-runmm PROC NEAR
+runmm proc near
         ; make the first move
         mov       di, ax
         push      di
@@ -118,13 +118,12 @@ runmm PROC NEAR
         ; global board pointer in si
 
         xor       cx, cx            ; depth in cx
-        mov       ax, max_score     ; pushing constants didn't start until the 80186
+        mov       al, max_score     ; pushing constants didn't start until the 80186
         push      ax                ; beta
-        mov       ax, min_score
+        mov       al, min_score
         push      ax                ; alpha
 
         call      minmax_min
-        add       sp, 4
 
         ; restore the board at the first move position
 
@@ -132,154 +131,152 @@ runmm PROC NEAR
         mov       byte ptr ds: [ offset board + di ], blank_piece
 
         ret
-runmm ENDP
+runmm endp
 
-minmax_max PROC NEAR
+minmax_max proc near
         push     bp
         sub      sp, 4              ; allocate space for local variables i and value
         mov      bp, sp             ; set bp to the stack location
 
         inc      bx                 ; increment global move count
 
-        cmp      cx, 4
-        jl       SHORT _max_no_winner_check
+        cmp      cl, 4
+        jl       short _max_no_winner_check
 
         shl      di, 1
-        mov      ax, o_piece
+        mov      al, o_piece
         call     word ptr ds: [ offset winprocs + di ]
 
         cmp      al, o_piece
-        mov      ax, lose_score
-        je       SHORT _max_just_return_ax
+        mov      al, lose_score
+        je       short _max_just_return_al
 
   _max_no_winner_check:
-        mov      word ptr [ bp + value_offset ], min_score
+        mov      byte ptr [ bp + value_offset ], min_score
         mov      di, -1
 
   _max_loop:
         cmp      di, 8
-        je       SHORT _max_load_value_return
+        je       short _max_load_value_return
         inc      di
 
         cmp      byte ptr ds: [ offset board + di ], 0
-        jne      SHORT _max_loop
+        jne      short _max_loop
 
         mov      word ptr [ bp + i_offset ], di
         mov      byte ptr ds: [ offset board + di ], x_piece
 
-        inc      cx
+        inc      cl
         push     [ bp + beta_offset ]
         push     [ bp + alpha_offset ]
 
         call     minmax_min
-        add      sp, 4              ; cleanup stack for arguments
-        dec      cx
+        dec      cl
 
         mov      di, [ bp + i_offset ]
         mov      byte ptr ds: [ offset board + di ], 0
 
-        cmp      ax, win_score              ; can't do better than winning
-        je       SHORT _max_just_return_ax
+        cmp      al, win_score                       ; can't do better than winning
+        je       short _max_just_return_al
 
-        cmp      ax, [ bp + value_offset ]           ; compare score with value
-        jle      SHORT _max_loop
+        cmp      al, [ bp + value_offset ]           ; compare score with value
+        jle      short _max_loop
 
-        mov      [ bp + value_offset ], ax           ; update value with score
-        cmp      ax, [ bp + beta_offset ]            ; compare value with beta
-        jge      SHORT _max_just_return_ax           ; beta pruning
+        mov      [ bp + value_offset ], al           ; update value with score
+        cmp      al, [ bp + beta_offset ]            ; compare value with beta
+        jge      short _max_just_return_al           ; beta pruning
 
-        cmp      ax, [ bp + alpha_offset ]           ; compare value with alpha
-        jle      SHORT _max_loop
+        cmp      al, [ bp + alpha_offset ]           ; compare value with alpha
+        jle      short _max_loop
 
-        mov      [ bp + alpha_offset ], ax            ; update alpha with value
-        jmp      SHORT _max_loop
+        mov      [ bp + alpha_offset ], al           ; update alpha with value
+        jmp      short _max_loop
 
   _max_load_value_return:
-        mov      ax, [ bp + value_offset ]
+        mov      al, [ bp + value_offset ]
 
-  _max_just_return_ax:
+  _max_just_return_al:
         add      sp, 4              ; cleanup stack for locals
         pop      bp
-        ret
-minmax_max ENDP
+        ret      4
+minmax_max endp
 
-minmax_min PROC NEAR
+minmax_min proc near
         push     bp
         sub      sp, 4              ; allocate space for local variables i and value
         mov      bp, sp             ; set bp to the stack location
 
         inc      bx                 ; increment global move count
 
-        cmp      cx, 4
-        jl       SHORT _min_no_winner_check
+        cmp      cl, 4
+        jl       short _min_no_winner_check
 
         shl      di, 1
-        mov      ax, x_piece
+        mov      al, x_piece
         call     word ptr ds: [ offset winprocs + di ]
 
         cmp      al, x_piece
-        mov      ax, win_score
-        je       SHORT _min_just_return_ax
+        mov      al, win_score
+        je       short _min_just_return_al
 
-        cmp      cx, 8
-        mov      ax, tie_score
-        je       SHORT _min_just_return_ax
+        cmp      cl, 8
+        mov      al, tie_score
+        je       short _min_just_return_al
 
   _min_no_winner_check:
-        mov      word ptr [ bp + value_offset ], max_score
+        mov      byte ptr [ bp + value_offset ], max_score
         mov      di, -1
 
   _min_loop:
         cmp      di, 8
-        je       SHORT _min_load_value_return
+        je       short _min_load_value_return
         inc      di
 
         cmp      byte ptr ds: [ offset board + di ], 0
-        jne      SHORT _min_loop
+        jne      short _min_loop
 
         mov      word ptr [ bp + i_offset ], di
         mov      byte ptr ds: [ offset board + di ], o_piece
 
-        inc      cx
+        inc      cl
         push     [ bp + beta_offset ]
         push     [ bp + alpha_offset ]
 
         call     minmax_max
-        add      sp, 4              ; cleanup stack for arguments
-        dec      cx
+        dec      cl
 
         mov      di, [ bp + i_offset ]
         mov      byte ptr ds: [ offset board + di ], 0
 
-        cmp      ax, lose_score                      ; can't do better than losing
-        je       SHORT _min_just_return_ax
+        cmp      al, lose_score                      ; can't do better than losing
+        je       short _min_just_return_al
 
-        cmp      ax, [ bp + value_offset ]           ; compare score with value
-        jge      SHORT _min_loop
+        cmp      al, [ bp + value_offset ]           ; compare score with value
+        jge      short _min_loop
 
-        mov      [ bp + value_offset ], ax           ; update value with score
-        cmp      ax, [ bp + alpha_offset ]           ; compare value with alpha
-        jle      SHORT _min_just_return_ax           ; alpha pruning
+        mov      [ bp + value_offset ], al           ; update value with score
+        cmp      al, [ bp + alpha_offset ]           ; compare value with alpha
+        jle      short _min_just_return_al           ; alpha pruning
 
-        cmp      ax, [ bp + beta_offset ]            ; compare value with beta
-        jge      SHORT _min_loop
+        cmp      al, [ bp + beta_offset ]            ; compare value with beta
+        jge      short _min_loop
 
-        mov      [ bp + beta_offset ], ax            ; update beta with value
-        jmp      SHORT _min_loop
+        mov      [ bp + beta_offset ], al            ; update beta with value
+        jmp      short _min_loop
 
   _min_load_value_return:
-        mov      ax, [ bp + value_offset ]
+        mov      al, [ bp + value_offset ]
 
-  _min_just_return_ax:
+  _min_just_return_al:
         add      sp, 4              ; cleanup stack for locals
         pop      bp
-        ret
-minmax_min ENDP
+        ret      4
+minmax_min endp
 
 ; winner is no longer used since function pointers with the most recent move in ax are much faster
 
-winner PROC NEAR
-        xor      ax, ax
+winner proc near
+        xor      al, al
         mov      al, [ si ]
         cmp      al, 0
         je       _win_check_3
@@ -359,12 +356,12 @@ winner PROC NEAR
         je      _win_return
 
   _win_return_blank:
-        xor     ax, ax
+        xor     al, al
   _win_return:
         ret
-winner ENDP
+winner endp
 
-atou PROC NEAR ; string input in cx. unsigned 16-bit integer result in ax
+atou proc near ; string input in cx. unsigned 16-bit integer result in ax
         push    di
         push    bx
         mov     bx, 0               ; running total is in bx
@@ -399,11 +396,11 @@ atouDone:
         pop     bx
         pop     di
         ret
-atou ENDP
+atou endp
 
 ; print the integer in ax
 
-printint PROC NEAR
+printint proc near
         test     ah, 80h
         push     ax
         push     bx
@@ -454,9 +451,9 @@ printint PROC NEAR
         pop      bx
         pop      ax
         ret
-printint ENDP
+printint endp
 
-printcrlf PROC NEAR
+printcrlf proc near
         push     ax
         push     bx
         push     cx
@@ -472,9 +469,9 @@ printcrlf PROC NEAR
         pop      bx
         pop      ax
         ret
-printcrlf ENDP
+printcrlf endp
 
-printcommasp PROC NEAR
+printcommasp proc near
         push     ax
         push     bx
         push     cx
@@ -490,9 +487,9 @@ printcommasp PROC NEAR
         pop      bx
         pop      ax
         ret
-printcommasp ENDP
+printcommasp endp
 
-prperiod PROC NEAR
+prperiod proc near
         push     ax
         push     bx
         push     cx
@@ -509,9 +506,9 @@ prperiod PROC NEAR
         pop      bx
         pop      ax
         ret
-prperiod ENDP
+prperiod endp
 
-printelap PROC NEAR
+printelap proc near
         push     ax
         push     bx
         push     cx
@@ -552,9 +549,9 @@ printelap PROC NEAR
         pop      bx
         pop      ax
         ret
-printelap ENDP
+printelap endp
 
-printstring PROC NEAR
+printstring proc near
         push     ax
         push     bx
         push     cx
@@ -584,223 +581,223 @@ printstring PROC NEAR
         pop      bx
         pop      ax
         ret
-printstring ENDP
+printstring endp
 
 align 2
-proc0 PROC NEAR
+proc0 proc near
     cmp     al, [si + 1]
-    jne     SHORT proc0_next_win
+    jne     short proc0_next_win
     cmp     al, [si + 2]
-    je      SHORT proc0_yes
+    je      short proc0_yes
 
   proc0_next_win:
     cmp     al, [si + 3]
-    jne     SHORT proc0_next_win2
+    jne     short proc0_next_win2
     cmp     al, [si + 6]
-    je      SHORT proc0_yes
+    je      short proc0_yes
 
   proc0_next_win2:
     cmp     al, [si + 4]
-    jne     SHORT proc0_no
+    jne     short proc0_no
     cmp     al, [si + 8]
-    je      SHORT proc0_yes
+    je      short proc0_yes
 
   proc0_no:
-    xor     ax, ax
+    xor     al, al
 
   proc0_yes:
     ret
-proc0 ENDP
+proc0 endp
 
 align 2
-proc1 PROC NEAR
+proc1 proc near
     cmp     al, [si + 0]
-    jne     SHORT proc1_next_win
+    jne     short proc1_next_win
     cmp     al, [si + 2]
-    je      SHORT proc1_yes
+    je      short proc1_yes
 
   proc1_next_win:
     cmp     al, [si + 4]
-    jne     SHORT proc1_no
+    jne     short proc1_no
     cmp     al, [si + 7]
-    je      SHORT proc1_yes
+    je      short proc1_yes
 
   proc1_no:
-    xor     ax, ax
+    xor     al, al
 
   proc1_yes:
     ret
-proc1 ENDP
+proc1 endp
 
 align 2
-proc2 PROC NEAR
+proc2 proc near
     cmp     al, [si + 0]
-    jne     SHORT proc2_next_win
+    jne     short proc2_next_win
     cmp     al, [si + 1]
-    je      SHORT proc2_yes
+    je      short proc2_yes
 
   proc2_next_win:
     cmp     al, [si + 5]
-    jne     SHORT proc2_next_win2
+    jne     short proc2_next_win2
     cmp     al, [si + 8]
-    je      SHORT proc2_yes
+    je      short proc2_yes
 
   proc2_next_win2:
     cmp     al, [si + 4]
-    jne     SHORT proc2_no
+    jne     short proc2_no
     cmp     al, [si + 6]
-    je      SHORT proc2_yes
+    je      short proc2_yes
 
   proc2_no:
-    xor      ax, ax
+    xor      al, al
 
   proc2_yes:
     ret
-proc2 ENDP
+proc2 endp
 
 align 2
-proc3 PROC NEAR
+proc3 proc near
     cmp     al, [si + 0]
-    jne     SHORT proc3_next_win
+    jne     short proc3_next_win
     cmp     al, [si + 6]
-    je      SHORT proc3_yes
+    je      short proc3_yes
 
   proc3_next_win:
     cmp     al, [si + 4]
-    jne     SHORT proc3_no
+    jne     short proc3_no
     cmp     al, [si + 5]
-    je      SHORT proc3_yes
+    je      short proc3_yes
 
   proc3_no:
-    xor     ax, ax
+    xor     al, al
 
   proc3_yes:
     ret
-proc3 ENDP
+proc3 endp
 
 align 2
-proc4 PROC NEAR
+proc4 proc near
     cmp     al, [si + 0]
-    jne     SHORT proc4_next_win
+    jne     short proc4_next_win
     cmp     al, [si + 8]
-    je      SHORT proc4_yes
+    je      short proc4_yes
 
   proc4_next_win:
     cmp     al, [si + 2]
-    jne     SHORT proc4_next_win2
+    jne     short proc4_next_win2
     cmp     al, [si + 6]
-    je      SHORT proc4_yes
+    je      short proc4_yes
 
   proc4_next_win2:
     cmp     al, [si + 1]
-    jne     SHORT proc4_next_win3
+    jne     short proc4_next_win3
     cmp     al, [si + 7]
-    je      SHORT proc4_yes
+    je      short proc4_yes
 
   proc4_next_win3:
     cmp     al, [si + 3]
-    jne     SHORT proc4_no
+    jne     short proc4_no
     cmp     al, [si + 5]
-    je      SHORT proc4_yes
+    je      short proc4_yes
 
   proc4_no:
-    xor     ax, ax
+    xor     al, al
 
   proc4_yes:
     ret
-proc4 ENDP
+proc4 endp
 
 align 2
-proc5 PROC NEAR
+proc5 proc near
     cmp     al, [si + 3]
-    jne     SHORT proc5_next_win
+    jne     short proc5_next_win
     cmp     al, [si + 4]
-    je      SHORT proc5_yes
+    je      short proc5_yes
 
   proc5_next_win:
     cmp     al, [si + 2]
-    jne     SHORT proc5_no
+    jne     short proc5_no
     cmp     al, [si + 8]
-    je      SHORT proc5_yes
+    je      short proc5_yes
 
   proc5_no:
-    xor      ax, ax
+    xor      al, al
 
   proc5_yes:
     ret
-proc5 ENDP
+proc5 endp
 
 align 2
-proc6 PROC NEAR
+proc6 proc near
     cmp     al, [si + 4]
-    jne     SHORT proc6_next_win
+    jne     short proc6_next_win
     cmp     al, [si + 2]
-    je      SHORT proc6_yes
+    je      short proc6_yes
 
   proc6_next_win:
     cmp     al, [si + 0]
-    jne     SHORT proc6_next_win2
+    jne     short proc6_next_win2
     cmp     al, [si + 3]
-    je      SHORT proc6_yes
+    je      short proc6_yes
 
   proc6_next_win2:
     cmp     al, [si + 7]
-    jne     SHORT proc6_no
+    jne     short proc6_no
     cmp     al, [si + 8]
-    je      SHORT proc6_yes
+    je      short proc6_yes
 
   proc6_no:
-    xor      ax, ax
+    xor      al, al
 
   proc6_yes:
     ret
-proc6 ENDP
+proc6 endp
 
 align 2
-proc7 PROC NEAR
+proc7 proc near
     cmp     al, [si + 1]
-    jne     SHORT proc7_next_win
+    jne     short proc7_next_win
     cmp     al, [si + 4]
-    je      SHORT proc7_yes
+    je      short proc7_yes
 
   proc7_next_win:
     cmp     al, [si + 6]
-    jne     SHORT proc7_no
+    jne     short proc7_no
     cmp     al, [si + 8]
-    je      SHORT proc7_yes
+    je      short proc7_yes
 
   proc7_no:
-    xor     ax, ax
+    xor     al, al
 
   proc7_yes:
     ret
-proc7 ENDP
+proc7 endp
 
 align 2
-proc8 PROC NEAR
+proc8 proc near
     cmp     al, [si + 0]
-    jne     SHORT proc8_next_win
+    jne     short proc8_next_win
     cmp     al, [si + 4]
-    je      SHORT proc8_yes
+    je      short proc8_yes
 
   proc8_next_win:
     cmp     al, [si + 2]
-    jne     SHORT proc8_next_win2
+    jne     short proc8_next_win2
     cmp     al, [si + 5]
-    je      SHORT proc8_yes
+    je      short proc8_yes
 
   proc8_next_win2:
     cmp     al, [si + 6]
-    jne     SHORT proc8_no
+    jne     short proc8_no
     cmp     al, [si + 7]
-    je      SHORT proc8_yes
+    je      short proc8_yes
 
   proc8_no:
-    xor      ax, ax
+    xor      al, al
 
   proc8_yes:
     ret
-proc8 ENDP
+proc8 endp
 
 crlfmsg       db      13,10,0
 secondsmsg    db      ' seconds',13,10,0
