@@ -185,14 +185,18 @@ function min_max( board, alpha, beta, depth, move )
 
             if 0 ~= ( depth % 2 ) then
                 if score_win == score then return score_win end
-                if score > value then value = score end
-                if value > alpha then alpha = value end
-                if alpha >= beta then return value end
+                if score > value then
+                    value = score
+                    if value >= beta then return value end
+                    if value > alpha then alpha = value end
+                end
             else
                 if score_lose == score then return score_lose end
-                if score < value then value = score end
-                if value < beta then beta = value end
-                if beta <= alpha then return value end
+                if score < value then
+                    value = score
+                    if value <= alpha then return value end
+                    if value < beta then beta = value end
+                end
             end
         end
     end

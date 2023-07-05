@@ -1,3 +1,5 @@
+// prove you can't win at tic-tac-toe
+
 using System;
 using System.Diagnostics;
 using System.Threading;
@@ -183,6 +185,14 @@ class TTT
             Interlocked.Increment( ref evaluated );
         }
 
+//Console.Write( "{0}, {1}, {2}, {3}, ", alpha, beta, depth, move );
+//for ( int i = 0; i < 9; i++ )
+//{
+//    Piece p = b[ i ];
+//    Console.Write( "{0}", p == Piece.blank ? 0 : p == Piece.X ? 1 : 2  );
+//}
+//Console.WriteLine();
+
         // scores are always with respect to X.
         // maximize on X moves; minimize on O moves
         // # of pieces on board = 1 + depth
@@ -191,8 +201,9 @@ class TTT
         {
             // using the function lookup table is a little faster than LookForWinner
 
-            Piece p = LookForWinner( b );
-            //Piece p = winner_functions[ move ]( b );
+            //Piece p = LookForWinner( b );
+            Piece p = winner_functions[ move ]( b );
+//Console.WriteLine( "{0}", p == Piece.blank ? 0 : p == Piece.X ? 1 : 2 );
 
             if ( Piece.blank != p )
             {
@@ -209,7 +220,7 @@ class TTT
         int value;
         Piece pieceMove;
 
-        if ( 0 != ( depth & 1 ) ) //maximize
+        if ( 0 != ( depth & 1 ) ) // maximize
         {
             value = SCORE_MIN;
             pieceMove = Piece.X;
@@ -228,21 +239,22 @@ class TTT
                 int score = MinMax( b, alpha, beta, depth + 1, x );
                 b[x] = Piece.blank;
 
-                if ( 0 != ( depth & 1 ) ) //maximize
+                if ( 0 != ( depth & 1 ) ) // maximize
                 {
                     if ( WinLosePrune && ( SCORE_WIN == score ) )
                         return SCORE_WIN;
 
                     if ( score > value )
+                    {
                         value = score;
 
-                    if ( ABPrune )
-                    {
-                        if ( value > alpha )
-                            alpha = value;
-
-                        if ( alpha >= beta )
-                            return value;
+                        if ( ABPrune )
+                        {
+                            if ( value >= beta )
+                                return value;
+                            if ( value > alpha )
+                                alpha = value;
+                        }
                     }
                 }
                 else
@@ -251,30 +263,36 @@ class TTT
                         return SCORE_LOSE;
 
                     if ( score < value )
+                    {
                         value = score;
 
-                    if ( ABPrune )
-                    {
-                        if ( value < beta )
-                            beta = value;
-
-                        if ( beta <= alpha )
-                            return value;
+                        if ( ABPrune )
+                        {
+                            if ( value <= alpha )
+                                return value;
+                            if ( value < beta )
+                                beta = value;
+                        }
                     }
                 }
             }
         }
 
         return value;
-    } //MinMax
+    } //MinMaxAlphaBeta
 
     static void RunBoard( int move, int iterations = Iterations )
     {
         Piece [] b = new Piece[ 9 ];
         b[ move ] = Piece.X;
+        int score;
 
         for ( int i = 0; i < iterations; i++ )
-           MinMax( b, SCORE_MIN, SCORE_MAX, 0, move );
+        {
+           score = MinMax( b, SCORE_MIN, SCORE_MAX, 0, move );
+           if ( SCORE_TIE != score )
+               Console.WriteLine( "score isn't tie!" );
+        }
     } //RunBoard
 
     static void Main( string[] args )
