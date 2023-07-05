@@ -6,6 +6,8 @@
 {$K-}
 
 program ttt;
+{$I timeutil.pas}
+{$I cpm_gt.pas }
 
 const
   scoreWin = 6;
@@ -13,6 +15,7 @@ const
   scoreLose = 4;
   scoreMax = 9;
   scoreMin = 2;
+  scoreInvalid = 0;
 
   pieceBlank = 0;
   pieceX = 1;
@@ -21,15 +24,17 @@ const
   iterations = 1;
 
 type
-  boardType = array[ 0..8 ] of Integer;
+  boardType = array[ 0..8 ] of integer;
+  CommandString = string[127];
 
 var
-  evaluated: Integer;
+  evaluated: integer;
   board: boardType;
+  timeStart, timeEnd: timetype;
 
 procedure dumpBoard;
 var
-  i : Integer;
+  i : integer;
 begin
   Write( '{' );
   for i := 0 to 8 do
@@ -37,11 +42,11 @@ begin
   Write( '}' );
 end;
 
-function lookForWinner : Integer;
+function lookForWinner : integer;
 var
-  t, p : Integer;
+  t, p : integer;
 begin
-  {  dumpBoard; }
+  {dumpBoard;}
   p := pieceBlank;
   t := board[ 0 ];
   if pieceBlank <> t then
@@ -55,32 +60,28 @@ begin
   begin
     t := board[1];
     if ( t = board[4] ) and ( t = board[7] ) then
-       p := t;
-
-    if pieceBlank = p then
+      p := t
+    else
     begin
       t := board[2];
       if ( t = board[5] ) and ( t = board[8] ) then
-        p := t;
-
-      if pieceBlank = p then
+        p := t
+      else
       begin
         t := board[3];
         if ( t = board[4] ) and ( t = board[5] ) then
-          p := t;
-
-        if pieceBlank = p then
+          p := t
+        else
         begin
           t := board[6];
           if ( t = board[7] ) and ( t = board[8] ) then
-            p := t;
-
-          if pieceBlank = p then
+            p := t
+          else
           begin
             t := board[4];
             if ( ( ( t = board[0] ) and ( t = board[8] ) ) or
                  ( ( t = board[2] ) and ( t = board[6] ) ) ) then
-              p := t;
+              p := t
           end;
         end;
       end;
@@ -90,41 +91,39 @@ begin
   lookForWinner := p;
 end;
 
-function minmax( alpha: Integer; beta: Integer; depth: Integer ): Integer;
+function minmax( alpha: integer; beta: integer; depth: integer ): integer;
 var
-  p, value, pieceMove, score : Integer;
-  done: boolean;
+  p, value, pieceMove, score : integer;
 begin
   evaluated := evaluated + 1;
-  value := 0;
+  value := scoreInvalid;
   if depth >= 4 then
   begin
     p := lookForWinner;
     if p <> pieceBlank then
     begin
-        if p = pieceX then
-          value := scoreWin
-        else
-          value := scoreLose
+      if p = pieceX then
+        value := scoreWin
+      else
+        value := scoreLose
     end
     else if depth = 8 then
       value := scoreTie;
   end;
 
-  if value = 0 then
+  if value = scoreInvalid then
   begin
-    if ( 0 <> ( depth AND 1 ) ) then
+    if Odd( depth ) then
     begin
-        value := scoreMin;
-        pieceMove := pieceX;
+      value := scoreMin;
+      pieceMove := pieceX;
     end
     else
     begin
-        value := scoreMax;
-        pieceMove := pieceO;
+      value := scoreMax;
+      pieceMove := pieceO;
     end;
 
-    done := false;
     p := 0;
     repeat
       if board[ p ] = pieceBlank then
@@ -133,52 +132,92 @@ begin
         score := minmax( alpha, beta, depth + 1 );
         board[ p ] := pieceBlank;
 
-        if ( 0 <> ( depth and 1 ) ) then
+        if Odd( depth ) then
         begin
-          if ( score > value ) then value := score;
-          if ( value > alpha ) then alpha := value;
-          if ( alpha >= beta ) or ( value = scoreWin ) then
-            done := true;
+          if ( score > value ) then
+          begin
+            value := score;
+            if ( value = scoreWin ) or ( value >= beta ) then p := 10
+            else if ( value > alpha ) then alpha := value;
+          end;
         end
         else
         begin
-          if ( score < value ) then value := score;
-          if ( value < beta ) then beta := value;
-          if ( beta <= alpha ) or ( value = scoreLose ) then
-            done := true;
+          if ( score < value ) then
+          begin
+            value := score;
+            if ( value = scoreLose ) or ( value <= alpha ) then p := 10
+            else if ( value < beta ) then beta := value;
+          end;
         end;
       end;
       p := p + 1;
-      if p > 8 then done := true;
-    until done;
+    until p > 8;
   end;
 
   minmax := value;
 end;
 
-procedure runit( move : Integer );
+procedure runit( move : integer );
 var
-  score: Integer;
+  score: integer;
 begin
   board[move] := pieceX;
   score := minmax( scoreMin, scoreMax, 0 );
   board[move] := pieceBlank;
 end;
 
-var
-  i: Integer;
+function Trim( intext : CommandString ): CommandString;
+var FirstPos, LastPos: integer;
 begin
-  for i := 0 to 8 do
-    board[i] := pieceBlank;
+  FirstPos := 1;
+  while ( FirstPos <= Length( intext ) ) and ( intext[FirstPos] = #32 ) do
+    FirstPos := FirstPos + 1;
 
-  for i := 1 to Iterations do
+  LastPos := Length( intext );
+  while ( LastPos >= 1 ) and ( intext[LastPos] = #32 ) do
+    LastPos := LastPos - 1;
+
+  Trim := Copy( intext, FirstPos, LastPos - FirstPos + 1 );
+end;
+
+var
+  i, loops, code: integer;
+  strArg : CommandString;
+  cmdTail : CommandString absolute $80;
+begin
+  loops := Iterations;
+
+  { on cp/m 2.2 the length is 1 for no arguments -- it's just a space }
+
+  if ( mem[ 128 ] > 1 ) then
   begin
-    evaluated := 0;  { once per loop to prevent overflow }
-    runit( 0 );
-    runit( 1 );
-    runit( 4 );
+    { trim the space at the start that's always there }
+
+    strArg := Trim( cmdTail );
+    Val( strArg, loops, code );
   end;
 
-  Write( 'moves evaluated: ' ); Write( evaluated ); WriteLn;
-  Write( 'iterations: ' ); Write( iterations ); WriteLn;
+  if ( loops > 0 ) then
+  begin
+    for i := 0 to 8 do
+      board[i] := pieceBlank;
+
+    get_time( timeStart );
+
+    for i := 1 to loops do
+    begin
+      evaluated := 0;  { once per loop to prevent overflow }
+      runit( 0 );
+      runit( 1 );
+      runit( 4 );
+    end;
+
+    get_time( timeEnd );
+    print_elapsed_time( timeStart, timeEnd );
+    WriteLn( 'moves evaluated: ', evaluated );
+  end;
+
+  WriteLn( 'iterations: ', loops );
 end.
+

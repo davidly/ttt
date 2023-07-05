@@ -16,6 +16,7 @@ const
   scoreLose = 4;
   scoreMax = 9;
   scoreMin = 2;
+  scoreInvalid = 0;
 
   pieceBlank = 0;
   pieceX = 1;
@@ -152,7 +153,7 @@ function lookForWinner : integer;
 var
   t, p : integer;
 begin
-  {  dumpBoard; }
+  {dumpBoard;}
   p := pieceBlank;
   t := board[ 0 ];
   if pieceBlank <> t then
@@ -166,32 +167,28 @@ begin
   begin
     t := board[1];
     if ( t = board[4] ) and ( t = board[7] ) then
-       p := t;
-
-    if pieceBlank = p then
+      p := t
+    else
     begin
       t := board[2];
       if ( t = board[5] ) and ( t = board[8] ) then
-        p := t;
-
-      if pieceBlank = p then
+        p := t
+      else
       begin
         t := board[3];
         if ( t = board[4] ) and ( t = board[5] ) then
-          p := t;
-
-        if pieceBlank = p then
+          p := t
+        else
         begin
           t := board[6];
           if ( t = board[7] ) and ( t = board[8] ) then
-            p := t;
-
-          if pieceBlank = p then
+            p := t
+          else
           begin
             t := board[4];
             if ( ( ( t = board[0] ) and ( t = board[8] ) ) or
                  ( ( t = board[2] ) and ( t = board[6] ) ) ) then
-              p := t;
+              p := t
           end;
         end;
       end;
@@ -204,10 +201,9 @@ end;
 function minmax( alpha: integer; beta: integer; depth: integer; move : integer ): integer;
 var
   p, value, pieceMove, score : integer;
-  done: boolean;
 begin
   evaluated := evaluated + 1;
-  value := 0;
+  value := scoreInvalid;
   if depth >= 4 then
   begin
     p := TScoreFunc( scoreFuncs[ move ] );
@@ -224,9 +220,9 @@ begin
       value := scoreTie;
   end;
 
-  if value = 0 then
+  if value = scoreInvalid then
   begin
-    if ( 0 <> ( depth AND 1 ) ) then
+    if Odd( depth ) then
     begin
       value := scoreMin;
       pieceMove := pieceX;
@@ -237,7 +233,6 @@ begin
       pieceMove := pieceO;
     end;
 
-    done := false;
     p := 0;
     repeat
       if board[ p ] = pieceBlank then
@@ -246,24 +241,27 @@ begin
         score := minmax( alpha, beta, depth + 1, p );
         board[ p ] := pieceBlank;
 
-        if ( 0 <> ( depth and 1 ) ) then
+        if Odd( depth ) then
         begin
-          if ( score > value ) then value := score;
-          if ( value > alpha ) then alpha := value;
-          if ( alpha >= beta ) or ( value = scoreWin ) then
-            done := true;
+          if ( score > value ) then
+          begin
+            value := score;
+            if ( value = scoreWin ) or ( value >= beta ) then p := 10
+            else if ( value > alpha ) then alpha := value;
+          end;
         end
         else
         begin
-          if ( score < value ) then value := score;
-          if ( value < beta ) then beta := value;
-          if ( beta <= alpha ) or ( value = scoreLose ) then
-            done := true;
+          if ( score < value ) then
+          begin
+            value := score;
+            if ( value = scoreLose ) or ( value <= alpha ) then p := 10
+            else if ( value < beta ) then beta := value;
+          end;
         end;
       end;
       p := p + 1;
-      if p > 8 then done := true;
-    until done;
+    until p > 8;
   end;
 
   minmax := value;
@@ -298,6 +296,7 @@ begin
   scoreFuncs[7] := @func7;
   scoreFuncs[8] := @func8;
 
+  evaluated := 0;
   get_time( timeStart );
 
   for i := 1 to loops do
@@ -311,5 +310,5 @@ begin
   print_elapsed_time( timeStart, timeEnd );
 
   WriteLn( 'moves evaluated: ', evaluated );
-  WriteLn( 'iterations: ', iterations );
+  WriteLn( 'iterations: ', loops );
 end.
