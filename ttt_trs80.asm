@@ -22,20 +22,20 @@ BLANKPIECE  equ        0   ; empty move piece
 AGAIN:
         lxi     h, 0
         shld    MOVES               ; set to 0 each iteration to avoid overflow
-        mvi     a, 0
+        xra     a
         sta     V
         sta     DEPTH
         sta     ALPHA
         sta     BETA
 
         mvi     a, 0                
-        call    RUNMM               ; first of 3 unique board configurations
+        call    RUNMINMAX           ; first of 3 unique board configurations
 
         mvi     a, 1
-        call    RUNMM               ; second
+        call    RUNMINMAX           ; second
 
         mvi     a, 4
-        call    RUNMM               ; third
+        call    RUNMINMAX           ; third
                                          
         lhld    ITERS               ; increment iteration count and loop until done
         inx     h
@@ -55,7 +55,7 @@ AGAIN:
         
         ret
 
-RUNMM:                              ; Run the MINMAX function for a given board
+RUNMINMAX:                          ; Run the MINMAX function for a given board
                                     ; D = alpha, E = beta, C = depth
         mvi     b, 0                ; store the first move
         mov     c, a
@@ -68,14 +68,27 @@ RUNMM:                              ; Run the MINMAX function for a given board
         mov     b, c                ; move position
         mvi     l, NSCO             ; alpha
         mvi     h, XSCO             ; beta
-        call    MM_MIN
+        call    MINIMIZE
 
         pop     h                   ; restore the move location
         mvi     m, BLANKPIECE       ; restore a blank on the board
 
         ret
 
-MM_MAX:                             ; the recursive scoring function
+; The 8080 has no simple way to address arguments or local variables relative to sp.
+; The approach here is to:
+;   1) pass arguments in registers:
+;           a - depth
+;           b - move position
+;           l - alpha
+;           h - beta
+;   2) store the arguments in global variables so they are easy to access
+;   3) when making a call, push the global variables on the stack
+;   4) when returning froma call, restore the global variables with popped stack values
+;   5) for tail functions, just pass arguments in registers with no stack or global usage for arguments
+; The extra copies to/from globals are expensive, but overall faster since accessing them is fast.
+
+MAXIMIZE:                           ; the recursive scoring function
         sta     DEPTH
         shld    ALPHA               ; write alpha and beta
 
@@ -84,7 +97,7 @@ MM_MAX:                             ; the recursive scoring function
         shld    MOVES
 
         cpi     4                   ; DEPTH - 4  (if 4 or fewer pieces played, no possible winner)
-        jm      X_SKIPWIN
+        jm      XSKIPWIN
 
         mov     a, b                ; where the move was taken 0..8
         mvi     b, OPIECE           ; the piece that took the move
@@ -94,20 +107,23 @@ MM_MAX:                             ; the recursive scoring function
         mvi     a, LSCO             ; losing score since O won
         rz
 
-X_SKIPWIN:
+XSKIPWIN:
         mvi     a, NSCO             ; maximizing odd depths, so start with minimum score
         sta     V
-        lxi     d, 0                ; the variable I will go from 0..8
+        lxi     d, 00ffh            ; the variable I will go from 0..8. start at -1
 
-X_MMLOOP:
+XLOOP:
+        mov     a, e
+        cpi     8
+        jz      XDONE
+        inr     e
         lxi     h, BOARD
         dad     d
         xra     a                   ; BLANKPIECE is 0
         cmp     m
-        jnz     X_MMLEND
+        jnz     XLOOP
 
         mvi     m, XPIECE           ; make the move
-        push    h                   ; save the pointer to the board position for restoration later
 
         ; save state, recurse, and restore state
 
@@ -122,7 +138,7 @@ X_MMLOOP:
 
         ; C = depth, B = move position, L = alpha, H = beta  ====> A = return score
 
-        call    MM_MIN
+        call    MINIMIZE
         
         pop     h
         shld    ALPHA               ; restore ALPHA and BETA
@@ -130,46 +146,36 @@ X_MMLOOP:
         shld    V                   ; restore V and DEPTH
         pop     d                   ; restore i in the for loop
 
-        pop     h
+        lxi     h, BOARD
+        dad     d
         mvi     m, BLANKPIECE       ; restore the 0 on the board where the turn was placed
 
         cpi     WSCO                ; SC - WSCO. If zero, can't do better.
         rz
 
-        mov     b, a
-        lxi     h, V                
-        mov     a, m
-        cmp     b                   ; V - SC
-        jp      X_MMNOMAX           ; jp is >= 0. The comparision is backwards due to no jle or jgz on 8080
-        mov     m, b                ; update V with the new best score
+        lxi     h, V
+        cmp     m                   ; compare score with value
+        jz      XLOOP               ; no j <= instruction on 8080
+        jm      XLOOP
 
-X_MMNOMAX:
-        mov     a, m                ; load latest V
-        lxi     h, ALPHA
-        cmp     m                   ; V - ALPHA
-        jm      X_MMNOALP
-        mov     m, a                ; new alpha
-        
-X_MMNOALP:
-        lda     BETA
-        cmp     m                   ; Beta - Alpha
-        jz      X_MMPRUNE           ; there is no jump if > 0
-        jp      X_MMLEND            ; Alpha pruning
+        mov     m, a                ; update value with score
+        lxi     h, BETA
+        cmp     m                   ; compare value with beta
+        rp                          ; beta pruning
 
-X_MMPRUNE:
-        lda     V
-        ret                         ; Alpha pruning        
+        lxi     h, ALPHA            ; save the address of alpha
+        cmp     m                   ; compare value with alpha
+        jz      XLOOP               ; no j <= instruction on 8080
+        jm      XLOOP
 
-X_MMLEND:
-        inr     e
-        mov     a, e
-        cpi     9                   ; a - 9.  Want to loop for 0..8
-        jm      X_MMLOOP
+        mov     m, a                ; update alpha with value
+        jmp     XLOOP
 
+XDONE:
         lda     V
         ret
 
-MM_MIN:                             ; the recursive scoring function
+MINIMIZE:                           ; the recursive scoring function
         sta     DEPTH
         shld    ALPHA               ; write alpha and beta
 
@@ -178,7 +184,7 @@ MM_MIN:                             ; the recursive scoring function
         shld    MOVES
 
         cpi     4                   ; DEPTH - 4  (if 4 or fewer pieces played, no possible winner)
-        jm      N_SKIPWIN
+        jm      NSKIPWIN
 
         mov     a, b                ; where the move was taken 0..8
         mvi     b, XPIECE           ; the piece that took the move
@@ -194,20 +200,23 @@ MM_MIN:                             ; the recursive scoring function
         rz
 
 
-N_SKIPWIN:
-        mvi     a, XSCO
+NSKIPWIN:
+        mvi     a, XSCO             ; minimizing, so start with maximum score
         sta     V
-        lxi     d, 0                ; the variable I will go from 0..8
+        lxi     d, 00ffh            ; the variable I will go from 0..8. start at -1
         
-N_MMLOOP:
+NLOOP:
+        mov     a, e
+        cpi     8
+        jz      NDONE
+        inr     e
         lxi     h, BOARD
         dad     d
         xra     a                   ; BLANKPIECE is 0
         cmp     m
-        jnz     N_MMLEND
+        jnz     NLOOP
 
         mvi     m, OPIECE           ; make the move
-        push    h                   ; save the pointer to the board position for restoration later
 
         ; save state, recurse, and restore state
 
@@ -222,7 +231,7 @@ N_MMLOOP:
 
         ; A = depth, B = move position, L = alpha, H = beta  ====> A = return score
 
-        call    MM_MAX
+        call    MAXIMIZE
 
         pop     h
         shld    ALPHA               ; restore ALPHA and BETA
@@ -230,40 +239,33 @@ N_MMLOOP:
         shld    V                   ; restore V and DEPTH
         pop     d                   ; restore i in the for loop
 
-        pop     h
+        lxi     h, BOARD
+        dad     d
         mvi     m, BLANKPIECE       ; restore the 0 on the board where the turn was placed
 
         cpi     LSCO                ; SC - LSCO. If zero, can't do worse.
         rz
 
-        lxi     h, V                
-        cmp     m                   ; SC - V
-        jp      N_MMNOMIN
-        mov     m, a
+        lxi     h, V
+        cmp     m                   ; compare score with value
+        jp      NLOOP
 
-N_MMNOMIN:
-        mov     a, m                ; load latest V
-        lxi     h, BETA
-        cmp     m                   ; V - Beta
-        jp      N_MNOBET
-        mov     m, a                ; new beta
+        mov     m, a                ; update value with score
+        lxi     h, ALPHA
+        cmp     m                   ; compare value with alpha
+        rz                          ; alpha pruning
+        rmi                         ; alpha pruning
 
-N_MNOBET:
-        mov     b, a
-        lda     ALPHA
-        cmp     b                   ; Alpha - Beta
-        lda     V                   ; potentially wasted load, but saves a branch
-        rp                          ; Beta pruning
+        lxi     h, BETA             ; save address of beta
+        cmp     m                   ; compare value with beta
+        jp      NLOOP
 
-N_MMLEND:
-        inr     e
-        mov     a, e
-        cpi     9                   ; a - 9.  Want to loop for 0..8
-        jm      N_MMLOOP
-
+        mov     m, a                ; update beta with value
+        jmp     NLOOP
+        
+NDONE:
         lda     V
-        ret
-
+        ret       
 
 NEGHL:                              ; negate hl via twos complement xx complement + 1
         mov     a, h
@@ -318,15 +320,13 @@ DGTDIV:
 CALLSCOREPROC:
         add      a                  ; double the move position because function pointers are two bytes
         lxi      h, WINPROCS        ; load the pointer to the list of function pointers 0..8
-        mov      e, a               ; prepare to add
-        mvi      d, 0
-        dad      d                  ; hl = de + hl
-        xchg                        ; exchange de and hl
-        ldax     d                  ; load the low byte of procX
+        add      l                  ; only add the lower-byte since winprocs fits in a single 256-byte area
         mov      l, a
-        inx      d
-        ldax     d                  ; load the hight byte of procX
-        mov      h, a
+
+        mov      e, m               ; load the low byte of the proc address
+        inx      h                  ; increment the pointer to the next byte
+        mov      d, m               ; load the high byte of the proc address
+        xchg                        ; exchange de and hl
         mov      a, b               ; put the player move (X or O) in a
         pchl                        ; move the winner proc address from hl to pc (jump to it)
 

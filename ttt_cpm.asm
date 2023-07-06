@@ -68,13 +68,13 @@ org     100h
         sta     BETA
 
         mvi     a, 0
-        call    RunMinMax           ; first of 3 unique board configurations
+        call    RUNMINMAX           ; first of 3 unique board configurations
 
         mvi     a, 1
-        call    RunMinMax           ; second
+        call    RUNMINMAX           ; second
 
         mvi     a, 4
-        call    RunMinMax           ; third
+        call    RUNMINMAX           ; third
                                  
         lhld    ITERS               ; increment iteration count and loop until done
         inx     h
@@ -104,7 +104,7 @@ org     100h
 
         jmp     0                   ; cp/m call to terminate the app
 
-RunMinMax:                          ; Run the MINMAX function for a given first move
+RUNMINMAX:                          ; Run the MINMAX function for a given first move
         mvi     b, 0                ; store the first move
         mov     c, a
         lxi     h, BOARD
@@ -116,7 +116,7 @@ RunMinMax:                          ; Run the MINMAX function for a given first 
         mov     b, c                ; move position
         mvi     l, NSCO             ; alpha
         mvi     h, XSCO             ; beta
-        call    MinMaxMinimize
+        call    MINIMIZE
 
         pop     h                   ; restore the move location
         mvi     m, BLANKPIECE       ; restore a blank on the board
@@ -136,7 +136,7 @@ RunMinMax:                          ; Run the MINMAX function for a given first 
 ;   5) for tail functions, just pass arguments in registers with no stack or global usage for arguments
 ; The extra copies to/from globals are expensive, but overall faster since accessing them is fast.
 
-MinMaxMaximize:                     ; the recursive scoring function
+MAXIMIZE:                           ; the recursive scoring function
         sta     DEPTH
         shld    ALPHA               ; write alpha and beta
 
@@ -145,31 +145,31 @@ MinMaxMaximize:                     ; the recursive scoring function
         shld    MOVES
 
         cpi     4                   ; DEPTH - 4  (if 4 or fewer pieces played, no possible winner)
-        jm      MAX$SKIPWIN
+        jm      XSKIPWIN
 
         mov     a, b                ; where the move was taken 0..8
         mvi     b, OPIECE           ; the piece that took the move
-        call    CallScoreProc       ; look for a winning position
+        call    CALLSCOREPROC       ; look for a winning position
 
         cpi     OPIECE              ; see if O won
         mvi     a, LSCO             ; losing score since O won
         rz
 
-  MAX$SKIPWIN:
+XSKIPWIN:
         mvi     a, NSCO             ; maximizing odd depths, so start with minimum score
         sta     V
-        lxi     d, 00ffh            ; the variable I will go from 0..8
+        lxi     d, 00ffh            ; the variable I will go from 0..8. start at -1
 
-  MAX$LOOP:
+XLOOP:
         mov     a, e
         cpi     8
-        jz      MAX$DONE
+        jz      XDONE
         inr     e
         lxi     h, BOARD
         dad     d
         xra     a                   ; BLANKPIECE is 0
         cmp     m
-        jnz     MAX$LOOP
+        jnz     XLOOP
 
         mvi     m, XPIECE           ; make the move
 
@@ -186,7 +186,7 @@ MinMaxMaximize:                     ; the recursive scoring function
 
         ; C = depth, B = move position, L = alpha, H = beta  ====> A = return score
 
-        call    MinMaxMinimize
+        call    MINIMIZE
 
         pop     h
         shld    ALPHA               ; restore ALPHA and BETA
@@ -203,8 +203,8 @@ MinMaxMaximize:                     ; the recursive scoring function
 
         lxi     h, V
         cmp     m                   ; compare score with value
-        jz      MAX$LOOP            ; no j <= instruction on 8080
-        jm      MAX$LOOP
+        jz      XLOOP            ; no j <= instruction on 8080
+        jm      XLOOP
 
         mov     m, a                ; update value with score
         lxi     h, BETA
@@ -213,17 +213,17 @@ MinMaxMaximize:                     ; the recursive scoring function
 
         lxi     h, ALPHA            ; save the address of alpha
         cmp     m                   ; compare value with alpha
-        jz      MAX$LOOP            ; no j <= instruction on 8080
-        jm      MAX$LOOP
+        jz      XLOOP            ; no j <= instruction on 8080
+        jm      XLOOP
 
         mov     m, a                ; update alpha with value
-        jmp     MAX$LOOP
+        jmp     XLOOP
 
-  MAX$DONE:
+XDONE:
         lda     V
         ret
 
-MinMaxMinimize:                     ; the recursive scoring function
+MINIMIZE:                           ; the recursive scoring function
         sta     DEPTH
         shld    ALPHA               ; write alpha and beta
 
@@ -232,11 +232,11 @@ MinMaxMinimize:                     ; the recursive scoring function
         shld    MOVES
 
         cpi     4                   ; DEPTH - 4  (if 4 or fewer pieces played, no possible winner)
-        jm      MIN$SKIPWIN
+        jm      NSKIPWIN
 
         mov     a, b                ; where the move was taken 0..8
         mvi     b, XPIECE           ; the piece that took the move
-        call    CallScoreProc       ; look for a winning position
+        call    CALLSCOREPROC       ; look for a winning position
 
         cpi     XPIECE              ; see if X won
         mvi     a, WSCO             ; winning score. avoid branch by always loading
@@ -247,21 +247,21 @@ MinMaxMinimize:                     ; the recursive scoring function
         mvi     a, TSCO             ; tie score. avoid branch by always loading
         rz
 
-  MIN$SKIPWIN:
+NSKIPWIN:
         mvi     a, XSCO             ; minimizing, so start with maximum score
         sta     V
-        lxi     d, 00ffh            ; the variable I will go from 0..8
+        lxi     d, 00ffh            ; the variable I will go from 0..8. start at -1
 
-  MIN$LOOP:
+NLOOP:
         mov     a, e
         cpi     8
-        jz      MIN$DONE
+        jz      NDONE
         inr     e
         lxi     h, BOARD
         dad     d
         xra     a                   ; BLANKPIECE is 0
         cmp     m
-        jnz     MIN$LOOP
+        jnz     NLOOP
 
         mvi     m, OPIECE           ; make the move
 
@@ -270,7 +270,7 @@ MinMaxMinimize:                     ; the recursive scoring function
         push    d                   ; save i in the for loop
         lhld    V                   ; V in l and DEPTH in h
         push    h
-        mov     b, e
+        mov     b, e                ; board position of the latest move
         mov     a, h                ; depth
         inr     a
         lhld    ALPHA               ; alpha in l and beta in h
@@ -278,7 +278,7 @@ MinMaxMinimize:                     ; the recursive scoring function
 
         ; A = depth, B = move position, L = alpha, H = beta  ====> A = return score
 
-        call    MinMaxMaximize
+        call    MAXIMIZE
 
         pop     h
         shld    ALPHA               ; restore ALPHA and BETA
@@ -295,7 +295,7 @@ MinMaxMinimize:                     ; the recursive scoring function
 
         lxi     h, V
         cmp     m                   ; compare score with value
-        jp      MIN$LOOP
+        jp      NLOOP
 
         mov     m, a                ; update value with score
         lxi     h, ALPHA
@@ -305,18 +305,18 @@ MinMaxMinimize:                     ; the recursive scoring function
 
         lxi     h, BETA             ; save address of beta
         cmp     m                   ; compare value with beta
-        jp      MIN$LOOP
+        jp      NLOOP
 
         mov     m, a                ; update beta with value
-        jmp     MIN$LOOP
+        jmp     NLOOP
 
-  MIN$DONE:
+NDONE:
         lda     V
         ret
 
 ; a = the proc to call 0..8
 ; b = the player who just took a move, O or X
-CallScoreProc:
+CALLSCOREPROC:
         add      a                  ; double the move position because function pointers are two bytes
         lxi      h, WINPROCS        ; load the pointer to the list of function pointers 0..8
         add      l                  ; only add the lower-byte since winprocs fits in a single 256-byte area
