@@ -90,6 +90,17 @@
         sd      s10, 104(sp)
         sd      s11, 112(sp)
 
+        li      s4, iterations       # global max iteration count in s4
+        li      t0, 2
+        blt     a0, t0, .ba_start_test  # if no iteration command-line argument, use the default
+
+        li      t0, 8                                    # get the second argument
+        add     t0, t0, a1                               # offset of argv[1]
+        ld      a0, (t0)             # load argv[1] -- an ascii string
+        jal     a_to_uint64          # convert the ascii string to a number
+        mv      s4, a0               # update the global max iteration count
+
+  .ba_start_test:
         lla     a0, .running_string
         jal     rvos_print_text
 
@@ -149,7 +160,7 @@
         jal     rvos_print_text
 
         # show the number of iterations
-        li      a0, iterations
+        mv      a0, s4
         lla     a1, g_string_buffer
         li      a2, 10
         jal     _my_lltoa
@@ -205,7 +216,7 @@ run_minmax:
         lla     s10, winner_functions
         mv      s11, zero            # global move count for this thread
         mv      s7, zero             # global depth for this thread
-        li      s8, iterations       # iteration count
+        mv      s8, s4               # iteration count
 
   .run_minmax_next_iteration:
         mv      a2, a0               # first move
@@ -244,7 +255,7 @@ minmax_max:
         s1:   beta local
         s2:   value local variable
         s3:   i loop local variable
-        s4:   *unused* and not saved
+        s4:   global max iteration count
         s5:   global constant win_score
         s6:   global constant lose_score
         s7:   global depth
@@ -342,7 +353,7 @@ minmax_min:
         s1:   beta local
         s2:   value local variable
         s3:   i loop local variable
-        s4:   *unused* and not saved
+        s4:   global max iteration count
         s5:   global constant win_score
         s6:   global constant lose_score
         s7:   global depth
@@ -721,6 +732,71 @@ _my_lltoa:
 
   .my_lltoa_exit:
         mv      a0, a1
+        jr      ra
+        .cfi_endproc
+
+/* a_to_uint64 */
+
+.align 3
+.type a_to_uint64, @function
+a_to_uint64:
+        .cfi_startproc
+        addi    sp, sp, -128
+        sd      ra, 16(sp)
+        sd      s0, 24(sp)
+        sd      s1, 32(sp)
+        sd      s2, 40(sp)
+        sd      s3, 48(sp)
+        sd      s4, 56(sp)
+        sd      s5, 64(sp)
+        sd      s6, 72(sp)
+        sd      s7, 80(sp)
+        sd      s8, 88(sp)
+        sd      s9, 96(sp)
+        sd      s10, 104(sp)
+        sd      s11, 112(sp)
+
+        li      s0, 0                # running total in s0
+        li      s1, 0                # offset of next char in s1
+        mv      s2, a0
+        li      s3, ' '
+        li      s4, '0'
+        li      s5, '9' + 1
+        li      s6, 10
+
+  .a_to_uint64_skip_spaces:
+        lbu     t0, (s2)
+        bne     t0, s3, .a_to_uint64_next
+        addi    s2, s2, 1
+        j       .a_to_uint64_skip_spaces
+
+  .a_to_uint64_next:
+        lbu     t0, (s2)
+        blt     t0, s4, .a_to_uint64_done
+        bge     t0, s5, .a_to_uint64_done
+
+        mul     s0, s0, s6           # multiply running total by 10
+        sub     t0, t0, s4
+        add     s0, s0, t0           # add the next digit
+        addi    s2, s2, 1            # advance the string pointer
+        j       .a_to_uint64_next
+
+  .a_to_uint64_done:
+        mv      a0, s0
+        ld      ra, 16(sp)
+        ld      s0, 24(sp)
+        ld      s1, 32(sp)
+        ld      s2, 40(sp)
+        ld      s3, 48(sp)
+        ld      s4, 56(sp)
+        ld      s5, 64(sp)
+        ld      s6, 72(sp)
+        ld      s7, 80(sp)
+        ld      s8, 88(sp)
+        ld      s9, 96(sp)
+        ld      s10, 104(sp)
+        ld      s11, 112(sp)
+        addi    sp, sp, 128
         jr      ra
         .cfi_endproc
 
