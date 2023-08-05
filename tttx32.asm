@@ -490,10 +490,10 @@ minmax_max PROC
     cmp      eax, DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ]   ; compare score with value
     jle      short minmax_max_top_of_loop
 
-    mov      DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ], eax   ; update value with score
     cmp      eax, DWORD PTR [ ebp + ARG_BETA_OFFSET ]      ; compare value with beta
     jge      short minmax_max_done
 
+    mov      DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ], eax   ; update value with score
     lea      ebx, [ ebp + ARG_ALPHA_OFFSET ]               ; save address of alpha
     cmp      eax, [ebx]                                    ; compare value with alpha
     jle      short minmax_max_top_of_loop
@@ -575,10 +575,10 @@ minmax_min PROC
     cmp      eax, DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ]   ; compare score with value
     jge      short minmax_min_top_of_loop
 
-    mov      DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ], eax   ; update value with score
     cmp      eax, DWORD PTR [ ebp + ARG_ALPHA_OFFSET ]     ; compare value with alpha
     jle      short minmax_min_done
 
+    mov      DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ], eax   ; update value with score
     lea      ebx, [ ebp + ARG_BETA_OFFSET ]                ; save address of beta
     cmp      eax, [ebx]                                    ; compare value with beta
     jge      short minmax_min_top_of_loop
