@@ -1,4 +1,8 @@
 ; 8086 version of app that proves you can't win at tic-tac-toe
+; board position:
+;   0 1 2
+;   3 4 5
+;   6 7 8
 
         .model tiny
         .stack
@@ -182,10 +186,10 @@ minmax_max proc near
         cmp      al, [ bp + value_offset ]           ; compare score with value
         jle      short _max_loop
 
-        mov      [ bp + value_offset ], al           ; update value with score
         cmp      al, [ bp + beta_offset ]            ; compare value with beta
         jge      short _max_just_return_al           ; beta pruning
 
+        mov      [ bp + value_offset ], al           ; update value with score
         cmp      al, [ bp + alpha_offset ]           ; compare value with alpha
         jle      short _max_loop
 
@@ -254,10 +258,10 @@ minmax_min proc near
         cmp      al, [ bp + value_offset ]           ; compare score with value
         jge      short _min_loop
 
-        mov      [ bp + value_offset ], al           ; update value with score
         cmp      al, [ bp + alpha_offset ]           ; compare value with alpha
         jle      short _min_just_return_al           ; alpha pruning
 
+        mov      [ bp + value_offset ], al           ; update value with score
         cmp      al, [ bp + beta_offset ]            ; compare value with beta
         jge      short _min_loop
 
