@@ -488,10 +488,10 @@ minmax_max PROC
     cmp     rax, [rbp - V_OFFSET]           ; compare score with value
     jle     short minmax_max_top_of_loop
 
-    mov     [rbp - V_OFFSET], rax           ; update value with score
     cmp     rax, [rbp + B_SPILL_OFFSET]     ; compare value with beta
     jge     short minmax_max_done           ; beta pruning
 
+    mov     [rbp - V_OFFSET], rax           ; update value with score
     lea     rdi, [rbp + A_SPILL_OFFSET]     ; save address of alpha
     cmp     rax, [rdi]                      ; compare value with alpha
     jle     short minmax_max_top_of_loop
@@ -586,10 +586,10 @@ minmax_min PROC
     cmp     rax, [rbp - V_OFFSET]           ; compare score with value
     jge     short minmax_min_top_of_loop
 
-    mov     [rbp - V_OFFSET], rax           ; update value with score
     cmp     rax, [rbp + A_SPILL_OFFSET]     ; compare value with alpha
     jle     short minmax_min_done           ; alpha pruning
 
+    mov     [rbp - V_OFFSET], rax           ; update value with score
     lea     rdi, [rbp + B_SPILL_OFFSET]     ; save address of beta
     cmp     rax, [rdi]                      ; compare value with beta
     jge     short minmax_min_top_of_loop
