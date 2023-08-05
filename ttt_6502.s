@@ -273,10 +273,10 @@ _max_loop                           ; for i = 0; i < 9; i++. i is initialized at
     beq      _max_loop              ; 6502 has no <= branch, and swapping args requires another load
     bmi      _max_loop
 
-    sta      minmax_local_value, x  ; update value with the better score
     cmp      minmax_arg_beta, x     ; compare value with beta
     bpl      _max_return_a          ; beta pruning
 
+    sta      minmax_local_value, x  ; update value with the better score
     cmp      minmax_arg_alpha, x    ; compare value with alpha
     beq      _max_loop              ; 6502 has no <= branch, and swapping args requires another load
     bmi      _max_loop
@@ -369,11 +369,11 @@ _min_loop                           ; for i = 0; i < 9; i++. i is initialized at
     cmp      minmax_local_value, x  ; compare score with value
     bpl      _min_loop              ; 
 
-    sta      minmax_local_value, x  ; update value with the better score
     cmp      minmax_arg_alpha, x    ; compare value with alpha
     beq      _min_return_a          ; alpha pruning
     bmi      _min_return_a          ; alpha pruning
 
+    sta      minmax_local_value, x  ; update value with the better score
     cmp      minmax_arg_beta, x     ; compare value with beta
     bpl      _min_loop              ;
 
