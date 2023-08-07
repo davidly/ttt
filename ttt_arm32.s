@@ -11,7 +11,7 @@
 .code 32
 .data
 
-.set iterations, 10000
+.set default_iterations, 10000
 .set minimum_score, 2
 .set maximum_score, 9
 .set win_score, 6
@@ -45,8 +45,10 @@
     timespecPriorNSec:  .int 0
     timespecCurSec:     .int 0
     timespecCurNSec:    .int 0
+    loopCount:          .int default_iterations
     elapString:         .asciz "%s %u milliseconds\n"
     movecountString:    .asciz "%d moves\n"
+    loopcountString:    .asciz "%d iterations\n"
     serialString:       .asciz "serial:   "
     parallelString:     .asciz "parallel: "
     debugString:        .asciz "%d, %d, %d, %d, "
@@ -72,6 +74,18 @@ main:
     .cfi_startproc
     push     {ip, lr}
 
+    @ if there is an argv[1], use it as the iteration count
+    mov      r2, #2
+    cmp      r0, r2
+    blt      _no_arguments
+    add      r1, r1, #4
+    ldr      r0, [r1]
+    bl       atoi
+    movw     r1, #:lower16:loopCount
+    movt     r1, #:upper16:loopCount
+    str      r0, [r1]
+
+_no_arguments:
     @ remember the starting tickcount
     bl       clock
     movw     r1, #:lower16:priorTicks
@@ -100,6 +114,8 @@ main:
     movt     r0, #:upper16:parallelString
     bl       _print_elapsed_time        @ show how long it took in parallel
     bl       _print_movecount           @ show # of moves, a multiple of 6493
+
+    bl       _print_loopcount
 
     mov      r0, #0
     pop      {ip, pc}
@@ -154,7 +170,7 @@ _print_elapsed_time:
     movw     r1, #:lower16:timespecPriorSec
     movt     r1, #:upper16:timespecPriorSec
     mov      r0, #1   @ monotonic
-    bl        clock_gettime
+    bl       clock_gettime
 
     pop      {r4, r5, r6, r7, r8, r9, r10, r11}
     pop      {ip, pc}
@@ -200,6 +216,21 @@ _print_movecount:
     pop      {ip, pc}
 
 .p2align 2
+_print_loopcount:
+    push     {ip, lr}
+    push     {r4, r5, r6, r7, r8, r9, r10, r11}
+    movw     r2, #:lower16:loopCount
+    movt     r2, #:upper16:loopCount
+    ldr      r1, [r2]
+    mov      r0, #0
+    str      r0, [r2]
+    movw     r0, #:lower16:loopcountString
+    movt     r0, #:upper16:loopcountString
+    bl       printf
+    pop      {r4, r5, r6, r7, r8, r9, r10, r11}
+    pop      {ip, pc}
+
+.p2align 2
 _runmm:
     .cfi_startproc
     push     {ip, lr}
@@ -232,8 +263,9 @@ _runmm:
     movt     r10, #:upper16:board4
 
   _runmm_for:
-    movw     r7, #:lower16:iterations
-    movt     r7, #:upper16:iterations
+    movw     r7, #:lower16:loopCount
+    movt     r7, #:upper16:loopCount
+    ldr      r7, [r7]
 
   _runmm_loop:
     mov      r0, #minimum_score         @ alpha
@@ -557,7 +589,7 @@ _minmax_min:
     movlt    r4, r0                     @ update value if score is < value
 
     cmp      r4, r8                     @ compare value with beta
-    movlt    r8, r4                   @ update beta if value < beta
+    movlt    r8, r4                     @ update beta if value < beta
 
     cmp      r8, r7                     @ compare beta with alpha
     bgt      _minmax_min_top_of_loop    @ loop to the next board position 0..8
