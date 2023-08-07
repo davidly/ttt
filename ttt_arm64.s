@@ -5,7 +5,7 @@
 
 .global _start
 
-.set iterations, 100000
+.set default_iterations, 100000
 .set minimum_score, 2
 .set maximum_score, 9
 .set win_score, 6
@@ -29,9 +29,11 @@
     moveCount:       .quad 0
     pthread1:        .quad 0
     pthread4:        .quad 0
+    loopCount:       .quad default_iterations
     elapString:      .asciz "%lld microseconds (-6)\n"
     movecountString: .asciz "%d moves\n"
     itersString:     .asciz "%d iterations\n"
+    usageString:     .asciz "usage: ttt_gnu_arm64 [loopcount]\n"
  
 .text
 .p2align 2 
@@ -41,6 +43,22 @@ _start:
     stp      x29, x30, [sp, #16]
     add      x29, sp, #16
 
+    cmp      x0, 2
+    b.lt     _get_tickcount
+    ldr      x0, [ x1, #8 ]
+    bl       _atoi
+    adrp     x1, loopCount@PAGE
+    add      x1, x1, loopCount@PAGEOFF
+    str      x0, [x1]
+
+    cmp      x0, 0
+    b.ne     _get_tickcount
+    adrp     x0, usageString@PAGE
+    add      x0, x0, usageString@PAGEOFF
+    bl       call_printf    
+    b        _main_done
+
+ _get_tickcount:
     ; remember the starting tickcount
     adrp     x1, priorTicks@PAGE
     add      x1, x1, priorTicks@PAGEOFF
@@ -68,11 +86,14 @@ _start:
     bl       _print_elapsed_time        ; show how long it took in parallel
     bl       _print_movecount           ; show # of moves, a multiple of 6493
 
-    ldr      x1, =iterations
+    adrp     x1, loopCount@PAGE
+    add      x1, x1, loopCount@PAGEOFF
+    ldr      x1, [x1]
     adrp     x0, itersString@PAGE
     add      x0, x0, itersString@PAGEOFF
     bl       call_printf
 
+  _main_done:
     mov      x0, 0
     ldp      x29, x30, [sp, #16]
     add      sp, sp, #32
@@ -161,7 +182,9 @@ _runmm:
     add      x21, x21, board4@PAGEOFF
 
   _runmm_for:
-    ldr      x22, =iterations           ; x22 is the iteration for loop counter. ldr not mov because it's large
+    adrp     x22, loopCount@PAGE
+    add      x22, x22, loopCount@PAGEOFF
+    ldr      x22, [x22]
 
   _runmm_loop:
     mov      x23, minimum_score         ; alpha
