@@ -4,7 +4,7 @@
 
 .global main
 
-.set iterations, 100000
+.set default_iterations, 100000
 .set minimum_score, 2
 .set maximum_score, 9
 .set win_score, 6
@@ -28,10 +28,12 @@
     moveCount:       .quad 0
     pthread1:        .quad 0
     pthread4:        .quad 0
+    loopCount:       .quad default_iterations
     elapString:      .asciz "%lld microseconds (-6)\n"
     movecountString: .asciz "%d moves\n"
     itersString:     .asciz "%d iterations\n"
     startString:     .asciz "starting\n"
+    usageString:     .asciz "usage: ttt_gnu_arm64 [loopcount]\n"
  
 .text
 .p2align 2 
@@ -41,6 +43,22 @@ main:
     stp      x29, x30, [sp, #16]
     add      x29, sp, #16
 
+    cmp      x0, 2
+    b.lt     _show_start
+    ldr      x0, [ x1, #8 ]
+    bl       atoi
+    adrp     x1, loopCount
+    add      x1, x1, :lo12:loopCount
+    str      x0, [x1]
+
+    cmp      x0, 0
+    b.ne     _show_start
+    adrp     x0, usageString
+    add      x0, x0, :lo12:usageString
+    bl       call_printf    
+    b        _main_done
+
+  _show_start:
     adrp     x0, startString
     add      x0, x0, :lo12:startString
     bl       call_printf                
@@ -65,6 +83,7 @@ main:
     bl       _print_elapsed_time        // show how long it took in parallel
     bl       _print_movecount           // show # of moves, a multiple of 6493
 
+  _main_done:
     mov      x0, 0
     ldp      x29, x30, [sp, #16]
     add      sp, sp, #32
@@ -90,7 +109,9 @@ _print_elapsed_time:
     add      x0, x0, :lo12:elapString
     bl       call_printf                // print the elapsed time
     
-    ldr      x1, =iterations
+    adrp     x1, loopCount
+    add      x1, x1, :lo12:loopCount
+    ldr      x1, [x1]
     adrp     x0, itersString
     add      x0, x0, :lo12:itersString
     bl       call_printf
@@ -156,7 +177,9 @@ _runmm:
     add      x21, x21, :lo12:board4
 
   _runmm_for:
-    ldr      x22, =iterations           // x22 is the iteration for loop counter. ldr not mov because it's large
+    adrp     x22, loopCount
+    add      x22, x22, :lo12:loopCount
+    ldr      x22, [x22]
 
   _runmm_loop:
     mov      x23, minimum_score         // alpha
