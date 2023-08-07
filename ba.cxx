@@ -4834,12 +4834,15 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
 
         // set BASIC variable av% to the integer value of the first app argument (if any)
 
-        fprintf( fp, "    cmp      rcx, 2\n" );
-        fprintf( fp, "    jl       no_arguments\n" );
-        fprintf( fp, "    mov      rcx, [ rdx + 8 ]\n" );
-        fprintf( fp, "    call     atoi\n" );
-        fprintf( fp, "    mov      DWORD PTR [%s], eax\n", GenVariableName( "av%" ) );
-        fprintf( fp, "  no_arguments:\n" );
+        if ( FindVariable( varmap, "av%" ) )
+        {
+            fprintf( fp, "    cmp      rcx, 2\n" );
+            fprintf( fp, "    jl       no_arguments\n" );
+            fprintf( fp, "    mov      rcx, [ rdx + 8 ]\n" );
+            fprintf( fp, "    call     atoi\n" );
+            fprintf( fp, "    mov      DWORD PTR [%s], eax\n", GenVariableName( "av%" ) );
+            fprintf( fp, "  no_arguments:\n" );
+        }
 
         if ( !g_Quiet )
         {
@@ -4887,15 +4890,18 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
 
         // set BASIC variable av% to the integer value of the first app argument (if any)
 
-        LoadArm32Constant( fp, "r2", 2 );
-        fprintf( fp, "    cmp      r0, r2\n" );
-        fprintf( fp, "    blt      no_arguments\n" );
-        fprintf( fp, "    add      r1, r1, #4\n" );
-        fprintf( fp, "    ldr      r0, [r1]\n" );
-        fprintf( fp, "    bl       atoi\n" );
-        LoadArm32Address( fp, "r1", "av%" );
-        fprintf( fp, "    str      r0, [r1]\n" );
-        fprintf( fp, "no_arguments:\n" );
+        if ( FindVariable( varmap, "av%" ) )
+        {
+            LoadArm32Constant( fp, "r2", 2 );
+            fprintf( fp, "    cmp      r0, r2\n" );
+            fprintf( fp, "    blt      no_arguments\n" );
+            fprintf( fp, "    add      r1, r1, #4\n" );
+            fprintf( fp, "    ldr      r0, [r1]\n" );
+            fprintf( fp, "    bl       atoi\n" );
+            LoadArm32Address( fp, "r1", "av%" );
+            fprintf( fp, "    str      r0, [r1]\n" );
+            fprintf( fp, "no_arguments:\n" );
+        }
 
         if ( !g_Quiet )
         {
@@ -4942,15 +4948,18 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
 
         // set BASIC variable av% to the integer value of the first app argument (if any)
 
-        LoadArm64Constant( fp, "x2", 2 );
-        fprintf( fp, "    cmp      x0, x2\n" );
-        fprintf( fp, "    b.lt     no_arguments\n" );
-        fprintf( fp, "    add      x1, x1, 8\n" );
-        fprintf( fp, "    ldr      x0, [x1]\n" );
-        fprintf( fp, "    bl       _atoi\n" );
-        LoadArm64Address( fp, "x1", "av%" );
-        fprintf( fp, "    str      w0, [x1]\n" );
-        fprintf( fp, "no_arguments:\n" );
+        if ( FindVariable( varmap, "av%" ) )
+        {
+            LoadArm64Constant( fp, "x2", 2 );
+            fprintf( fp, "    cmp      x0, x2\n" );
+            fprintf( fp, "    b.lt     no_arguments\n" );
+            fprintf( fp, "    add      x1, x1, 8\n" );
+            fprintf( fp, "    ldr      x0, [x1]\n" );
+            fprintf( fp, "    bl       _atoi\n" );
+            LoadArm64Address( fp, "x1", "av%" );
+            fprintf( fp, "    str      w0, [x1]\n" );
+            fprintf( fp, "no_arguments:\n" );
+        }
 
         if ( !g_Quiet )
         {
@@ -4997,15 +5006,18 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
 
         // set BASIC variable av% to the integer value of the first app argument (if any)
 
-        LoadArm64Constant( fp, "x2", 2 );
-        fprintf( fp, "    cmp      x0, x2\n" );
-        fprintf( fp, "    b.lt     no_arguments\n" );
-        fprintf( fp, "    add      x1, x1, 8\n" );
-        fprintf( fp, "    ldr      x0, [x1]\n" );
-        fprintf( fp, "    bl       atoi\n" );
-        LoadArm64Address( fp, "x1", "av%" );
-        fprintf( fp, "    str      w0, [x1]\n" );
-        fprintf( fp, "no_arguments\n" );
+        if ( FindVariable( varmap, "av%" ) )
+        {
+            LoadArm64Constant( fp, "x2", 2 );
+            fprintf( fp, "    cmp      x0, x2\n" );
+            fprintf( fp, "    b.lt     no_arguments\n" );
+            fprintf( fp, "    add      x1, x1, 8\n" );
+            fprintf( fp, "    ldr      x0, [x1]\n" );
+            fprintf( fp, "    bl       atoi\n" );
+            LoadArm64Address( fp, "x1", "av%" );
+            fprintf( fp, "    str      w0, [x1]\n" );
+            fprintf( fp, "no_arguments\n" );
+        }
 
         if ( !g_Quiet )
         {
@@ -5061,18 +5073,21 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
 
         // set BASIC variable av% to the integer value of the first app argument (if any)
 
-        fprintf( fp, "    lda     128\n" );
-        fprintf( fp, "    cpi     0\n" );
-        fprintf( fp, "    jz      noargument\n" );
-        fprintf( fp, "    mvi     d, 0\n" );
-        fprintf( fp, "    mov     e, a\n" );
-        fprintf( fp, "    lxi     h, 129\n" );
-        fprintf( fp, "    dad     d\n" );
-        fprintf( fp, "    mvi     m, 0\n" );
-        fprintf( fp, "    lxi     h, 129\n" );
-        fprintf( fp, "    call    atou\n" );
-        fprintf( fp, "    shld     %s\n", GenVariableName( "av%" ) );
-        fprintf( fp, "  noargument:\n" );
+        if ( FindVariable( varmap, "av%" ) )
+        {
+            fprintf( fp, "    lda     128\n" );
+            fprintf( fp, "    cpi     0\n" );
+            fprintf( fp, "    jz      noargument\n" );
+            fprintf( fp, "    mvi     d, 0\n" );
+            fprintf( fp, "    mov     e, a\n" );
+            fprintf( fp, "    lxi     h, 129\n" );
+            fprintf( fp, "    dad     d\n" );
+            fprintf( fp, "    mvi     m, 0\n" );
+            fprintf( fp, "    lxi     h, 129\n" );
+            fprintf( fp, "    call    atou\n" );
+            fprintf( fp, "    shld     %s\n", GenVariableName( "av%" ) );
+            fprintf( fp, "  noargument:\n" );
+        }
 
         if ( !g_Quiet )
         {
@@ -5173,14 +5188,17 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
 
         // set BASIC variable av% to the integer value of the first app argument (if any)
 
-        fprintf( fp, "    mov      di, 0\n" );
-        fprintf( fp, "    xor      ax, ax\n" );
-        fprintf( fp, "    cmp      al, byte ptr [ di + 128 ]\n" );
-        fprintf( fp, "    jz       no_arguments\n" );
-        fprintf( fp, "    mov      cx, 129\n" );
-        fprintf( fp, "    call     atou\n" );
-        fprintf( fp, "    mov      WORD PTR ds: [%s], ax\n", GenVariableName( "av%" ) );
-        fprintf( fp, "no_arguments:\n" );
+        if ( FindVariable( varmap, "av%" ) )
+        {
+            fprintf( fp, "    mov      di, 0\n" );
+            fprintf( fp, "    xor      ax, ax\n" );
+            fprintf( fp, "    cmp      al, byte ptr [ di + 128 ]\n" );
+            fprintf( fp, "    jz       no_arguments\n" );
+            fprintf( fp, "    mov      cx, 129\n" );
+            fprintf( fp, "    call     atou\n" );
+            fprintf( fp, "    mov      WORD PTR ds: [%s], ax\n", GenVariableName( "av%" ) );
+            fprintf( fp, "no_arguments:\n" );
+        }
 
         if ( elapReferenced )
         {
@@ -5232,14 +5250,17 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
 
         // set BASIC variable av% to the integer value of the first app argument (if any)
 
-        fprintf( fp, "    cmp      DWORD PTR [ ebp + 8 ], 2\n" );
-        fprintf( fp, "    jl       no_arguments\n" );
-        fprintf( fp, "    mov      ecx, [ ebp + 12 ]\n" );
-        fprintf( fp, "    mov      ecx, [ ecx + 4 ]\n" );
-        fprintf( fp, "    push     ecx\n" );
-        fprintf( fp, "    call     atoi\n" );
-        fprintf( fp, "    mov      DWORD PTR [%s], eax\n", GenVariableName( "av%" ) );
-        fprintf( fp, "  no_arguments:\n" );
+        if ( FindVariable( varmap, "av%" ) )
+        {
+            fprintf( fp, "    cmp      DWORD PTR [ ebp + 8 ], 2\n" );
+            fprintf( fp, "    jl       no_arguments\n" );
+            fprintf( fp, "    mov      ecx, [ ebp + 12 ]\n" );
+            fprintf( fp, "    mov      ecx, [ ecx + 4 ]\n" );
+            fprintf( fp, "    push     ecx\n" );
+            fprintf( fp, "    call     atoi\n" );
+            fprintf( fp, "    mov      DWORD PTR [%s], eax\n", GenVariableName( "av%" ) );
+            fprintf( fp, "  no_arguments:\n" );
+        }
 
         if ( !g_Quiet )
         {
@@ -5329,15 +5350,18 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
 
         // set BASIC variable av% to the integer value of the first app argument (if any)
 
-        fprintf( fp, "    li       a2, 2\n" );
-        fprintf( fp, "    blt      a0, a2, .no_arguments\n" );
-        fprintf( fp, "    slli     a2, a2, 2\n" );
-        fprintf( fp, "    add      a1, a1, a2\n" );
-        fprintf( fp, "    ld       a0, (a1)\n" );
-        fprintf( fp, "    jal      a_to_uint64\n" );
-        fprintf( fp, "    lla      t1, %s\n", GenVariableName( "av%" ) );
-        fprintf( fp, "    sw       a0, (t1)\n" );
-        fprintf( fp, "  .no_arguments:\n" );
+        if ( FindVariable( varmap, "av%" ) )
+        {
+            fprintf( fp, "    li       a2, 2\n" );
+            fprintf( fp, "    blt      a0, a2, .no_arguments\n" );
+            fprintf( fp, "    slli     a2, a2, 2\n" );
+            fprintf( fp, "    add      a1, a1, a2\n" );
+            fprintf( fp, "    ld       a0, (a1)\n" );
+            fprintf( fp, "    jal      a_to_uint64\n" );
+            fprintf( fp, "    lla      t1, %s\n", GenVariableName( "av%" ) );
+            fprintf( fp, "    sw       a0, (t1)\n" );
+            fprintf( fp, "  .no_arguments:\n" );
+        }
 
         if ( !g_Quiet )
         {
@@ -9562,45 +9586,48 @@ label_no_if_optimization:
 
         /////////////////////////////////////////
 
-        fprintf( fp, "atou:                               ; in: hl points to string. out: hl has integer value. positive base-10 is assumed\n" );
-        fprintf( fp, "        push   b\n" );
-        fprintf( fp, "        push   d\n" );
-        fprintf( fp, "        lxi    b, 0                 ; running total is in bc\n" );
-        fprintf( fp, "  atouSpaceLoop:                    ; skip past spaces\n" );
-        fprintf( fp, "        mov    a, m\n" );
-        fprintf( fp, "        cpi    ' '\n" );
-        fprintf( fp, "        jnz    atouNext\n" );
-        fprintf( fp, "        inx    h\n" );
-        fprintf( fp, "        jmp    atouSpaceLoop\n" );
-        fprintf( fp, "  atouNext:\n" );
-        fprintf( fp, "        mov    a, m                 ; check if we're at the end of string or the data isn't a number\n" );
-        fprintf( fp, "        cpi    '0'\n" );
-        fprintf( fp, "        jm     atouDone             ; < '0' isn't a digit\n" );
-        fprintf( fp, "        cpi    '9' + 1\n" );
-        fprintf( fp, "        jp     atouDone             ; > '9' isn't a digit\n" );
-        fprintf( fp, "        lxi    d, 10                ; multiply what we have so far by 10\n" );
-        fprintf( fp, "        push   h\n" );
-        fprintf( fp, "        mov    h, b\n" );
-        fprintf( fp, "        mov    l, c\n" );
-        fprintf( fp, "        call   imul\n" );
-        fprintf( fp, "        mov    b, h\n" );
-        fprintf( fp, "        mov    c, l\n" );
-        fprintf( fp, "        pop    h\n" );
-        fprintf( fp, "        mov    a, m                 ; restore the digit in a because imul trashed it\n" );
-        fprintf( fp, "        sui    '0'                  ; change ascii to a number\n" );
-        fprintf( fp, "        add    c                    ; add this new number to the running total in bc\n" );
-        fprintf( fp, "        mov    c, a\n" );
-        fprintf( fp, "        mov    a, b\n" );
-        fprintf( fp, "        aci    0                    ; if there was a carry from the add, reflect that\n" );
-        fprintf( fp, "        mov    b, a\n" );
-        fprintf( fp, "        inx    h                    ; move to the next character\n" );
-        fprintf( fp, "        jmp    atouNext             ; and process it\n" );
-        fprintf( fp, "  atouDone:\n" );
-        fprintf( fp, "        mov    h, b                 ; the result goes in hl\n" );
-        fprintf( fp, "        mov    l, c\n" );
-        fprintf( fp, "        pop    d\n" );
-        fprintf( fp, "        pop    b\n" );
-        fprintf( fp, "        ret\n" );
+        if ( FindVariable( varmap, "av%" ) )
+        {
+            fprintf( fp, "atou:                               ; in: hl points to string. out: hl has integer value. positive base-10 is assumed\n" );
+            fprintf( fp, "        push   b\n" );
+            fprintf( fp, "        push   d\n" );
+            fprintf( fp, "        lxi    b, 0                 ; running total is in bc\n" );
+            fprintf( fp, "  atouSpaceLoop:                    ; skip past spaces\n" );
+            fprintf( fp, "        mov    a, m\n" );
+            fprintf( fp, "        cpi    ' '\n" );
+            fprintf( fp, "        jnz    atouNext\n" );
+            fprintf( fp, "        inx    h\n" );
+            fprintf( fp, "        jmp    atouSpaceLoop\n" );
+            fprintf( fp, "  atouNext:\n" );
+            fprintf( fp, "        mov    a, m                 ; check if we're at the end of string or the data isn't a number\n" );
+            fprintf( fp, "        cpi    '0'\n" );
+            fprintf( fp, "        jm     atouDone             ; < '0' isn't a digit\n" );
+            fprintf( fp, "        cpi    '9' + 1\n" );
+            fprintf( fp, "        jp     atouDone             ; > '9' isn't a digit\n" );
+            fprintf( fp, "        lxi    d, 10                ; multiply what we have so far by 10\n" );
+            fprintf( fp, "        push   h\n" );
+            fprintf( fp, "        mov    h, b\n" );
+            fprintf( fp, "        mov    l, c\n" );
+            fprintf( fp, "        call   imul\n" );
+            fprintf( fp, "        mov    b, h\n" );
+            fprintf( fp, "        mov    c, l\n" );
+            fprintf( fp, "        pop    h\n" );
+            fprintf( fp, "        mov    a, m                 ; restore the digit in a because imul trashed it\n" );
+            fprintf( fp, "        sui    '0'                  ; change ascii to a number\n" );
+            fprintf( fp, "        add    c                    ; add this new number to the running total in bc\n" );
+            fprintf( fp, "        mov    c, a\n" );
+            fprintf( fp, "        mov    a, b\n" );
+            fprintf( fp, "        aci    0                    ; if there was a carry from the add, reflect that\n" );
+            fprintf( fp, "        mov    b, a\n" );
+            fprintf( fp, "        inx    h                    ; move to the next character\n" );
+            fprintf( fp, "        jmp    atouNext             ; and process it\n" );
+            fprintf( fp, "  atouDone:\n" );
+            fprintf( fp, "        mov    h, b                 ; the result goes in hl\n" );
+            fprintf( fp, "        mov    l, c\n" );
+            fprintf( fp, "        pop    d\n" );
+            fprintf( fp, "        pop    b\n" );
+            fprintf( fp, "        ret\n" );
+        }
 
         /////////////////////////////////////////
         // function I found in the internet to print the integer in hl
@@ -10009,37 +10036,40 @@ label_no_if_optimization:
 
         //////////////////
 
-        fprintf( fp, "atou proc near ; string input in cx. unsigned 16-bit integer result in ax\n" );
-        fprintf( fp, "        push    di\n" );
-        fprintf( fp, "        push    bx\n" );
-        fprintf( fp, "        mov     bx, 0               ; running total is in bx\n" );
-        fprintf( fp, "        mov     di, cx\n" );
-        fprintf( fp, "        mov     cx, 10\n" );
-        fprintf( fp, "skipspaces:\n" );
-        fprintf( fp, "        cmp     byte ptr [di ], ' '\n" );
-        fprintf( fp, "        jne     atouNext\n" );
-        fprintf( fp, "        inc     di\n" );
-        fprintf( fp, "        jmp     skipspaces\n" );
-        fprintf( fp, "atouNext:\n" );
-        fprintf( fp, "        cmp     byte ptr [ di ], '0'     ; if not a digit, we're done. Works with null and 0x0d terminated strings\n" );
-        fprintf( fp, "        jb      atouDone\n" );
-        fprintf( fp, "        cmp     byte ptr [ di ], '9' + 1\n" );
-        fprintf( fp, "        jge     atouDone\n" );
-        fprintf( fp, "        mov     ax, bx\n" );
-        fprintf( fp, "        mul     cx\n" );
-        fprintf( fp, "        mov     bx, ax\n" );
-        fprintf( fp, "        xor     ah, ah\n" );
-        fprintf( fp, "        mov     al, byte ptr [ di ]\n" );
-        fprintf( fp, "        sub     ax, '0'\n" );
-        fprintf( fp, "        add     bx, ax\n" );
-        fprintf( fp, "        inc     di\n" );
-        fprintf( fp, "        jmp     atouNext\n" );
-        fprintf( fp, "atouDone:\n" );
-        fprintf( fp, "        mov     ax, bx\n" );
-        fprintf( fp, "        pop     bx\n" );
-        fprintf( fp, "        pop     di\n" );
-        fprintf( fp, "        ret\n" );
-        fprintf( fp, "atou endp\n" );
+        if ( FindVariable( varmap, "av%" ) )
+        {
+            fprintf( fp, "atou proc near ; string input in cx. unsigned 16-bit integer result in ax\n" );
+            fprintf( fp, "        push    di\n" );
+            fprintf( fp, "        push    bx\n" );
+            fprintf( fp, "        mov     bx, 0               ; running total is in bx\n" );
+            fprintf( fp, "        mov     di, cx\n" );
+            fprintf( fp, "        mov     cx, 10\n" );
+            fprintf( fp, "skipspaces:\n" );
+            fprintf( fp, "        cmp     byte ptr [di ], ' '\n" );
+            fprintf( fp, "        jne     atouNext\n" );
+            fprintf( fp, "        inc     di\n" );
+            fprintf( fp, "        jmp     skipspaces\n" );
+            fprintf( fp, "atouNext:\n" );
+            fprintf( fp, "        cmp     byte ptr [ di ], '0'     ; if not a digit, we're done. Works with null and 0x0d terminated strings\n" );
+            fprintf( fp, "        jb      atouDone\n" );
+            fprintf( fp, "        cmp     byte ptr [ di ], '9' + 1\n" );
+            fprintf( fp, "        jge     atouDone\n" );
+            fprintf( fp, "        mov     ax, bx\n" );
+            fprintf( fp, "        mul     cx\n" );
+            fprintf( fp, "        mov     bx, ax\n" );
+            fprintf( fp, "        xor     ah, ah\n" );
+            fprintf( fp, "        mov     al, byte ptr [ di ]\n" );
+            fprintf( fp, "        sub     ax, '0'\n" );
+            fprintf( fp, "        add     bx, ax\n" );
+            fprintf( fp, "        inc     di\n" );
+            fprintf( fp, "        jmp     atouNext\n" );
+            fprintf( fp, "atouDone:\n" );
+            fprintf( fp, "        mov     ax, bx\n" );
+            fprintf( fp, "        pop     bx\n" );
+            fprintf( fp, "        pop     di\n" );
+            fprintf( fp, "        ret\n" );
+            fprintf( fp, "atou endp\n" );
+        }
 
         //////////////////
 
@@ -10486,59 +10516,62 @@ label_no_if_optimization:
 
         /**************************************************************************/
      
-        fprintf( fp, "a_to_uint64:\n" );
-        fprintf( fp, "        addi    sp, sp, -128\n" );
-        fprintf( fp, "        sd      ra, 16(sp)\n" );
-        fprintf( fp, "        sd      s0, 24(sp)\n" );
-        fprintf( fp, "        sd      s1, 32(sp)\n" );
-        fprintf( fp, "        sd      s2, 40(sp)\n" );
-        fprintf( fp, "        sd      s3, 48(sp)\n" );
-        fprintf( fp, "        sd      s4, 56(sp)\n" );
-        fprintf( fp, "        sd      s5, 64(sp)\n" );
-        fprintf( fp, "        sd      s6, 72(sp)\n" );
-        fprintf( fp, "        sd      s7, 80(sp)\n" );
-        fprintf( fp, "        sd      s8, 88(sp)\n" );
-        fprintf( fp, "        sd      s9, 96(sp)\n" );
-        fprintf( fp, "        sd      s10, 104(sp)\n" );
-        fprintf( fp, "        sd      s11, 112(sp)\n" );
-        fprintf( fp, "        li      s0, 0                # running total in s0\n" );
-        fprintf( fp, "        li      s1, 0                # offset of next char in s1\n" );
-        fprintf( fp, "        mv      s2, a0\n" );
-        fprintf( fp, "        li      s3, ' '\n" );
-        fprintf( fp, "        li      s4, '0'\n" );
-        fprintf( fp, "        li      s5, '9' + 1\n" );
-        fprintf( fp, "        li      s6, 10\n" );
-        fprintf( fp, "  .a_to_uint64_skip_spaces:\n" );
-        fprintf( fp, "        lbu     t0, (s2)\n" );
-        fprintf( fp, "        bne     t0, s3, .a_to_uint64_next\n" );
-        fprintf( fp, "        addi    s2, s2, 1\n" );
-        fprintf( fp, "        j       .a_to_uint64_skip_spaces\n" );
-        fprintf( fp, "  .a_to_uint64_next:\n" );
-        fprintf( fp, "        lbu     t0, (s2)\n" );
-        fprintf( fp, "        blt     t0, s4, .a_to_uint64_done\n" );
-        fprintf( fp, "        bge     t0, s5, .a_to_uint64_done\n" );
-        fprintf( fp, "        mul     s0, s0, s6           # multiply running total by 10\n" );
-        fprintf( fp, "        sub     t0, t0, s4\n" );
-        fprintf( fp, "        add     s0, s0, t0           # add the next digit\n" );
-        fprintf( fp, "        addi    s2, s2, 1            # advance the string pointer\n" );
-        fprintf( fp, "        j       .a_to_uint64_next\n" );
-        fprintf( fp, "  .a_to_uint64_done:\n" );
-        fprintf( fp, "        mv      a0, s0\n" );
-        fprintf( fp, "        ld      ra, 16(sp)\n" );
-        fprintf( fp, "        ld      s0, 24(sp)\n" );
-        fprintf( fp, "        ld      s1, 32(sp)\n" );
-        fprintf( fp, "        ld      s2, 40(sp)\n" );
-        fprintf( fp, "        ld      s3, 48(sp)\n" );
-        fprintf( fp, "        ld      s4, 56(sp)\n" );
-        fprintf( fp, "        ld      s5, 64(sp)\n" );
-        fprintf( fp, "        ld      s6, 72(sp)\n" );
-        fprintf( fp, "        ld      s7, 80(sp)\n" );
-        fprintf( fp, "        ld      s8, 88(sp)\n" );
-        fprintf( fp, "        ld      s9, 96(sp)\n" );
-        fprintf( fp, "        ld      s10, 104(sp)\n" );
-        fprintf( fp, "        ld      s11, 112(sp)\n" );
-        fprintf( fp, "        addi    sp, sp, 128\n" );
-        fprintf( fp, "        jr      ra\n" );
+        if ( FindVariable( varmap, "av%" ) )
+        {
+            fprintf( fp, "a_to_uint64:\n" );
+            fprintf( fp, "        addi    sp, sp, -128\n" );
+            fprintf( fp, "        sd      ra, 16(sp)\n" );
+            fprintf( fp, "        sd      s0, 24(sp)\n" );
+            fprintf( fp, "        sd      s1, 32(sp)\n" );
+            fprintf( fp, "        sd      s2, 40(sp)\n" );
+            fprintf( fp, "        sd      s3, 48(sp)\n" );
+            fprintf( fp, "        sd      s4, 56(sp)\n" );
+            fprintf( fp, "        sd      s5, 64(sp)\n" );
+            fprintf( fp, "        sd      s6, 72(sp)\n" );
+            fprintf( fp, "        sd      s7, 80(sp)\n" );
+            fprintf( fp, "        sd      s8, 88(sp)\n" );
+            fprintf( fp, "        sd      s9, 96(sp)\n" );
+            fprintf( fp, "        sd      s10, 104(sp)\n" );
+            fprintf( fp, "        sd      s11, 112(sp)\n" );
+            fprintf( fp, "        li      s0, 0                # running total in s0\n" );
+            fprintf( fp, "        li      s1, 0                # offset of next char in s1\n" );
+            fprintf( fp, "        mv      s2, a0\n" );
+            fprintf( fp, "        li      s3, ' '\n" );
+            fprintf( fp, "        li      s4, '0'\n" );
+            fprintf( fp, "        li      s5, '9' + 1\n" );
+            fprintf( fp, "        li      s6, 10\n" );
+            fprintf( fp, "  .a_to_uint64_skip_spaces:\n" );
+            fprintf( fp, "        lbu     t0, (s2)\n" );
+            fprintf( fp, "        bne     t0, s3, .a_to_uint64_next\n" );
+            fprintf( fp, "        addi    s2, s2, 1\n" );
+            fprintf( fp, "        j       .a_to_uint64_skip_spaces\n" );
+            fprintf( fp, "  .a_to_uint64_next:\n" );
+            fprintf( fp, "        lbu     t0, (s2)\n" );
+            fprintf( fp, "        blt     t0, s4, .a_to_uint64_done\n" );
+            fprintf( fp, "        bge     t0, s5, .a_to_uint64_done\n" );
+            fprintf( fp, "        mul     s0, s0, s6           # multiply running total by 10\n" );
+            fprintf( fp, "        sub     t0, t0, s4\n" );
+            fprintf( fp, "        add     s0, s0, t0           # add the next digit\n" );
+            fprintf( fp, "        addi    s2, s2, 1            # advance the string pointer\n" );
+            fprintf( fp, "        j       .a_to_uint64_next\n" );
+            fprintf( fp, "  .a_to_uint64_done:\n" );
+            fprintf( fp, "        mv      a0, s0\n" );
+            fprintf( fp, "        ld      ra, 16(sp)\n" );
+            fprintf( fp, "        ld      s0, 24(sp)\n" );
+            fprintf( fp, "        ld      s1, 32(sp)\n" );
+            fprintf( fp, "        ld      s2, 40(sp)\n" );
+            fprintf( fp, "        ld      s3, 48(sp)\n" );
+            fprintf( fp, "        ld      s4, 56(sp)\n" );
+            fprintf( fp, "        ld      s5, 64(sp)\n" );
+            fprintf( fp, "        ld      s6, 72(sp)\n" );
+            fprintf( fp, "        ld      s7, 80(sp)\n" );
+            fprintf( fp, "        ld      s8, 88(sp)\n" );
+            fprintf( fp, "        ld      s9, 96(sp)\n" );
+            fprintf( fp, "        ld      s10, 104(sp)\n" );
+            fprintf( fp, "        ld      s11, 112(sp)\n" );
+            fprintf( fp, "        addi    sp, sp, 128\n" );
+            fprintf( fp, "        jr      ra\n" );
+        }
 
         /**************************************************************************/
 
