@@ -229,13 +229,13 @@ _print_loopcount:
     bl       printf
     pop      {r4, r5, r6, r7, r8, r9, r10, r11}
     pop      {ip, pc}
-
 .p2align 2
 _runmm:
     .cfi_startproc
     push     {ip, lr}
     push     {r4, r5, r6, r7, r8, r9, r10, r11}
 
+    mov      r6, #0                             @ r6 is zero the whole time
     mov      r9, #0                             @ r9 is the move count
     mov      r8, r0                             @ r8 is the initial move    
     movw     r11, #:lower16:_winner_functions   @ r11 is the winner functions lookup table
@@ -263,18 +263,18 @@ _runmm:
     movt     r10, #:upper16:board4
 
   _runmm_for:
-    movw     r7, #:lower16:loopCount
-    movt     r7, #:upper16:loopCount
-    ldr      r7, [r7]
+    movw     r4, #:lower16:loopCount
+    movt     r4, #:upper16:loopCount
+    ldr      r4, [r4]
 
   _runmm_loop:
-    mov      r0, #minimum_score         @ alpha
-    mov      r1, #maximum_score         @ beta
+    mov      r7, #minimum_score         @ alpha
+    mov      r8, #maximum_score         @ beta
     mov      r2, #0                     @ depth
     mov      r3, r8                     @ move (0..8)
     bl       _minmax_min
-    sub      r7, r7, #1
-    cmp      r7, #0
+    sub      r4, r4, #1
+    cmp      r4, #0
     bne     _runmm_loop
 
     @ add the number of moves (atomic because multiple threads may do this at once)
@@ -284,11 +284,6 @@ _runmm:
     ldr      r1, [r0]
     add      r1, r1, r9
     str      r1, [r0]
-
-    @movw     r0, #:lower16:intString
-    @movt     r0, #:upper16:intString
-    @mov      r1, r8
-    @bl       printf
 
     @ exit the function
     pop      {r4, r5, r6, r7, r8, r9, r10, r11}
@@ -418,13 +413,13 @@ _solve_threaded:
 .p2align 2
 _minmax_max:
     .cfi_startproc
-    @ r0:  argument. alpha. keep in register r7
-    @ r1:  argument. beta. keep in register r8
-    @ r2:  argument. depth. keep in register r6
-    @ r3:  argument. move. position of last piece added 0..8. Keep in register for a bit then it's overwritten
+    @ r0:  workspace
+    @ r1:  workspace
+    @ r2:  argument. depth. 
+    @ r3:  unused
     @ r4:  value: local variable
-    @ r5:  for loop variable I
-    @ r6:  depth
+    @ r5:  argument: move. later for loop variable I
+    @ r6:  thread-global zero
     @ r7:  alpha
     @ r8:  beta
     @ r9:  thread-global move count
@@ -432,25 +427,18 @@ _minmax_max:
     @ r11: thread-global winner function table
 
     push     {ip, lr}
-    push     {r4, r5, r6, r7, r8}  @ skip 9, 10, and 11 for move count, board, and winner functions
+    push     {r4, r5, r7, r8}           @ save local variables for the caller
 
-    mov      r7, r0                     @ alpha
-    mov      r8, r1                     @ beta
-    mov      r6, r2                     @ depth
     add      r9, r9, #1                 @ increment global move count
 
-    @bl       _debug_ttt
-
-    cmp      r6, #3                     @ if fewer that 5 moves played, no winner
+    cmp      r2, #3                     @ if fewer that 5 moves played, no winner
     ble      _minmax_max_skip_winner
 
     @ call the winner function for the most recent move
     mov      r0, #o_piece               @ the piece just played
-    add      r1, r11, r3, lsl #2        @ table + function offset
+    add      r1, r11, r5, lsl #2        @ table + function offset
     ldr      r1, [r1]                   @ grab the function pointer
     blx      r1                         @ call it
-
-    @bl       _debug_r0
 
     cmp      r0, #o_piece               @ did O win?
     mov      r0, #lose_score            @ move regardless of whether we'll branch
@@ -469,33 +457,32 @@ _minmax_max:
 
     add      r1, r10, r5
     ldrb     r0, [r1]                   @ load the board piece at I in the loop
-    cmp      r0, #blank_piece           @ is the space free?
+    cmp      r0, r6                     @ is the space free?
     bne      _minmax_max_top_of_loop
 
     mov      r0, #x_piece               @ make the move
     strb     r0, [r1]
 
-    mov      r0, r7                     @ alpha
-    mov      r1, r8                     @ beta
-    add      r2, r6, #1                 @ depth++
-    mov      r3, r5                     @ move
+    add      r2, r2, #1                 @ depth++
     bl       _minmax_min                @ recurse to the MIN
 
+    sub      r2, r2, #1                 @ back to the current depth
     add      r1, r10, r5                @ address of the board + move
-    mov      r2, #blank_piece           @ load blank
-    strb     r2, [r1]                   @ store blank on the board
+    strb     r6, [r1]                   @ store blank on the board
 
     cmp      r0, #win_score             @ winning score? 
     beq      _minmax_max_done           @ then return
 
     cmp      r0, r4                     @ compare score with value
-    movgt    r4, r0                     @ update value if score is > value
+    ble      _minmax_max_top_of_loop
 
-    cmp      r7, r4                     @ compare alpha with value
-    movlt    r7, r4                     @ update alpha if alpha is < value
+    cmp      r0, r8                     @ compare value with beta
+    bge      _minmax_max_done           @ beta pruning
 
-    cmp      r7, r8                     @ compare alpha with beta
-    blt      _minmax_max_top_of_loop    @ loop to the next board position 0..8
+    mov      r4, r0                     @ update value
+    cmp      r4, r7                     @ compare value with alpha
+    movgt    r7, r4                     @ update alpha with value
+    b        _minmax_max_top_of_loop    @ loop to the next board position 0..8
 
   .p2align 2
   _minmax_max_loadv_done:
@@ -503,21 +490,20 @@ _minmax_max:
   
   .p2align 2
   _minmax_max_done:
-    @ exit the function
-    pop      {r4, r5, r6, r7, r8}       @ skip 9, 10, and 11 for move count, board, and winner functions
+    pop      {r4, r5, r7, r8}           @ restore local variables for the caller
     pop      {ip, pc}
     .cfi_endproc
 
 .p2align 2
 _minmax_min:
     .cfi_startproc
-    @ r0:  argument. alpha. keep in register r7
-    @ r1:  argument. beta. keep in register r8
-    @ r2:  argument. depth. keep in register r6
-    @ r3:  argument. move. position of last piece added 0..8. Keep in register for a bit then it's overwritten
+    @ r0:  workspace
+    @ r1:  workspace
+    @ r2:  argument. depth.
+    @ r3:  unused
     @ r4:  value: local variable
-    @ r5:  for loop variable I
-    @ r6:  depth
+    @ r5:  argument: move. later, for loop variable I
+    @ r6:  thread-global zero
     @ r7:  alpha
     @ r8:  beta
     @ r9:  thread-global move count
@@ -525,31 +511,24 @@ _minmax_min:
     @ r11: thread-global winner function table
 
     push     {ip, lr}
-    push     {r4, r5, r6, r7, r8}  @ skip 9, 10, and 11 for move count, board, and winner functions
+    push     {r4, r5, r7, r8}           @ save local variables for the caller
      
-    mov      r7, r0                     @ alpha
-    mov      r8, r1                     @ beta
-    mov      r6, r2                     @ depth
     add      r9, r9, #1                 @ increment global move count
 
-    @bl       _debug_ttt
-
-    cmp      r6, #3                     @ if fewer that 5 moves played, no winner
+    cmp      r2, #3                     @ if fewer than 5 moves played, no winner
     ble      _minmax_min_skip_winner
 
     @ call the winner function for the most recent move
     mov      r0, #x_piece               @ the piece just played
-    add      r1, r11, r3, lsl #2        @ table + function offset
+    add      r1, r11, r5, lsl #2        @ table + function offset
     ldr      r1, [r1]                   @ grab the function pointer
     blx      r1                         @ call it
-
-    @bl       _debug_r0
 
     cmp      r0, #x_piece               @ did X win?
     mov      r0, #win_score             @ move this regardless of the result
     beq      _minmax_min_done
 
-    cmp      r6, #8                     @ recursion can only go 8 deep
+    cmp      r2, #8                     @ recursion can only go 8 deep
     mov      r0, #tie_score
     beq      _minmax_min_done
 
@@ -566,33 +545,32 @@ _minmax_min:
 
     add      r1, r10, r5
     ldrb     r0, [r1]                   @ load the board piece at I in the loop
-    cmp      r0, #blank_piece           @ is the space free?
+    cmp      r0, r6                     @ is the space free?
     bne      _minmax_min_top_of_loop
 
     mov      r0, #o_piece               @ make the move
     strb     r0, [r1]
 
-    mov      r0, r7                     @ alpha
-    mov      r1, r8                     @ beta
-    add      r2, r6, #1                 @ depth++
-    mov      r3, r5                     @ move
+    add      r2, r2, #1                 @ depth++
     bl       _minmax_max                @ recurse to the MAX
 
+    sub      r2, r2, #1                 @ restore depth
     add      r1, r10, r5                @ address of the board + move
-    mov      r2, #blank_piece           @ load blank
-    strb     r2, [r1]                   @ store blank on the board
+    strb     r6, [r1]                   @ store blank on the board
 
     cmp      r0, #lose_score            @ losing score? 
     beq      _minmax_min_done           @ then return
 
     cmp      r0, r4                     @ compare score with value
-    movlt    r4, r0                     @ update value if score is < value
+    bge      _minmax_min_top_of_loop
 
+    cmp      r0, r7                     @ compare value with alpha
+    ble      _minmax_min_done           @ alpha pruning
+
+    mov      r4, r0                     @ update value with score
     cmp      r4, r8                     @ compare value with beta
-    movlt    r8, r4                     @ update beta if value < beta
-
-    cmp      r8, r7                     @ compare beta with alpha
-    bgt      _minmax_min_top_of_loop    @ loop to the next board position 0..8
+    movlt    r8, r4                     @ update beta with value
+    b        _minmax_min_top_of_loop
 
   .p2align 2
   _minmax_min_loadv_done:
@@ -600,8 +578,7 @@ _minmax_min:
   
   .p2align 2
   _minmax_min_done:
-    @ exit the function
-    pop      {r4, r5, r6, r7, r8}       @ skip 9, 10, and 11 for move count, board, and winner functions
+    pop      {r4, r5, r7, r8}           @ restore local variables for the caller
     pop      {ip, pc}
     .cfi_endproc
 
