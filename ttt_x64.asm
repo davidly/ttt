@@ -54,8 +54,7 @@ blank_piece         equ 0              ; not referenced in the code below, but i
                                          
 ; local variable offsets [rbp - X] where X = 1 to N where N is the number of QWORDS beyond 4 reserved at entry
 ; These are for the functions minmax_min and minmax_max
-V_OFFSET            equ 8 * 1          ; the value of a board position
-I_OFFSET            equ 8 * 2          ; i in the for loop 0..8
+;I_OFFSET            equ 8 * 1          ; i in the for loop 0..8
 
 ; spill offsets -- [rbp + X] where X = 2..5  Spill referrs to saving parameters in registers to memory when needed
 ; these registers can be spilled: rcx, rdx, r8, r9
@@ -63,6 +62,8 @@ I_OFFSET            equ 8 * 2          ; i in the for loop 0..8
 ; These are for the functions minmax_min and minmax_max
 A_SPILL_OFFSET      equ 8 * 2          ; alpha
 B_SPILL_OFFSET      equ 8 * 3          ; beta
+V_SPILL_OFFSET      equ 8 * 4          ; value
+I_SPILL_OFFSET      equ 8 * 5          ; i in the for loop 0..8
 
 data_ttt SEGMENT ALIGN( 4096 ) 'DATA'
     ; It's important to put each of these boards in separate 64-byte cache lines or multi-core performance is terrible
@@ -263,6 +264,9 @@ TTTThreadProc PROC
     sub     rsp, 32 + 8 * 2              ; only 40 needed, but want to keep stacks 16-byte aligned
     
     xor     r13, r13                     ; and r13 to be the move count
+    lea     rsi, [WINPROCS]              ; rsi has the win proc function table
+    mov     r14, -1                      ; r14 has -1
+    mov     r12, 0                       ; r12 has 0
     
     mov     boardIndex$[rsp], rcx        ; save the initial move board position
 
@@ -414,24 +418,42 @@ printboard PROC
     ret
 printboard ENDP
 
+minmax_min_terminal PROC
+    inc     r13                             ; r13 is a global variable with the # of calls to minmax_max and minmax_min
+
+    mov     rax, x_piece                    ; rax contains the player with the latest move on input
+    call    QWORD PTR [rsi + r9 * 8]        ; call the proc that checks for wins starting with last piece added
+
+    cmp     rax, x_piece                    ; did X win? 
+    je      _min_terminal_win
+
+    mov     rax, tie_score
+    ret
+
+  _min_terminal_win:
+    mov     rax, win_score
+    ret
+minmax_min_terminal ENDP
+
 ; Odd depth = maximize for X in subsequent moves, O just took a move in r9
 align 16
 minmax_max PROC
     push    rbp
     mov     rbp, rsp
-    sub     rsp, 32 + 8 * 2                 ; 32 by convention + space for 2 8-byte local variables I and V
+    sub     rsp, 32                         ; 32 by convention to store 4 spill registers
 
     ; rcx: alpha. Store in spill location reserved by parent stack
     ; rdx: beta. Store in spill location reserved by parent stack
     ; r8:  depth. keep in the register
     ; r9:  position of last piece added 0..8. Keep in the register because it's used right away
-    ;      later, r9 is the i in the for loop 0..8
+    ;      later, r9 is the i in the for loop 0..8. Spilled.
     ; r10: the board
-    ; r11: unused
-    ; r12: unused except by some WINPROCS
+    ; r11: value. Spilled.
+    ; r12: 0 constant
     ; r13: global minmax call count
-    ; r14: unused
+    ; r14: -1 constant
     ; r15: reserved for global loop of 10000 calls
+    ; rsi: pointer to WINPROCS
 
     inc     r13                             ; r13 is a global variable with the # of calls to minmax_max and minmax_min
 
@@ -442,7 +464,6 @@ minmax_max PROC
 
     ; the win procs expect the board in r10
     mov     rax, o_piece                    ; rax contains the player with the latest move on input
-    lea     rsi, [WINPROCS]               
     call    QWORD PTR [rsi + r9 * 8]        ; call the proc that checks for wins starting with last piece added
 
     cmp     rax, o_piece                    ; did O win?
@@ -453,10 +474,10 @@ minmax_max PROC
   minmax_max_skip_winner:
     mov     [rbp + A_SPILL_OFFSET], rcx     ; alpha saved in the spill location
     mov     [rbp + B_SPILL_OFFSET], rdx     ; beta saved in the spill location
-
-    mov     rax, minimum_score
-    mov     [rbp - V_OFFSET], rax           ; minimum possible score. maximizing, so find a score higher than this
-    mov     r9, -1                          ; r9 is I in the for loop 0..8. avoid a jump by starting at -1
+    mov     [rbp + V_SPILL_OFFSET], r11     ; save value
+    mov     [rbp + I_SPILL_OFFSET], r9      ; save i -- the for loop variable
+    mov     r11, minimum_score              ; minimum possible score. maximizing, so find a score higher than this
+    mov     r9, r14                         ; r9 is I in the for loop 0..8. avoid a jump by starting at -1
 
     align   16
   minmax_max_top_of_loop:
@@ -464,45 +485,56 @@ minmax_max PROC
     je      short minmax_max_loadv_done
     inc     r9
 
-    cmp     BYTE PTR [r10 + r9], 0          ; is the board position free?
+    cmp     BYTE PTR [r10 + r9], r12b       ; is the board position free?
     jne     short minmax_max_top_of_loop    ; move to the next spot on the board
 
     mov     BYTE PTR [r10 + r9], x_piece    ; make the move
 
+    ; if this is the move that fills the board, use the faster terminal function
+    cmp     r8, 7
+    je      _minmax_max_terminal_move
+
     ; prepare arguments alpha rcx, beta rdx, depth r8, and move r9 for recursing.
-    mov     rcx, [rbp + A_SPILL_OFFSET]     ; load alpha
-    mov     rdx, [rbp + B_SPILL_OFFSET]     ; load beta
     inc     r8                              ; next depth 1..8
-    mov     [rbp - I_OFFSET], r9            ; save i -- the for loop variable
 
     ; unlike win64 calling conventions, no registers are preserved aside from r8 and globals in r10, r12, r13, and r15
     call    minmax_min                      ; score is in rax on return
 
     dec     r8                              ; restore depth to the current level
-    mov     r9, [rbp - I_OFFSET]            ; restore i
-    mov     BYTE PTR [r10 + r9], 0          ; Restore the move on the board to 0 from X
+    mov     BYTE PTR [r10 + r9], r12b          ; Restore the move on the board to 0 from X
 
     cmp     rax, win_score                  ; compare score with the winning score
-    je      short minmax_max_done           ; can't do better than winning score when maximizing
+    je      short minmax_max_unspill        ; can't do better than winning score when maximizing
 
-    cmp     rax, [rbp - V_OFFSET]           ; compare score with value
+    cmp     rax, r11                        ; compare score with value
     jle     short minmax_max_top_of_loop
 
-    cmp     rax, [rbp + B_SPILL_OFFSET]     ; compare value with beta
-    jge     short minmax_max_done           ; beta pruning
+    cmp     rax, rdx                        ; compare value with beta
+    jge     short minmax_max_unspill        ; beta pruning
 
-    mov     [rbp - V_OFFSET], rax           ; update value with score
-    lea     rdi, [rbp + A_SPILL_OFFSET]     ; save address of alpha
-    cmp     rax, [rdi]                      ; compare value with alpha
+    mov     r11, rax                        ; update value with score
+    cmp     rax, rcx                        ; compare value with alpha
     jle     short minmax_max_top_of_loop
 
-    mov     [rdi], rax                      ; update alpha with value
+    mov     rcx, rax                        ; update alpha with value
     jmp     short minmax_max_top_of_loop
 
     align   16
-  minmax_max_loadv_done:
-    mov     rax, [rbp - V_OFFSET]           ; load V then return
+  _minmax_max_terminal_move:
+    call    minmax_min_terminal
+    mov     BYTE PTR [r10 + r9], r12b       ; Restore the move on the board to 0 from X
+    jmp     minmax_max_unspill
 
+    align   16
+  minmax_max_loadv_done:
+    mov     rax, r11                        ; load V then return
+
+    align   16
+  minmax_max_unspill:
+    mov     rcx, [rbp + A_SPILL_OFFSET]     ; restore alpha
+    mov     rdx, [rbp + B_SPILL_OFFSET]     ; restore beta
+    mov     r11, [rbp + V_SPILL_OFFSET]     ; restore value
+    mov     r9, [rbp + I_SPILL_OFFSET]      ; restore i
   minmax_max_done:
     leave
     ret
@@ -513,7 +545,7 @@ align 16
 minmax_min PROC
     push    rbp
     mov     rbp, rsp
-    sub     rsp, 32 + 8 * 2                 ; 32 by convention + space for 2 8-byte local variables I and V
+    sub     rsp, 32                         ; 32 by convention to store 4 spill registers
 
     ; rcx: alpha. Store in spill location reserved by parent stack
     ; rdx: beta. Store in spill location reserved by parent stack
@@ -521,11 +553,12 @@ minmax_min PROC
     ; r9:  position of last piece added 0..8. Keep in the register because it's used right away
     ;      later, r9 is the i in the for loop 0..8
     ; r10: the board
-    ; r11: unused
-    ; r12: unused except by some WINPROCS
+    ; r11: value
+    ; r12: 0 constant
     ; r13: global minmax call count
-    ; r14: unused
+    ; r14: -1 constant
     ; r15: reserved for global loop of 10000 calls
+    ; rsi: pointer to WINPROCS
 
     inc     r13                             ; r13 is a global variable with the # of calls to minmax_max and minmax_min
 
@@ -536,7 +569,6 @@ minmax_min PROC
 
     ; the win procs expect the board in r10
     mov     rax, x_piece                    ; rax contains the player with the latest move on input
-    lea     rsi, [WINPROCS]
     call    QWORD PTR [rsi + r9 * 8]        ; call the proc that checks for wins starting with last piece added
 
     cmp     rax, x_piece                    ; did X win? 
@@ -551,10 +583,10 @@ minmax_min PROC
   minmax_min_skip_winner:
     mov     [rbp + A_SPILL_OFFSET], rcx     ; alpha saved in the spill location
     mov     [rbp + B_SPILL_OFFSET], rdx     ; beta saved in the spill location
- 
-    mov     rax, maximum_score
-    mov     [rbp - V_OFFSET], rax           ; maximum possible score; minimizing, so find a score lower than this 
-    mov     r9, -1                          ; r9 is I in the for loop 0..8. avoid a jump by starting at -1
+    mov     [rbp + V_SPILL_OFFSET], r11     ; save value
+    mov     [rbp + I_SPILL_OFFSET], r9      ; save i -- the for loop variable
+    mov     r11, maximum_score              ; maximum possible score; minimizing, so find a score lower than this 
+    mov     r9, r14                         ; r9 is I in the for loop 0..8. avoid a jump by starting at -1
 
     align   16
   minmax_min_top_of_loop:
@@ -562,45 +594,45 @@ minmax_min PROC
     je      short minmax_min_loadv_done
     inc     r9
 
-    cmp     BYTE PTR [r10 + r9], 0          ; is the board position free?
+    cmp     BYTE PTR [r10 + r9], r12b       ; is the board position free?
     jne     short minmax_min_top_of_loop    ; move to the next spot on the board
 
     mov     BYTE PTR [r10 + r9], o_piece    ; make the move
 
     ; prepare arguments alpha rcx, beta rdx, depth r8, and move r9 for recursing.
-    mov     rcx, [rbp + A_SPILL_OFFSET]     ; load alpha
-    mov     rdx, [rbp + B_SPILL_OFFSET]     ; load beta
     inc     r8                              ; next depth 1..8
-    mov     [rbp - I_OFFSET], r9            ; save i -- the for loop variable
 
     ; unlike win64 calling conventions, no registers are preserved aside from r8 and globals in r10, r12, r13, and r15
     call    minmax_max                      ; score is in rax on return
 
     dec     r8                              ; restore depth to the current level
-    mov     r9, [rbp - I_OFFSET]            ; restore i
-    mov     BYTE PTR [r10 + r9], 0          ; Restore the move on the board to 0 from O
+    mov     BYTE PTR [r10 + r9], r12b       ; Restore the move on the board to 0 from O
 
     cmp     rax, lose_score
-    je      short minmax_min_done           ; can't do better than losing score when minimizing
+    je      short minmax_min_unspill        ; can't do better than losing score when minimizing
 
-    cmp     rax, [rbp - V_OFFSET]           ; compare score with value
+    cmp     rax, r11                        ; compare score with value
     jge     short minmax_min_top_of_loop
 
-    cmp     rax, [rbp + A_SPILL_OFFSET]     ; compare value with alpha
-    jle     short minmax_min_done           ; alpha pruning
+    cmp     rax, rcx                        ; compare value with alpha
+    jle     short minmax_min_unspill        ; alpha pruning
 
-    mov     [rbp - V_OFFSET], rax           ; update value with score
-    lea     rdi, [rbp + B_SPILL_OFFSET]     ; save address of beta
-    cmp     rax, [rdi]                      ; compare value with beta
+    mov     r11, rax                        ; update value with score
+    cmp     rax, rdx                        ; compare value with beta
     jge     short minmax_min_top_of_loop
 
-    mov     [rdi], rax                      ; update beta with value
+    mov     rdx, rax                        ; update beta with value
     jmp     short minmax_min_top_of_loop    ; loop for the next i
 
     align   16
   minmax_min_loadv_done:
-    mov     rax, [rbp - V_OFFSET]           ; load V then return
+    mov     rax, r11                        ; load V then return
 
+  minmax_min_unspill:
+    mov     rcx, [rbp + A_SPILL_OFFSET]     ; restore alpha
+    mov     rdx, [rbp + B_SPILL_OFFSET]     ; restore beta
+    mov     r11, [rbp + V_SPILL_OFFSET]     ; restore value
+    mov     r9, [rbp + I_SPILL_OFFSET]      ; restore i
   minmax_min_done:
     leave
     ret
