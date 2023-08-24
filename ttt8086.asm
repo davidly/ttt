@@ -26,16 +26,16 @@ blank_piece         equ     0
 ; these variables are all 1-byte, but 8086 requires push/pop be 2 bytes at a time
 ; local variables in minmax relative to bp/sp
 
-value_offset   equ  0
-i_offset       equ  2
+;local1_offset   equ  0
+;local2_offset   equ  2
 
 ; arguments to minmax relative to bp/sp
 ; space between locals and arguments:
 ; 4-5  2 or 4 bytes for return pc if minmax is near or far (it's near here)
 ; 6-7  2 bytes to save BP
 
-alpha_offset   equ   8
-beta_offset    equ  10
+alpha_offset   equ   4
+beta_offset    equ   6
 
 CODE SEGMENT PUBLIC 'CODE'
 ORG 100h
@@ -117,6 +117,7 @@ runmm proc near
 
         ; alpha and beta passed on the stack
         ; current move in di
+        ; current value in dx
         ; current depth in cx
         ; global move count in bx
         ; global board pointer in si
@@ -139,7 +140,6 @@ runmm endp
 
 minmax_max proc near
         push     bp
-        sub      sp, 4              ; allocate space for local variables i and value
         mov      bp, sp             ; set bp to the stack location
 
         inc      bx                 ; increment global move count
@@ -156,8 +156,9 @@ minmax_max proc near
         je       short _max_just_return_al
 
   _max_no_winner_check:
-        mov      byte ptr [ bp + value_offset ], min_score
-        mov      di, -1
+        push     dx                 ; save caller's value
+        mov      dx, min_score      ; dx has value
+        mov      di, -1             ; di has the move 0..8
 
   _max_loop:
         cmp      di, 8
@@ -167,29 +168,29 @@ minmax_max proc near
         cmp      byte ptr ds: [ offset board + di ], 0
         jne      short _max_loop
 
-        mov      word ptr [ bp + i_offset ], di
+        push     di
         mov      byte ptr ds: [ offset board + di ], x_piece
 
-        inc      cl
+        inc      cx
         push     [ bp + beta_offset ]
         push     [ bp + alpha_offset ]
 
         call     minmax_min
-        dec      cl
+        dec      cx
 
-        mov      di, [ bp + i_offset ]
+        pop      di
         mov      byte ptr ds: [ offset board + di ], 0
 
         cmp      al, win_score                       ; can't do better than winning
-        je       short _max_just_return_al
+        je       short _max_restore_value
 
-        cmp      al, [ bp + value_offset ]           ; compare score with value
+        cmp      ax, dx                              ; compare score with value
         jle      short _max_loop
 
         cmp      al, [ bp + beta_offset ]            ; compare value with beta
-        jge      short _max_just_return_al           ; beta pruning
+        jge      short _max_restore_value            ; beta pruning
 
-        mov      [ bp + value_offset ], al           ; update value with score
+        mov      dx, ax                              ; update value with score
         cmp      al, [ bp + alpha_offset ]           ; compare value with alpha
         jle      short _max_loop
 
@@ -197,17 +198,18 @@ minmax_max proc near
         jmp      short _max_loop
 
   _max_load_value_return:
-        mov      al, [ bp + value_offset ]
+        mov      ax, dx
+
+  _max_restore_value:
+        pop      dx                 ; restore caller's value
 
   _max_just_return_al:
-        add      sp, 4              ; cleanup stack for locals
         pop      bp
-        ret      4
+        ret      4                  ; cleanup stack space for arguments
 minmax_max endp
 
 minmax_min proc near
         push     bp
-        sub      sp, 4              ; allocate space for local variables i and value
         mov      bp, sp             ; set bp to the stack location
 
         inc      bx                 ; increment global move count
@@ -228,8 +230,9 @@ minmax_min proc near
         je       short _min_just_return_al
 
   _min_no_winner_check:
-        mov      byte ptr [ bp + value_offset ], max_score
-        mov      di, -1
+        push     dx                 ; save caller's value
+        mov      dx, max_score      ; dx has value
+        mov      di, -1             ; di has the move 0..8 
 
   _min_loop:
         cmp      di, 8
@@ -239,29 +242,29 @@ minmax_min proc near
         cmp      byte ptr ds: [ offset board + di ], 0
         jne      short _min_loop
 
-        mov      word ptr [ bp + i_offset ], di
+        push     di
         mov      byte ptr ds: [ offset board + di ], o_piece
 
-        inc      cl
+        inc      cx
         push     [ bp + beta_offset ]
         push     [ bp + alpha_offset ]
 
         call     minmax_max
-        dec      cl
+        dec      cx
 
-        mov      di, [ bp + i_offset ]
+        pop      di
         mov      byte ptr ds: [ offset board + di ], 0
 
         cmp      al, lose_score                      ; can't do better than losing
-        je       short _min_just_return_al
+        je       short _min_restore_value
 
-        cmp      al, [ bp + value_offset ]           ; compare score with value
+        cmp      al, dl                               ; compare score with value
         jge      short _min_loop
 
         cmp      al, [ bp + alpha_offset ]           ; compare value with alpha
-        jle      short _min_just_return_al           ; alpha pruning
+        jle      short _min_restore_value            ; alpha pruning
 
-        mov      [ bp + value_offset ], al           ; update value with score
+        mov      dx, ax                              ; update value with score
         cmp      al, [ bp + beta_offset ]            ; compare value with beta
         jge      short _min_loop
 
@@ -269,12 +272,14 @@ minmax_min proc near
         jmp      short _min_loop
 
   _min_load_value_return:
-        mov      al, [ bp + value_offset ]
+        mov      ax, dx
+
+  _min_restore_value:
+        pop      dx                 ; restore caller's value
 
   _min_just_return_al:
-        add      sp, 4              ; cleanup stack for locals
         pop      bp
-        ret      4
+        ret      4                  ; cleanup stack space for arguments
 minmax_min endp
 
 ; winner is no longer used since function pointers with the most recent move in ax are much faster
