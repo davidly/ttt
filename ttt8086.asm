@@ -121,11 +121,12 @@ runmm proc near
         ; current depth in cx
         ; global move count in bx
         ; global board pointer in si
+        ; always 0 in ah
 
         xor       cx, cx            ; depth in cx
         mov       al, max_score     ; pushing constants didn't start until the 80186
         push      ax                ; beta
-        mov       al, min_score
+        mov       ax, min_score
         push      ax                ; alpha
 
         call      minmax_min
@@ -217,6 +218,7 @@ minmax_min proc near
         cmp      cl, 4
         jl       short _min_no_winner_check
 
+        ;call     winner
         shl      di, 1
         mov      al, x_piece
         call     word ptr ds: [ offset winprocs + di ]
@@ -258,7 +260,7 @@ minmax_min proc near
         cmp      al, lose_score                      ; can't do better than losing
         je       short _min_restore_value
 
-        cmp      al, dl                               ; compare score with value
+        cmp      al, dl                              ; compare score with value
         jge      short _min_loop
 
         cmp      al, [ bp + alpha_offset ]           ; compare value with alpha
@@ -612,7 +614,7 @@ proc0 proc near
     je      short proc0_yes
 
   proc0_no:
-    xor     al, al
+    mov     al, ah       ; ah is always 0. mov al, ah is 2 cycles. xor ax and xor al are both 3 cycles.
 
   proc0_yes:
     ret
@@ -632,7 +634,7 @@ proc1 proc near
     je      short proc1_yes
 
   proc1_no:
-    xor     al, al
+    mov     al, ah
 
   proc1_yes:
     ret
@@ -658,7 +660,7 @@ proc2 proc near
     je      short proc2_yes
 
   proc2_no:
-    xor      al, al
+    mov     al, ah
 
   proc2_yes:
     ret
@@ -678,7 +680,7 @@ proc3 proc near
     je      short proc3_yes
 
   proc3_no:
-    xor     al, al
+    mov     al, ah
 
   proc3_yes:
     ret
@@ -710,7 +712,7 @@ proc4 proc near
     je      short proc4_yes
 
   proc4_no:
-    xor     al, al
+    mov     al, ah
 
   proc4_yes:
     ret
@@ -730,7 +732,7 @@ proc5 proc near
     je      short proc5_yes
 
   proc5_no:
-    xor      al, al
+    mov     al, ah
 
   proc5_yes:
     ret
@@ -738,9 +740,9 @@ proc5 endp
 
 align 2
 proc6 proc near
-    cmp     al, [si + 4]
-    jne     short proc6_next_win
     cmp     al, [si + 2]
+    jne     short proc6_next_win
+    cmp     al, [si + 4]
     je      short proc6_yes
 
   proc6_next_win:
@@ -756,7 +758,7 @@ proc6 proc near
     je      short proc6_yes
 
   proc6_no:
-    xor      al, al
+    mov     al, ah
 
   proc6_yes:
     ret
@@ -776,7 +778,7 @@ proc7 proc near
     je      short proc7_yes
 
   proc7_no:
-    xor     al, al
+    mov     al, ah
 
   proc7_yes:
     ret
@@ -802,7 +804,7 @@ proc8 proc near
     je      short proc8_yes
 
   proc8_no:
-    xor      al, al
+    mov     al, ah
 
   proc8_yes:
     ret
