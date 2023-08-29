@@ -23,16 +23,15 @@ x_piece             equ     1
 o_piece             equ     2    
 blank_piece         equ     0
 
-; these variables are all 1-byte, but 8086 requires push/pop be 2 bytes at a time
-; local variables in minmax relative to bp/sp
+; local variable definitions -- move argument offsets for any space allocated
 
 ;local1_offset   equ  0
 ;local2_offset   equ  2
 
 ; arguments to minmax relative to bp/sp
 ; space between locals and arguments:
-; 4-5  2 or 4 bytes for return pc if minmax is near or far (it's near here)
-; 6-7  2 bytes to save BP
+; 0-1  2 or 4 bytes for return pc if minmax is near or far (it's near here)
+; 2-3  2 bytes to save BP
 
 alpha_offset   equ   4
 beta_offset    equ   6
@@ -66,9 +65,11 @@ done_with_arguments:
         mov      word ptr ds: [ starttime + 2 ], cx
 
         lea      si, ds: [ offset board ]  ; global board pointer
+        xor      ax, ax             ; make sure ah is 0
+        mov      dx, ax             ; make sure dh is 0
 
 again:
-        xor      bx, bx             ; zero the global move count
+        xor      bx, bx             ; zero the global move count so it doesn't overflow
 
         ; run for the 3 unique first moves
 
@@ -84,7 +85,7 @@ again:
         cmp      ax, ds: [ iters ]
         jne      again
 
-        push     bx
+        push     bx                 ; save the global move count for later
 
         call     printelap
         mov      dx, offset secondsmsg
@@ -93,7 +94,7 @@ again:
         mov      dx, offset movesmsg
         call     printstring
 
-        pop      ax
+        pop      ax                 ; restore the global move count for printing
         call     printint
         call     printcrlf
 
@@ -117,16 +118,16 @@ runmm proc near
 
         ; alpha and beta passed on the stack
         ; current move in di
-        ; current value in dx
+        ; current value in dl
         ; current depth in cx
         ; global move count in bx
         ; global board pointer in si
-        ; always 0 in ah
+        ; always 0 in ah and dh
 
         xor       cx, cx            ; depth in cx
         mov       al, max_score     ; pushing constants didn't start until the 80186
         push      ax                ; beta
-        mov       ax, min_score
+        mov       al, min_score
         push      ax                ; alpha
 
         call      minmax_min
@@ -158,7 +159,7 @@ minmax_max proc near
 
   _max_no_winner_check:
         push     dx                 ; save caller's value
-        mov      dx, min_score      ; dx has value
+        mov      dl, min_score      ; dx has value
         mov      di, -1             ; di has the move 0..8
 
   _max_loop:
@@ -206,7 +207,7 @@ minmax_max proc near
 
   _max_just_return_al:
         pop      bp
-        ret      4                  ; cleanup stack space for arguments
+        ret      4                  ; cleanup stack space used for arguments
 minmax_max endp
 
 minmax_min proc near
@@ -218,7 +219,6 @@ minmax_min proc near
         cmp      cl, 4
         jl       short _min_no_winner_check
 
-        ;call     winner
         shl      di, 1
         mov      al, x_piece
         call     word ptr ds: [ offset winprocs + di ]
@@ -233,7 +233,7 @@ minmax_min proc near
 
   _min_no_winner_check:
         push     dx                 ; save caller's value
-        mov      dx, max_score      ; dx has value
+        mov      dl, max_score      ; dx has value
         mov      di, -1             ; di has the move 0..8 
 
   _min_loop:
@@ -281,8 +281,10 @@ minmax_min proc near
 
   _min_just_return_al:
         pop      bp
-        ret      4                  ; cleanup stack space for arguments
+        ret      4                  ; cleanup stack space used for arguments
 minmax_min endp
+
+IFDEF WinnerProc
 
 ; winner is no longer used since function pointers with the most recent move in ax are much faster
 
@@ -372,6 +374,8 @@ winner proc near
         ret
 winner endp
 
+ENDIF ; WinnerProc
+
 atou proc near ; string input in cx. unsigned 16-bit integer result in ax
         push    di
         push    bx
@@ -379,17 +383,17 @@ atou proc near ; string input in cx. unsigned 16-bit integer result in ax
         mov     di, cx
         mov     cx, 10
 
-skipspaces:
+  _skipspaces:
         cmp     byte ptr [di ], ' '
-        jne     atouNext
+        jne     _atouNext
         inc     di
-        jmp     skipspaces
+        jmp     _skipspaces
 
-atouNext:
+  _atouNext:
         cmp     byte ptr [ di ], '0'     ; if not a digit, we're done. Works with null and 0x0d terminated strings
-        jb      atouDone
+        jb      _atouDone
         cmp     byte ptr [ di ], '9' + 1
-        jge     atouDone
+        jge     _atouDone
 
         mov     ax, bx
         mul     cx
@@ -400,9 +404,9 @@ atouNext:
         sub     ax, '0'
         add     bx, ax
         inc     di
-        jmp     atouNext
+        jmp     _atouNext
 
-atouDone:
+  _atouDone:
         mov     ax, bx
         pop     bx
         pop     di
@@ -573,7 +577,6 @@ printstring proc near
         mov      di, dx
 
   _psnext:
-      
         mov      al, byte ptr ds: [ di ]
         cmp      al, 0
         je       _psdone
@@ -816,6 +819,8 @@ iterationsmsg db      'iterations: ',0
 zeroitersmsg  db      'iterations argument must be 1..32767',13,10,0
 movesmsg      db      'moves: ',0
 commaspmsg    db      ', ',0
+
+align 16
 board         db      0,0,0,0,0,0,0,0,0
 
 align 2
