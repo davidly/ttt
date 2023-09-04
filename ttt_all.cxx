@@ -1,5 +1,7 @@
 #include <stdio.h>
 
+#define TTT_PARALLEL_SOLUTION
+
 #ifdef _MSC_VER
 
     #include <windows.h>
@@ -439,6 +441,7 @@ int main( int argc, char * argv[] )
     }
 #endif //_MSC_VER
 
+#ifdef TTT_PARALLEL_SOLUTION
     ticktype startParallel = GetTicks();
 
 #ifdef _MSC_VER
@@ -466,6 +469,8 @@ int main( int argc, char * argv[] )
     ticktype endParallel = GetTicks();
     int parallelMoves = g_Moves;
     g_Moves = 0;
+
+#endif // TTT_PARALLEL_SOLUTION
     
     ticktype startSerial = GetTicks();
 
@@ -476,11 +481,18 @@ int main( int argc, char * argv[] )
     ticktype endSerial = GetTicks();
 
     if ( 0 != g_Moves )
+#ifdef TTT_PARALLEL_SOLUTION
         printf( "moves examined: %d, parallel %d\n", g_Moves, parallelMoves );
+#else
+        printf( "moves examined: %d\n", g_Moves );
+#endif
 
     printf( "ran %llu iterations\n", loopCount );
 
+#ifdef TTT_PARALLEL_SOLUTION
     printf( "parallel milliseconds: %ld\n", GetMilliseconds( endParallel, startParallel ) );
+#endif // TTT_PARALLEL_SOLUTION
+
     printf( "serial   milliseconds: %ld\n", GetMilliseconds( endSerial, startSerial ) );
 
     return 0;
