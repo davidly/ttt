@@ -18,6 +18,7 @@
     #include <thread>
     #include <unistd.h>
     #include <cstring>
+    #include <cstdlib>
     #include <sched.h>
 
     typedef unsigned long long LoopType;
