@@ -1,7 +1,5 @@
 #include <stdio.h>
 
-#define TTT_PARALLEL_SOLUTION
-
 #ifdef _MSC_VER
 
     #include <windows.h>
@@ -343,7 +341,6 @@ int MinMax( char * board, int alpha, int beta, int depth, int move )
 TTTThreadProc( void * param )
 {
     size_t position = (size_t) param;
-
     char board[ 9 ];
     memset( board, 0, sizeof board );
     board[ position ] = PieceX;
@@ -441,9 +438,9 @@ int main( int argc, char * argv[] )
     }
 #endif //_MSC_VER
 
-#ifdef TTT_PARALLEL_SOLUTION
     ticktype startParallel = GetTicks();
-
+    bool parallelRan = true;
+    
 #ifdef _MSC_VER
     HANDLE aHandles[ 2 ];
     DWORD dwID = 0; // required for Win98. On NT you can pass 0.
@@ -451,7 +448,13 @@ int main( int argc, char * argv[] )
     aHandles[ 1 ] = CreateThread( 0, 0, TTTThreadProc, (void *) 4, 0, &dwID );
 #else
     pthread_t threads[ 2 ];
-    pthread_create( &threads[ 0 ], 0, TTTThreadProc, (void *) 0 );
+    int ret = pthread_create( &threads[ 0 ], 0, TTTThreadProc, (void *) 0 ); 
+    if ( 0 != ret )
+    {
+        // some environments like RVOS don't support threads
+        parallelRan = false;
+        goto no_threads;
+    }
     pthread_create( &threads[ 1 ], 0, TTTThreadProc, (void *) 4 );
 #endif
 
@@ -466,11 +469,11 @@ int main( int argc, char * argv[] )
     pthread_join( threads[ 1 ], 0 );
 #endif
 
+no_threads:
+
     ticktype endParallel = GetTicks();
     int parallelMoves = g_Moves;
     g_Moves = 0;
-
-#endif // TTT_PARALLEL_SOLUTION
     
     ticktype startSerial = GetTicks();
 
@@ -481,18 +484,13 @@ int main( int argc, char * argv[] )
     ticktype endSerial = GetTicks();
 
     if ( 0 != g_Moves )
-#ifdef TTT_PARALLEL_SOLUTION
         printf( "moves examined: %d, parallel %d\n", g_Moves, parallelMoves );
-#else
-        printf( "moves examined: %d\n", g_Moves );
-#endif
 
     printf( "ran %llu iterations\n", loopCount );
 
-#ifdef TTT_PARALLEL_SOLUTION
-    printf( "parallel milliseconds: %ld\n", GetMilliseconds( endParallel, startParallel ) );
-#endif // TTT_PARALLEL_SOLUTION
-
+    if ( parallelRan )
+        printf( "parallel milliseconds: %ld\n", GetMilliseconds( endParallel, startParallel ) );
+    
     printf( "serial   milliseconds: %ld\n", GetMilliseconds( endSerial, startSerial ) );
 
     return 0;
