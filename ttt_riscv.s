@@ -1,7 +1,4 @@
 # RISC-V version of an app to prove you can't win at tic-tac-toe.
-# This code expects an extern "C" function called rvos_print_text() that can display a string.
-# rvos_print_text() will be system-specific, and may send it out a serial port or to an attached display.
-# The main entrypoint is called "bamain" and it takes no arguments. Calling bamain will be system-specific.
 # useful:
 #    https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/master/riscv-cc.adoc
 #    https://cdn.hackaday.io/files/1654127076987008/kendryte_datasheet_20181011163248_en.pdf
@@ -14,20 +11,29 @@
 .equ win_score,     6
 .equ lose_score,    4
 .equ tie_score,     5
-.equ iterations,    10
+.equ iterations,    1000
 
 .section .sbss,"aw",@nobits
-
-  .align 3
-  g_board:
-    .zero   9
-
   .align 3
   g_string_buffer:
     .zero 128
 
-.section .rodata
+.section .data
+  .p2align 6 # anything lower than 6 results in cache thrashing and bad performance
+    board0: .byte 1,0,0,0,0,0,0,0,0
+  .p2align 6 
+    board1: .byte 0,1,0,0,0,0,0,0,0
+  .p2align 6 
+    board4: .byte 0,0,0,0,1,0,0,0,0
 
+  .p2align 6 
+    resultthread1:   .quad 0
+    resultthread4:   .quad 0
+    pthread1:        .quad 0
+    pthread4:        .quad 0
+    iterationstorun: .quad 0
+
+.section .rodata
   .align  3
 
   .data
@@ -45,35 +51,20 @@
     .dword  _pos8func
 
   .align  3
-  .microseconds_nl_string:
-    .string " microseconds\n"
-
-  .align  3
-  .moves_nl_string:
-    .string " moves\n"
-
-  .align  3
-  .iterations_nl_string:
-    .string " iterations\n"
-
-  .align  3
-  .running_string:
-    .string "starting...\n"
+    .milliseconds_nl_string: .string " milliseconds\n"
+    .running_string: .string "starting...\n"
+    .moves_nl_string: .string " moves\n"
+    .iterations_nl_string: .string " iterations\n"
+    .progress_string: .string "progress %llu\n"
 
 /* bamain */
 
 .text
 .align 3
 
-.ifdef MAIXDUINO
-  .globl bamain
-  .type bamain, @function
-  bamain:
-.else
   .globl main
   .type main, @function
   main:
-.endif
         .cfi_startproc
         addi    sp, sp, -128
         sd      ra, 16(sp)
@@ -92,26 +83,24 @@
 
         li      s4, iterations       # global max iteration count in s4
         li      t0, 2
-        blt     a0, t0, .ba_start_test  # if no iteration command-line argument, use the default
+        blt     a0, t0, .main_start_test  # if no iteration command-line argument, use the default
 
-        li      t0, 8                                    # get the second argument
-        add     t0, t0, a1                               # offset of argv[1]
+        li      t0, 8                # get the second argument
+        add     t0, t0, a1           # offset of argv[1]
         ld      a0, (t0)             # load argv[1] -- an ascii string
         jal     a_to_uint64          # convert the ascii string to a number
         mv      s4, a0               # update the global max iteration count
+        lla     t0, iterationstorun
+        sd      a0, (t0)
 
-  .ba_start_test:
+  .main_start_test:
         lla     a0, .running_string
-        jal     rvos_print_text
+        jal     printf
+
+        # first run single-threaded
 
         mv      s1, zero             # global move count -- # of board positions examined
-
-.ifdef MAIXDUINO
-        # the k210 CPU doesn't implement rdtime. clock() works, but creates a c-runtime dependency
-        rdcycle s3                   # remember the starting time in s3
-.else
         rdtime  s3
-.endif
 
         mv      a0, zero             # run with a move at position 0
         jal     run_minmax
@@ -125,50 +114,17 @@
         jal     run_minmax
         add     s1, a0, s1
 
-.ifdef MAIXDUINO
-        rdcycle a0
-.else
-        rdtime  a0
-.endif
+        jal     show_run_stats
 
-        sub     s3, a0, s3           # duration = end - start.
+        # now run multi-threaded
 
-.ifdef MAIXDUINO
-        li      t0, 400              # the k210 runs at 400Mhz
-.else
-        li      t0, 1000             # result is in nanoseconds
-.endif
+        rdtime  s3
+        jal     solve_threaded
+        beq     a0, zero, .main_exit # likely the machine doesn't support multiple threads
+        mv      s1, a0               # global move count
+        jal     show_run_stats
 
-        div     s3, s3, t0          
-
-        # show the number of moves examined
-        mv      a0, s1
-        lla     a1, g_string_buffer
-        li      a2, 10
-        jal     _my_lltoa
-        jal     rvos_print_text
-        lla     a0, .moves_nl_string
-        jal     rvos_print_text
-
-        # show the runtime in microseconds
-        mv      a0, s3
-        lla     a1, g_string_buffer
-        li      a2, 10
-        jal     _my_lltoa
-        jal     rvos_print_text
-        lla     a0, .microseconds_nl_string
-        jal     rvos_print_text
-
-        # show the number of iterations
-        mv      a0, s4
-        lla     a1, g_string_buffer
-        li      a2, 10
-        jal     _my_lltoa
-        jal     rvos_print_text
-        lla     a0, .iterations_nl_string
-        jal     rvos_print_text
-
-  .ba_exit:
+  .main_exit:
         li      a0, 0
         ld      ra, 16(sp)
         ld      s0, 24(sp)
@@ -187,8 +143,134 @@
         jr      ra
         .cfi_endproc
 
-/* run_minmax */
+# a0 returns 0 on failure or number of board positions examined
+.align 3
+.type solve_threaded, @function
+solve_threaded:
+        .cfi_startproc
+        addi    sp, sp, -128
+        sd      ra, 16(sp)
+        sd      s0, 24(sp)
+        sd      s1, 32(sp)
+        sd      s2, 40(sp)
+        sd      s3, 48(sp)
+        sd      s4, 56(sp)
+        sd      s5, 64(sp)
+        sd      s6, 72(sp)
+        sd      s7, 80(sp)
+        sd      s8, 88(sp)
+        sd      s9, 96(sp)
+        sd      s10, 104(sp)
+        sd      s11, 112(sp)
 
+        lla     a0, pthread1
+        mv      a1, zero
+        lla     a2, run_minmax
+        li      a3, 1
+        jal     pthread_create
+
+        beq     a0, zero, solve_threaded_next
+        mv      a0, zero
+        j       solve_threaded_done
+
+  solve_threaded_next:
+        lla     a0, pthread4
+        mv      a1, zero
+        lla     a2, run_minmax
+        li      a3, 4
+        jal     pthread_create
+
+        # solve board 0 on this thread
+        mv      a0, zero             # run with a move at position 0
+        jal     run_minmax
+        mv      s6, a0
+
+        # wait for board 1 to complete
+        lla     a0, pthread1
+        ld      a0, (a0)
+        lla     a1, resultthread1
+        jal     pthread_join
+        lla     a1, resultthread1
+        ld      a1, (a1)
+        add     s6, s6, a1
+
+        # wait for board 4 to complete
+        lla     a0, pthread4
+        ld      a0, (a0)
+        lla     a1, resultthread4
+        jal     pthread_join
+        lla     a1, resultthread4
+        ld      a1, (a1)
+        add     s6, s6, a1
+ 
+        mv      a0, s6
+  solve_threaded_done:
+        ld      ra, 16(sp)
+        ld      s0, 24(sp)
+        ld      s1, 32(sp)
+        ld      s2, 40(sp)
+        ld      s3, 48(sp)
+        ld      s4, 56(sp)
+        ld      s5, 64(sp)
+        ld      s6, 72(sp)
+        ld      s7, 80(sp)
+        ld      s8, 88(sp)
+        ld      s9, 96(sp)
+        ld      s10, 104(sp)
+        ld      s11, 112(sp)
+        addi    sp, sp, 128
+        jr      ra
+        .cfi_endproc
+
+# s1: # of moves examined
+# s3: start time
+# s4: # of iterations
+.align 3
+.type show_run_stats, @function
+show_run_stats:
+        .cfi_startproc
+        addi    sp, sp, -64
+        sd      ra, 16(sp)
+        rdtime  a0
+
+        sub     s3, a0, s3           # duration = end - start.
+        li      t0, 3000             # result is in system-specific time specification. 3000 for LPi4A
+        div     s3, s3, t0           # convert to milliseconds
+
+        # show the number of moves examined
+        mv      a0, s1
+        lla     a1, g_string_buffer
+        li      a2, 10
+        jal     _my_lltoa
+        jal     printf
+        lla     a0, .moves_nl_string
+        jal     printf
+
+        # show the runtime in milliseconds
+        mv      a0, s3
+        lla     a1, g_string_buffer
+        li      a2, 10
+        jal     _my_lltoa
+        jal     printf
+        lla     a0, .milliseconds_nl_string
+        jal     printf
+
+        # show the number of iterations
+        mv      a0, s4
+        lla     a1, g_string_buffer
+        li      a2, 10
+        jal     _my_lltoa
+        jal     printf
+        lla     a0, .iterations_nl_string
+        jal     printf
+
+        ld      ra, 16(sp)
+        addi    sp, sp, 64
+        jr      ra
+        .cfi_endproc
+
+# a0: the first move 0, 1, 4
+# a0: on return, the # of moves analyzed
 .align 3
 .type run_minmax, @function
 run_minmax:
@@ -200,20 +282,32 @@ run_minmax:
         sd      s2, 40(sp)
         sd      s3, 48(sp)
 
+        lla     t0, iterationstorun
+        ld      s4, (t0)
+
         li      t4, x_piece          # t4 contains x_piece for the entire run
         li      t5, o_piece          # t5 contains o_piece for the entire run
         li      t6, 8                # t6 contains 8 for the entire run
         li      s5, win_score        # s5 contains win_score for the entire run
         li      s6, lose_score       # s6 contains lose_score for the entire run
 
-        mv      s1, a0               # save the move position
-        lla     t0, g_board
-        mv      s9, t0               # save the board pointer for this thread
-        add     t0, a0, t0
-        li      t1, x_piece
-        sb      t1, (t0)             # make the first move
+        # load t0 with the board to use
+        bne     a0, zero, _runmm_try1
+        lla     s9, board0
+        j       _runmm_for
 
-        lla     s10, winner_functions
+  _runmm_try1:
+        li      t0, 1
+        bne     a0, t0, _runmm_try4
+        lla     s9, board1
+        j       _runmm_for
+
+  _runmm_try4:                       # force any other value to use board4
+        lla     s9, board4
+
+  _runmm_for:
+        mv      s1, a0               # save the move position
+        lla     s10, winner_functions # save the global winner function table
         mv      s11, zero            # global move count for this thread
         mv      s7, zero             # global depth for this thread
         mv      s8, s4               # iteration count
@@ -228,8 +322,9 @@ run_minmax:
         addi    s8, s8, -1
         bne     s8, zero, .run_minmax_next_iteration
 
-        add     t0, s9, s1           # restore a 0 to the move position on the board
-        sb      zero, (t0)
+#        lla     a0, .progress_string
+#        mv      a1, s11
+#        jal     printf
 
   .run_minmax_exit:
         mv      a0, s11
@@ -453,13 +548,30 @@ _pos0func:
         lbu     t1, 2(s9)
         and     a0, t0, a0
         and     a0, t1, a0
+.ifdef COND_EXTENSION
+        # jrXX rleft, rright, rreturn
+        # if ( rleft XX rright ) pc = rreturn
+        # R-type instruction
+        #    rs1 -- rleft
+        #    rs2 -- rright
+        #    rd -- typically ra
+        #    funct3 -- 0 = eq, 1 = ne, 4 = lt, 5 = ge, 6 = ltu, 7 = gtu
+        #    funct7 -- 0
+        #    opcode -- lower 7 bits 0x2b. opcode type -- 0xa
+        .word 0x000510ab           #jrne    a0, zero, ra
+.else
         bne     a0, zero, .pos0_func_return
+.endif
 
         lbu     t0, 3(s9)
         lbu     t1, 6(s9)
         and     a0, t0, t2
         and     a0, t1, a0
+.ifdef COND_EXTENSION
+        .word 0x000510ab           #jrne    a0, zero, ra
+.else
         bne     a0, zero, .pos0_func_return
+.endif
 
         lbu     t0, 4(s9)
         lbu     t1, 8(s9)
@@ -480,7 +592,11 @@ _pos1func:
         lbu     t1, 2(s9)
         and     a0, t0, a0
         and     a0, t1, a0
+.ifdef COND_EXTENSION
+        .word 0x000510ab           #jrne    a0, zero, ra
+.else
         bne     a0, zero, .pos1_func_return
+.endif
 
         lbu     t0, 4(s9)
         lbu     t1, 7(s9)
@@ -501,13 +617,21 @@ _pos2func:
         lbu     t1, 1(s9)
         and     a0, t0, a0
         and     a0, t1, a0
+.ifdef COND_EXTENSION
+        .word 0x000510ab           #jrne    a0, zero, ra
+.else
         bne     a0, zero, .pos2_func_return
+.endif
 
         lbu     t0, 5(s9)
         lbu     t1, 8(s9)
         and     a0, t0, t2
         and     a0, t1, a0
-        bne     a0, zero, .pos2_func_return
+.ifdef COND_EXTENSION
+        .word 0x000510ab           #jrne    a0, zero, ra
+.else
+        bne     a0, zero, .pos3_func_return
+.endif
 
         lbu     t0, 4(s9)
         lbu     t1, 6(s9)
@@ -528,7 +652,11 @@ _pos3func:
         lbu     t1, 6(s9)
         and     a0, t0, a0
         and     a0, t1, a0
+.ifdef COND_EXTENSION
+        .word 0x000510ab           #jrne    a0, zero, ra
+.else
         bne     a0, zero, .pos3_func_return
+.endif
 
         lbu     t0, 4(s9)
         lbu     t1, 5(s9)
@@ -549,19 +677,31 @@ _pos4func:
         lbu     t1, 8(s9)
         and     a0, t0, a0
         and     a0, t1, a0
+.ifdef COND_EXTENSION
+        .word 0x000510ab           #jrne    a0, zero, ra
+.else
         bne     a0, zero, .pos4_func_return
+.endif
 
         lbu     t0, 2(s9)
         lbu     t1, 6(s9)
         and     a0, t0, t2
         and     a0, t1, a0
+.ifdef COND_EXTENSION
+        .word 0x000510ab           #jrne    a0, zero, ra
+.else
         bne     a0, zero, .pos4_func_return
+.endif
 
         lbu     t0, 1(s9)
         lbu     t1, 7(s9)
         and     a0, t0, t2
         and     a0, t1, a0
+.ifdef COND_EXTENSION
+        .word 0x000510ab           #jrne    a0, zero, ra
+.else
         bne     a0, zero, .pos4_func_return
+.endif
 
         lbu     t0, 3(s9)
         lbu     t1, 5(s9)
@@ -582,7 +722,11 @@ _pos5func:
         lbu     t1, 4(s9)
         and     a0, t0, a0
         and     a0, t1, a0
+.ifdef COND_EXTENSION
+        .word 0x000510ab           #jrne    a0, zero, ra
+.else
         bne     a0, zero, .pos5_func_return
+.endif
 
         lbu     t0, 2(s9)
         lbu     t1, 8(s9)
@@ -603,13 +747,21 @@ _pos6func:
         lbu     t1, 3(s9)
         and     a0, t0, a0
         and     a0, t1, a0
+.ifdef COND_EXTENSION
+        .word 0x000510ab           #jrne    a0, zero, ra
+.else
         bne     a0, zero, .pos6_func_return
+.endif
 
         lbu     t0, 2(s9)
         lbu     t1, 4(s9)
         and     a0, t0, t2
         and     a0, t1, a0
+.ifdef COND_EXTENSION
+        .word 0x000510ab           #jrne    a0, zero, ra
+.else
         bne     a0, zero, .pos6_func_return
+.endif
 
         lbu     t0, 7(s9)
         lbu     t1, 8(s9)
@@ -630,7 +782,11 @@ _pos7func:
         lbu     t1, 4(s9)
         and     a0, t0, a0
         and     a0, t1, a0
+.ifdef COND_EXTENSION
+        .word 0x000510ab           #jrne    a0, zero, ra
+.else
         bne     a0, zero, .pos7_func_return
+.endif
 
         lbu     t0, 6(s9)
         lbu     t1, 8(s9)
@@ -651,13 +807,21 @@ _pos8func:
         lbu     t1, 4(s9)
         and     a0, t0, a0
         and     a0, t1, a0
+.ifdef COND_EXTENSION
+        .word 0x000510ab           #jrne    a0, zero, ra
+.else
         bne     a0, zero, .pos8_func_return
+.endif
 
         lbu     t0, 2(s9)
         lbu     t1, 5(s9)
         and     a0, t0, t2
         and     a0, t1, a0
+.ifdef COND_EXTENSION
+        .word 0x000510ab           #jrne    a0, zero, ra
+.else
         bne     a0, zero, .pos8_func_return
+.endif
 
         lbu     t0, 6(s9)
         lbu     t1, 7(s9)
@@ -799,4 +963,24 @@ a_to_uint64:
         addi    sp, sp, 128
         jr      ra
         .cfi_endproc
+
+
+# Currently unused:
+        # cmvXX are risc-v extension conditional-move instructions. They yield about 1% faster perf for this benchmark
+        # cmvXX rd, rs1, rc1, rc2  -- if ( rc1 XX rc2 ) rd = rs1
+        # 31: 1 if rc2 is an immediate value (signed/unsigned depending on the compare) or 0 if a register
+        # 30: 1 if rs1 is an immediate value (always signed) or 0 if a register
+        # 29-25: rc1
+        # 24-20: rc2
+        # 19-15: rs1
+        # 14-12: funct3 XX comparison 0 = eq, 1 = ne, 4 = lt, 5 = ge, 6 = ltu, 7 = geu
+        # 11-7:  rd
+        # 6-2:   2 (opcode type cmv)
+        # 1-0:   3 (4-byte instruction)
+
+        # .word 0x24a5490b           #cmvlt   s2, a0, s2, a0     # dst, src, lhs, rhs. if ( value < score ) value = score
+        # .word 0x1129440b           #cmvlt   s0, s2, s0, s2     # dst, src, lhs, rhs. if ( alpha < value ) alpha = value
+
+        # .word 0x1525490b           #cmvlt   s2, a0, a0, s2     # dst, src, lhs, rhs. if ( score < value ) value = score
+        # .word 0x2499448b           #cmvlt   s1, s2, s2, s1     # dst, src, lhs, rhs. if ( value < beta ) beta = value
 
