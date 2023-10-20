@@ -32,6 +32,7 @@
     pthread1:        .quad 0
     pthread4:        .quad 0
     iterationstorun: .quad 0
+    rdtimefreq:      .quad 1000000 # default
 
 .section .rodata
   .align  3
@@ -56,6 +57,8 @@
     .moves_nl_string: .string " moves\n"
     .iterations_nl_string: .string " iterations\n"
     .progress_string: .string "progress %llu\n"
+    .freq_string: .string "/proc/device-tree/cpus/timebase-frequency"
+    .freq_open_mode_string: .string "rb"
 
 /* bamain */
 
@@ -94,10 +97,26 @@
         sd      a0, (t0)
 
   .main_start_test:
+        # get the rdtime frequency divisor
+        lla     a0, .freq_string
+        lla     a1, .freq_open_mode_string
+        jal     fopen
+        beq     a0, zero, .main_no_freq
+        mv      s1, a0
+        lla     a0, rdtimefreq
+        li      a1, 1
+        li      a2, 8
+        mv      a3, s1
+        jal     fread                # this may read just 4 bytes, and that's OK
+        mv      s2, a0
+        mv      a0, s1
+        jal     fclose
+
+  .main_no_freq:
         lla     a0, .running_string
         jal     printf
 
-        # first run single-threaded
+        # first run single-threaded for the 3 unique board positions
 
         mv      s1, zero             # global move count -- # of board positions examined
         rdtime  s3
@@ -163,17 +182,20 @@ solve_threaded:
         sd      s10, 104(sp)
         sd      s11, 112(sp)
 
+        # solve board 1 in a new thread       
         lla     a0, pthread1
         mv      a1, zero
         lla     a2, run_minmax
         li      a3, 1
         jal     pthread_create
 
+        # if it failed, it's probably on rvos or some other environment with no thread support
         beq     a0, zero, solve_threaded_next
         mv      a0, zero
         j       solve_threaded_done
 
   solve_threaded_next:
+        # solve board 4
         lla     a0, pthread4
         mv      a1, zero
         lla     a2, run_minmax
@@ -202,8 +224,8 @@ solve_threaded:
         lla     a1, resultthread4
         ld      a1, (a1)
         add     s6, s6, a1
- 
         mv      a0, s6
+        
   solve_threaded_done:
         ld      ra, 16(sp)
         ld      s0, 24(sp)
@@ -231,11 +253,15 @@ show_run_stats:
         .cfi_startproc
         addi    sp, sp, -64
         sd      ra, 16(sp)
-        rdtime  a0
 
+        li      t2, 1000000          # should be 1000, but LPi4A lies, so rvos lies too        
+        rdtime  a0
         sub     s3, a0, s3           # duration = end - start.
-        li      t0, 3000             # result is in system-specific time specification. 3000 for LPi4A
-        div     s3, s3, t0           # convert to milliseconds
+        mul     s3, s3, t2           # want result in milliseconds
+
+        lla     t0, rdtimefreq
+        ld      t0, (t0)
+        div     s3, s3, t0           # diff in units*1000 / freq = ms
 
         # show the number of moves examined
         mv      a0, s1
