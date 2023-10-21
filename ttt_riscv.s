@@ -316,6 +316,7 @@ run_minmax:
         li      t6, 8                # t6 contains 8 for the entire run
         li      s5, win_score        # s5 contains win_score for the entire run
         li      s6, lose_score       # s6 contains lose_score for the entire run
+        li      a7, 3                # a7 contains 3 for the entire run
 
         # load t0 with the board to use
         bne     a0, zero, _runmm_try1
@@ -339,9 +340,9 @@ run_minmax:
         mv      s8, s4               # iteration count
 
   .run_minmax_next_iteration:
-        mv      a2, a0               # first move
-        li      a1, maximum_score    # beta
-        li      a0, minimum_score    # alpha
+        mv      s3, a0               # first move
+        li      s1, maximum_score    # beta
+        li      s0, minimum_score    # alpha
 
         jal     minmax_min
 
@@ -369,13 +370,10 @@ run_minmax:
 .type minmax_max, @function
 minmax_max:
   /*
-        a0:   alpha
-        a1:   beta
-        a2:   move
-        s0:   alpha local
-        s1:   beta local
+        s0:   alpha argument and local
+        s1:   beta argument and local
         s2:   value local variable
-        s3:   i loop local variable
+        s3:   i loop local variable / move argument
         s4:   global max iteration count
         s5:   global constant win_score
         s6:   global constant lose_score
@@ -384,39 +382,37 @@ minmax_max:
         s9:   global the board for this thread
         s10:  global winner function table
         s11:  global move count for this thread
-        t4:   the constant x_piece
+        t3:   argument and result for scoring procs
+        t4:   the constant x_piece (3)
         t5:   the constant o_piece
         t6:   the constant 8
+        a7:   the constant 3
   */
         .cfi_startproc
         addi    sp, sp, -64
         sd      ra, 16(sp)
-        sd      s0, 24(sp)
 
         addi    s11, s11, 1        # increment move count
-        mv      s0, a0             # save alpha
 
-        li      t0, 3              # only check for a winner if > 4 moves taken so far
-        ble     s7, t0, .minmax_max_skip_winner
+        ble     s7, a7, .minmax_max_skip_winner # only check for a winner if > 4 moves taken so far
 
-        li      a0, o_piece        # call the winner function for the most recent move
-        slli    t0, a2, 3          # function offset is 8 * the move position
+        li      t3, o_piece        # call the winner function for the most recent move
+        slli    t0, s3, 3          # function offset is 8 * the move position
         add     t0, t0, s10
         ld      t0, (t0)
         jalr    ra, t0
 
-        mv      t0, a0
         li      a0, lose_score
-        beq     t0, t5, .minmax_max_fast_exit  # if o won, return lose_score
+        beq     t3, t5, .minmax_max_fast_exit  # if o won, return lose_score
 
   .minmax_max_skip_winner:
-        sd      s1, 32(sp)
-        sd      s2, 40(sp)
-        sd      s3, 48(sp)
+        sd      s0, 24(sp)         # save caller's alpha
+        sd      s2, 40(sp)         # save caller's local value
+        sd      s3, 48(sp)         # save caller's i variable
 
-        mv      s1, a1             # save beta
         li      s2, minimum_score  # min because we're maximizing
-        li      s3, -1             # start the loop with I at -1
+        li      s3, -1             # start the loop with i at -1
+        addi    s7, s7, 1          # next depth
 
   .minmax_max_loop:                # loop over all possible next moves 0..8
         beq     s3, t6, .minmax_max_loadv_done            
@@ -427,14 +423,8 @@ minmax_max:
         bne     t0, zero, .minmax_max_loop
 
         sb      t4, (t1)           # make the x_piece move
+        jal     minmax_min         # recurse to the min
 
-        mv      a0, s0             # alpha
-        mv      a1, s1             # beta
-        mv      a2, s3             # move
-        addi    s7, s7, 1          # next depth
-        jal     minmax_min
-
-        addi    s7, s7, -1         # restore depth
         add     t0, s3, s9         # restore a 0 to the last move position
         sb      zero, (t0)        
 
@@ -450,13 +440,13 @@ minmax_max:
         mv      a0, s2             # return value
 
   .minmax_max_done:
-        ld      s1, 32(sp)
+        addi    s7, s7, -1         # restore depth
+        ld      s0, 24(sp)
         ld      s2, 40(sp)
         ld      s3, 48(sp)
 
   .minmax_max_fast_exit:
         ld      ra, 16(sp)
-        ld      s0, 24(sp)
         addi    sp, sp, 64
         jr      ra
         .cfi_endproc
@@ -467,13 +457,10 @@ minmax_max:
 .type minmax_min, @function
 minmax_min:
   /*
-        a0:   alpha
-        a1:   beta
-        a2:   move
-        s0:   alpha local
-        s1:   beta local
+        s0:   alpha argument and local
+        s1:   beta argument and local
         s2:   value local variable
-        s3:   i loop local variable
+        s3:   i loop local variable / move argument
         s4:   global max iteration count
         s5:   global constant win_score
         s6:   global constant lose_score
@@ -482,42 +469,40 @@ minmax_min:
         s9:   global the board for this thread
         s10:  global winner function table
         s11:  global move count for this thread
-        t4:   the constant x_piece
+        t3:   argument and result for scoring procs
+        t4:   the constant x_piece (3)
         t5:   the constant o_piece
         t6:   the constant 8
+        a7:   the constant 3
   */
         .cfi_startproc
         addi    sp, sp, -64
         sd      ra, 16(sp)
-        sd      s0, 24(sp)
 
         addi    s11, s11, 1        # increment move count
-        mv      s0, a0             # save alpha
 
-        li      t0, 3              # only check for a winner if > 4 moves taken so far
-        ble     s7, t0, .minmax_min_skip_winner
-        
-        li      a0, x_piece        # call the winner function for the most recent move
-        slli    t0, a2, 3          # function offset is 8 * the move position
+        ble     s7, a7, .minmax_min_skip_winner # only check for a winner if > 4 moves taken so far
+
+        li      t3, x_piece        # call the winner function for the most recent move
+        slli    t0, s3, 3          # function offset is 8 * the move position
         add     t0, t0, s10
         ld      t0, (t0)
         jalr    ra, t0
 
-        mv      t0, a0
         li      a0, win_score
-        beq     t0, t4, .minmax_min_fast_exit   # if x won, return win_score
+        beq     t3, t4, .minmax_min_fast_exit   # if x won, return win_score
 
         li      a0, tie_score
-        beq     s7, t6, .minmax_min_fast_exit
+        beq     s7, t6, .minmax_min_fast_exit   # if at the max depth, it's a tie
         
   .minmax_min_skip_winner:
-        sd      s1, 32(sp)
-        sd      s2, 40(sp)
-        sd      s3, 48(sp)
+        sd      s1, 32(sp)         # save caller's beta local
+        sd      s2, 40(sp)         # save caller's value local
+        sd      s3, 48(sp)         # save caller's i loop local
 
-        mv      s1, a1             # save beta
         li      s2, maximum_score  # max because we're minimizing
-        li      s3, -1             # start the loop with I at -1
+        li      s3, -1             # start the loop with i at -1
+        addi    s7, s7, 1          # next depth
 
   .minmax_min_loop:                # loop over all possible next moves 0..8
         beq     s3, t6, .minmax_min_loadv_done
@@ -528,14 +513,8 @@ minmax_min:
         bne     t0, zero, .minmax_min_loop
 
         sb      t5, (t1)           # make the o_piece move
+        jal     minmax_max         # recurse to the max
 
-        mv      a0, s0             # alpha
-        mv      a1, s1                            # beta
-        mv      a2, s3                            # move
-        addi    s7, s7, 1          # next depth
-        jal     minmax_max
-
-        addi    s7, s7, -1         # restore depth
         add     t0, s3, s9         # restore a 0 to the last move position
         sb      zero, (t0)        
 
@@ -551,16 +530,18 @@ minmax_min:
         mv      a0, s2             # return value
 
   .minmax_min_done:
+        addi    s7, s7, -1         # restore depth
         ld      s1, 32(sp)
         ld      s2, 40(sp)
         ld      s3, 48(sp)
 
   .minmax_min_fast_exit:
         ld      ra, 16(sp)
-        ld      s0, 24(sp)
         addi    sp, sp, 64
         jr      ra
         .cfi_endproc
+
+# all _posXfunc functions take the piece argument in t3 and return the winner piece in t3
 
 /* _pos0func */
 
@@ -569,40 +550,23 @@ minmax_min:
 .type _pos0func, @function
 _pos0func:
         .cfi_startproc
-        mv      t2, a0
+        mv      t2, t3
         lbu     t0, 1(s9)
         lbu     t1, 2(s9)
-        and     a0, t0, a0
-        and     a0, t1, a0
-.ifdef COND_EXTENSION
-        # jrXX rleft, rright, rreturn
-        # if ( rleft XX rright ) pc = rreturn
-        # R-type instruction
-        #    rs1 -- rleft
-        #    rs2 -- rright
-        #    rd -- typically ra
-        #    funct3 -- 0 = eq, 1 = ne, 4 = lt, 5 = ge, 6 = ltu, 7 = gtu
-        #    funct7 -- 0
-        #    opcode -- lower 7 bits 0x2b. opcode type -- 0xa
-        .word 0x000510ab           #jrne    a0, zero, ra
-.else
-        bne     a0, zero, .pos0_func_return
-.endif
+        and     t3, t0, t3
+        and     t3, t1, t3
+        bne     t3, zero, .pos0_func_return
 
         lbu     t0, 3(s9)
         lbu     t1, 6(s9)
-        and     a0, t0, t2
-        and     a0, t1, a0
-.ifdef COND_EXTENSION
-        .word 0x000510ab           #jrne    a0, zero, ra
-.else
-        bne     a0, zero, .pos0_func_return
-.endif
+        and     t3, t0, t2
+        and     t3, t1, t3
+        bne     t3, zero, .pos0_func_return
 
         lbu     t0, 4(s9)
         lbu     t1, 8(s9)
-        and     a0, t0, t2
-        and     a0, t1, a0
+        and     t3, t0, t2
+        and     t3, t1, t3
 
   .pos0_func_return:
         jr      ra
@@ -613,21 +577,17 @@ _pos0func:
 .type _pos1func, @function
 _pos1func:
         .cfi_startproc
-        mv      t2, a0
+        mv      t2, t3
         lbu     t0, 0(s9)
         lbu     t1, 2(s9)
-        and     a0, t0, a0
-        and     a0, t1, a0
-.ifdef COND_EXTENSION
-        .word 0x000510ab           #jrne    a0, zero, ra
-.else
-        bne     a0, zero, .pos1_func_return
-.endif
+        and     t3, t0, t3
+        and     t3, t1, t3
+        bne     t3, zero, .pos1_func_return
 
         lbu     t0, 4(s9)
         lbu     t1, 7(s9)
-        and     a0, t0, t2
-        and     a0, t1, a0
+        and     t3, t0, t2
+        and     t3, t1, t3
 
   .pos1_func_return:
         jr      ra
@@ -638,31 +598,23 @@ _pos1func:
 .type _pos2func, @function
 _pos2func:
         .cfi_startproc
-        mv      t2, a0
+        mv      t2, t3
         lbu     t0, 0(s9)
         lbu     t1, 1(s9)
-        and     a0, t0, a0
-        and     a0, t1, a0
-.ifdef COND_EXTENSION
-        .word 0x000510ab           #jrne    a0, zero, ra
-.else
-        bne     a0, zero, .pos2_func_return
-.endif
+        and     t3, t0, t3
+        and     t3, t1, t3
+        bne     t3, zero, .pos2_func_return
 
         lbu     t0, 5(s9)
         lbu     t1, 8(s9)
-        and     a0, t0, t2
-        and     a0, t1, a0
-.ifdef COND_EXTENSION
-        .word 0x000510ab           #jrne    a0, zero, ra
-.else
-        bne     a0, zero, .pos3_func_return
-.endif
+        and     t3, t0, t2
+        and     t3, t1, t3
+        bne     t3, zero, .pos3_func_return
 
         lbu     t0, 4(s9)
         lbu     t1, 6(s9)
-        and     a0, t0, t2
-        and     a0, t1, a0
+        and     t3, t0, t2
+        and     t3, t1, t3
 
   .pos2_func_return:
         jr      ra
@@ -673,21 +625,17 @@ _pos2func:
 .type _pos3func, @function
 _pos3func:
         .cfi_startproc
-        mv      t2, a0
+        mv      t2, t3
         lbu     t0, 0(s9)
         lbu     t1, 6(s9)
-        and     a0, t0, a0
-        and     a0, t1, a0
-.ifdef COND_EXTENSION
-        .word 0x000510ab           #jrne    a0, zero, ra
-.else
-        bne     a0, zero, .pos3_func_return
-.endif
+        and     t3, t0, t3
+        and     t3, t1, t3
+        bne     t3, zero, .pos3_func_return
 
         lbu     t0, 4(s9)
         lbu     t1, 5(s9)
-        and     a0, t0, t2
-        and     a0, t1, a0
+        and     t3, t0, t2
+        and     t3, t1, t3
 
   .pos3_func_return:
         jr      ra
@@ -698,41 +646,29 @@ _pos3func:
 .type _pos4func, @function
 _pos4func:
         .cfi_startproc
-        mv      t2, a0
+        mv      t2, t3
         lbu     t0, 0(s9)
         lbu     t1, 8(s9)
-        and     a0, t0, a0
-        and     a0, t1, a0
-.ifdef COND_EXTENSION
-        .word 0x000510ab           #jrne    a0, zero, ra
-.else
-        bne     a0, zero, .pos4_func_return
-.endif
+        and     t3, t0, t3
+        and     t3, t1, t3
+        bne     t3, zero, .pos4_func_return
 
         lbu     t0, 2(s9)
         lbu     t1, 6(s9)
-        and     a0, t0, t2
-        and     a0, t1, a0
-.ifdef COND_EXTENSION
-        .word 0x000510ab           #jrne    a0, zero, ra
-.else
-        bne     a0, zero, .pos4_func_return
-.endif
+        and     t3, t0, t2
+        and     t3, t1, t3
+        bne     t3, zero, .pos4_func_return
 
         lbu     t0, 1(s9)
         lbu     t1, 7(s9)
-        and     a0, t0, t2
-        and     a0, t1, a0
-.ifdef COND_EXTENSION
-        .word 0x000510ab           #jrne    a0, zero, ra
-.else
-        bne     a0, zero, .pos4_func_return
-.endif
+        and     t3, t0, t2
+        and     t3, t1, t3
+        bne     t3, zero, .pos4_func_return
 
         lbu     t0, 3(s9)
         lbu     t1, 5(s9)
-        and     a0, t0, t2
-        and     a0, t1, a0
+        and     t3, t0, t2
+        and     t3, t1, t3
 
   .pos4_func_return:
         jr      ra
@@ -743,21 +679,17 @@ _pos4func:
 .type _pos5func, @function
 _pos5func:
         .cfi_startproc
-        mv      t2, a0
+        mv      t2, t3
         lbu     t0, 3(s9)
         lbu     t1, 4(s9)
-        and     a0, t0, a0
-        and     a0, t1, a0
-.ifdef COND_EXTENSION
-        .word 0x000510ab           #jrne    a0, zero, ra
-.else
-        bne     a0, zero, .pos5_func_return
-.endif
+        and     t3, t0, t3
+        and     t3, t1, t3
+        bne     t3, zero, .pos5_func_return
 
         lbu     t0, 2(s9)
         lbu     t1, 8(s9)
-        and     a0, t0, t2
-        and     a0, t1, a0
+        and     t3, t0, t2
+        and     t3, t1, t3
 
   .pos5_func_return:
         jr      ra
@@ -768,31 +700,23 @@ _pos5func:
 .type _pos6func, @function
 _pos6func:
         .cfi_startproc
-        mv      t2, a0
+        mv      t2, t3
         lbu     t0, 0(s9)
         lbu     t1, 3(s9)
-        and     a0, t0, a0
-        and     a0, t1, a0
-.ifdef COND_EXTENSION
-        .word 0x000510ab           #jrne    a0, zero, ra
-.else
-        bne     a0, zero, .pos6_func_return
-.endif
+        and     t3, t0, t3
+        and     t3, t1, t3
+        bne     t3, zero, .pos6_func_return
 
         lbu     t0, 2(s9)
         lbu     t1, 4(s9)
-        and     a0, t0, t2
-        and     a0, t1, a0
-.ifdef COND_EXTENSION
-        .word 0x000510ab           #jrne    a0, zero, ra
-.else
-        bne     a0, zero, .pos6_func_return
-.endif
+        and     t3, t0, t2
+        and     t3, t1, t3
+        bne     t3, zero, .pos6_func_return
 
         lbu     t0, 7(s9)
         lbu     t1, 8(s9)
-        and     a0, t0, t2
-        and     a0, t1, a0
+        and     t3, t0, t2
+        and     t3, t1, t3
 
   .pos6_func_return:
         jr      ra
@@ -803,21 +727,17 @@ _pos6func:
 .type _pos7func, @function
 _pos7func:
         .cfi_startproc
-        mv      t2, a0
+        mv      t2, t3
         lbu     t0, 1(s9)
         lbu     t1, 4(s9)
-        and     a0, t0, a0
-        and     a0, t1, a0
-.ifdef COND_EXTENSION
-        .word 0x000510ab           #jrne    a0, zero, ra
-.else
-        bne     a0, zero, .pos7_func_return
-.endif
+        and     t3, t0, t3
+        and     t3, t1, t3
+        bne     t3, zero, .pos7_func_return
 
         lbu     t0, 6(s9)
         lbu     t1, 8(s9)
-        and     a0, t0, t2
-        and     a0, t1, a0
+        and     t3, t0, t2
+        and     t3, t1, t3
 
   .pos7_func_return:
         jr      ra
@@ -828,31 +748,23 @@ _pos7func:
 .type _pos8func, @function
 _pos8func:
         .cfi_startproc
-        mv      t2, a0
+        mv      t2, t3
         lbu     t0, 0(s9)
         lbu     t1, 4(s9)
-        and     a0, t0, a0
-        and     a0, t1, a0
-.ifdef COND_EXTENSION
-        .word 0x000510ab           #jrne    a0, zero, ra
-.else
-        bne     a0, zero, .pos8_func_return
-.endif
+        and     t3, t0, t3
+        and     t3, t1, t3
+        bne     t3, zero, .pos8_func_return
 
         lbu     t0, 2(s9)
         lbu     t1, 5(s9)
-        and     a0, t0, t2
-        and     a0, t1, a0
-.ifdef COND_EXTENSION
-        .word 0x000510ab           #jrne    a0, zero, ra
-.else
-        bne     a0, zero, .pos8_func_return
-.endif
+        and     t3, t0, t2
+        and     t3, t1, t3
+        bne     t3, zero, .pos8_func_return
 
         lbu     t0, 6(s9)
         lbu     t1, 7(s9)
-        and     a0, t0, t2
-        and     a0, t1, a0
+        and     t3, t0, t2
+        and     t3, t1, t3
 
   .pos8_func_return:
         jr      ra
