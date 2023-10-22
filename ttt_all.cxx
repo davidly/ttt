@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-#ifdef _MSC_VER
+#ifdef _WIN32
 
     #include <windows.h>
     #include <time.h>
@@ -11,7 +11,7 @@
 
     typedef unsigned __int64 LoopType;
 
-#else // _MSC_VER
+#else // _WIN32
 
     #define USE_CHRONO
     #include <pthread.h>
@@ -23,7 +23,7 @@
 
     typedef unsigned long long LoopType;
 
-#endif // _MSC_VER
+#endif // _WIN32
 
 #ifdef USE_CHRONO
 
@@ -239,12 +239,9 @@ void Sp( int x )
         printf( " " );
 }
 
-unsigned int g_Moves = 0;
-
-int MinMax( char * board, int alpha, int beta, int depth, int move )
+int MinMax( char * board, int alpha, int beta, int depth, int move, uint64_t & moveCount )
 {
-    //InterlockedIncrement( &g_Moves );
-    //g_Moves++;
+    moveCount++;
 
     // scores are always with respect to X.
     // maximize on X moves; minimize on O moves
@@ -287,7 +284,7 @@ int MinMax( char * board, int alpha, int beta, int depth, int move )
         if ( PieceBlank == board[ p ] )
         {
             board[p] = pieceMove;
-            int score = MinMax( board, alpha, beta, depth + 1, p );
+            int score = MinMax( board, alpha, beta, depth + 1, p, moveCount );
             board[p] = PieceBlank;
 
             if ( depth & 1 ) //maximize 
@@ -332,7 +329,7 @@ int MinMax( char * board, int alpha, int beta, int depth, int move )
     return value;
 } //MinMax
 
-#ifdef _MSC_VER
+#ifdef _WIN32
     DWORD WINAPI
 #else
     void * 
@@ -344,11 +341,16 @@ TTTThreadProc( void * param )
     char board[ 9 ];
     memset( board, 0, sizeof board );
     board[ position ] = PieceX;
+    uint64_t moveCount = 0;
 
     for ( LoopType times = 0; times < loopCount; times++ )
-        MinMax( board, SCORE_MIN, SCORE_MAX, 0, position );
+        MinMax( board, SCORE_MIN, SCORE_MAX, 0, position, moveCount );
 
-    return 0;
+#ifdef _WIN32
+    return (DWORD) moveCount;
+#else
+    return (void *) moveCount;
+#endif
 } //TTTThreadProc
 
 int main( int argc, char * argv[] )
@@ -440,8 +442,9 @@ int main( int argc, char * argv[] )
 
     ticktype startParallel = GetTicks();
     bool parallelRan = true;
-    
-#ifdef _MSC_VER
+    uint64_t moveCountParallel = 0; 
+   
+#ifdef _WIN32
     HANDLE aHandles[ 2 ];
     DWORD dwID = 0; // required for Win98. On NT you can pass 0.
     aHandles[ 0 ] = CreateThread( 0, 0, TTTThreadProc, (void *) 0, 0, &dwID );
@@ -458,40 +461,46 @@ int main( int argc, char * argv[] )
     pthread_create( &threads[ 1 ], 0, TTTThreadProc, (void *) 4 );
 #endif
 
-    TTTThreadProc( (void *) 1 );
+    moveCountParallel = (uint64_t) TTTThreadProc( (void *) 1 );
 
-#ifdef _MSC_VER
+#ifdef _WIN32
     WaitForMultipleObjects( 2, aHandles, TRUE, INFINITE );
+    DWORD dw = 0;
+    GetExitCodeThread( aHandles[0], &dw );
+    moveCountParallel += dw;
+    GetExitCodeThread( aHandles[1], &dw );
+    moveCountParallel += dw;
     CloseHandle( aHandles[ 0 ] );
     CloseHandle( aHandles[ 1 ] );
 #else
-    pthread_join( threads[ 0 ], 0 );
-    pthread_join( threads[ 1 ], 0 );
+    void * moveCounts[2];
+    pthread_join( threads[ 0 ], &moveCounts[0] );
+    pthread_join( threads[ 1 ], &moveCounts[1] );
+    moveCountParallel += (uint64_t) moveCounts[0];
+    moveCountParallel += (uint64_t) moveCounts[1];
 #endif
 
 no_threads:
 
     ticktype endParallel = GetTicks();
-    int parallelMoves = g_Moves;
-    g_Moves = 0;
-    
     ticktype startSerial = GetTicks();
 
-    TTTThreadProc( (void *) 0 );
-    TTTThreadProc( (void *) 1 );
-    TTTThreadProc( (void *) 4 );
+    uint64_t moveCountSerial = (uint64_t) TTTThreadProc( (void *) 0 );
+    moveCountSerial += (uint64_t) TTTThreadProc( (void *) 1 );
+    moveCountSerial += (uint64_t) TTTThreadProc( (void *) 4 );
 
     ticktype endSerial = GetTicks();
-
-    if ( 0 != g_Moves )
-        printf( "moves examined: %d, parallel %d\n", g_Moves, parallelMoves );
 
     printf( "ran %llu iterations\n", loopCount );
 
     if ( parallelRan )
-        printf( "parallel milliseconds: %ld\n", GetMilliseconds( endParallel, startParallel ) );
-    
-    printf( "serial   milliseconds: %ld\n", GetMilliseconds( endSerial, startSerial ) );
+    {
+        printf( "parallel milliseconds: %lu\n", GetMilliseconds( endParallel, startParallel ) );
+        printf( "         moves:        %llu\n", moveCountParallel );
+    }
+
+    printf( "serial   milliseconds: %lu\n", GetMilliseconds( endSerial, startSerial ) );
+    printf( "         moves:        %llu\n", moveCountSerial );
 
     return 0;
 } //main
