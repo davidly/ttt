@@ -462,6 +462,7 @@ minmax_max PROC
 
     mov      DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ], minimum_score
     mov      edx, -1
+    inc      ecx
 
   minmax_max_top_of_loop:
     cmp      edx, 8                                        ; done iterating all the moves?
@@ -475,12 +476,10 @@ minmax_max PROC
     mov      BYTE PTR [ edi + edx ], x_piece               ; make the move
 
     ; edx already has the move
-    inc      ecx
     push     DWORD PTR [ ebp + ARG_BETA_OFFSET ]           ; beta
     push     DWORD PTR [ ebp + ARG_ALPHA_OFFSET ]          ; alpha
     call     minmax_min
 
-    dec      ecx
     mov      edx, DWORD PTR [ ebp - LOCAL_I_OFFSET ]       ; restore the blank piece on the board
     mov      BYTE PTR [ edi + edx ], blank_piece
 
@@ -505,6 +504,7 @@ minmax_max PROC
     mov      eax, DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ]
 
   minmax_max_done:
+    dec      ecx
     mov      esp, ebp
     pop      ebp
     ret      8
@@ -547,6 +547,7 @@ minmax_min PROC
 
     mov      DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ], maximum_score
     mov      edx, -1
+    inc      ecx
 
   minmax_min_top_of_loop:
     cmp      edx, 8
@@ -560,12 +561,10 @@ minmax_min PROC
     mov      BYTE PTR [ edi + edx ], o_piece               ; make the move
 
     ; edx already has the move
-    inc      ecx
     push     DWORD PTR [ ebp + ARG_BETA_OFFSET ]           ; beta     
     push     DWORD PTR [ ebp + ARG_ALPHA_OFFSET ]          ; alpha    
     call     minmax_max                                           
 
-    dec      ecx
     mov      edx, DWORD PTR [ ebp - LOCAL_I_OFFSET ]       ; restore the blank piece on the board
     mov      BYTE PTR [ edi + edx ], blank_piece
 
@@ -591,6 +590,7 @@ minmax_min PROC
     mov      eax, DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ]
 
   minmax_min_done:
+    dec      ecx
     mov      esp, ebp
     pop      ebp
     ret      8
