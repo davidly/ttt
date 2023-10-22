@@ -383,30 +383,157 @@ minmax_max:
         sd      s3, 24(sp)         # save caller's i variable
 
         li      s2, minimum_score  # min because we're maximizing
-        li      s3, -1             # start the loop with i at -1
         addi    s7, s7, 1          # next depth
 
-  .minmax_max_loop:                # loop over all possible next moves 0..8
-        beq     s3, t6, .minmax_max_loadv_done            
-        addi    s3, s3, 1
+        lbu     t0, 0(s9)
+        beq     t0, zero, .minmax_max_move_0
 
-        add     t1, s3, s9         # is this move position free?
-        lbu     t0, (t1)
-        bne     t0, zero, .minmax_max_loop
+  .minmax_max_try_1:
+        lbu     t0, 1(s9)
+        beq     t0, zero, .minmax_max_move_1
 
-        sb      t4, (t1)           # make the x_piece move
-        jal     minmax_min         # recurse to the min
+  .minmax_max_try_2:
+        lbu     t0, 2(s9)
+        beq     t0, zero, .minmax_max_move_2
 
-        add     t0, s3, s9         # restore a 0 to the last move position
-        sb      zero, (t0)        
+  .minmax_max_try_3:
+        lbu     t0, 3(s9)
+        beq     t0, zero, .minmax_max_move_3
 
+  .minmax_max_try_4:
+        lbu     t0, 4(s9)
+        beq     t0, zero, .minmax_max_move_4
+
+  .minmax_max_try_5:
+        lbu     t0, 5(s9)
+        beq     t0, zero, .minmax_max_move_5
+
+  .minmax_max_try_6:
+        lbu     t0, 6(s9)
+        beq     t0, zero, .minmax_max_move_6
+
+  .minmax_max_try_7:
+        lbu     t0, 7(s9)
+        beq     t0, zero, .minmax_max_move_7
+
+  .minmax_max_try_8:
+        lbu     t0, 8(s9)
+        beq     t0, zero, .minmax_max_move_8
+        j       .minmax_max_loadv_done
+
+  .minmax_max_move_0:        
+        sb      t4, 0(s9)                 # make the x_piece move
+        li      s3, 0                     # the move
+        jal     minmax_min                # recurse to the min
+        sb      zero, 0(s9)               # restore the board position to 0     
         beq     a0, s5, .minmax_max_done  # can't do better than winning when maximizing 
-        ble     a0, s2, .minmax_max_loop  # compare score with value and loop again if no better
+        ble     a0, s2, .minmax_max_try_1 # compare score with value and loop again if no better
         mv      s2, a0                    # update value with the new high score
         bge     a0, s1, .minmax_max_done  # compare value with beta and prune/return if >=
-        ble     a0, s0, .minmax_max_loop  # compare value with alpha and loop if <=
+        ble     a0, s0, .minmax_max_try_1 # compare value with alpha and loop if <=
         mv      s0, a0                    # update alpha with value
-        j       .minmax_max_loop          
+        j       .minmax_max_try_1
+
+  .minmax_max_move_1:       
+        sb      t4, 1(s9)                 
+        li      s3, 1                     
+        jal     minmax_min                
+        sb      zero, 1(s9)               
+        beq     a0, s5, .minmax_max_done  
+        ble     a0, s2, .minmax_max_try_2
+        mv      s2, a0                    
+        bge     a0, s1, .minmax_max_done  
+        ble     a0, s0, .minmax_max_try_2 
+        mv      s0, a0                    
+        j       .minmax_max_try_2
+
+  .minmax_max_move_2:       
+        sb      t4, 2(s9)                 
+        li      s3, 2                     
+        jal     minmax_min                
+        sb      zero, 2(s9)               
+        beq     a0, s5, .minmax_max_done  
+        ble     a0, s2, .minmax_max_try_3
+        mv      s2, a0                    
+        bge     a0, s1, .minmax_max_done  
+        ble     a0, s0, .minmax_max_try_3 
+        mv      s0, a0                    
+        j       .minmax_max_try_3
+
+  .minmax_max_move_3:       
+        sb      t4, 3(s9)                 
+        li      s3, 3                     
+        jal     minmax_min                
+        sb      zero, 3(s9)               
+        beq     a0, s5, .minmax_max_done  
+        ble     a0, s2, .minmax_max_try_4
+        mv      s2, a0                    
+        bge     a0, s1, .minmax_max_done  
+        ble     a0, s0, .minmax_max_try_4 
+        mv      s0, a0                    
+        j       .minmax_max_try_4
+
+  .minmax_max_move_4:       
+        sb      t4, 4(s9)                 
+        li      s3, 4                     
+        jal     minmax_min                
+        sb      zero, 4(s9)               
+        beq     a0, s5, .minmax_max_done  
+        ble     a0, s2, .minmax_max_try_5
+        mv      s2, a0                    
+        bge     a0, s1, .minmax_max_done  
+        ble     a0, s0, .minmax_max_try_5 
+        mv      s0, a0                    
+        j       .minmax_max_try_5
+
+  .minmax_max_move_5:       
+        sb      t4, 5(s9)                 
+        li      s3, 5                     
+        jal     minmax_min                
+        sb      zero, 5(s9)               
+        beq     a0, s5, .minmax_max_done  
+        ble     a0, s2, .minmax_max_try_6
+        mv      s2, a0                    
+        bge     a0, s1, .minmax_max_done  
+        ble     a0, s0, .minmax_max_try_6 
+        mv      s0, a0                    
+        j       .minmax_max_try_6
+
+  .minmax_max_move_6:       
+        sb      t4, 6(s9)                 
+        li      s3, 6                     
+        jal     minmax_min                
+        sb      zero, 6(s9)               
+        beq     a0, s5, .minmax_max_done  
+        ble     a0, s2, .minmax_max_try_7
+        mv      s2, a0                    
+        bge     a0, s1, .minmax_max_done  
+        ble     a0, s0, .minmax_max_try_7 
+        mv      s0, a0                    
+        j       .minmax_max_try_7
+
+  .minmax_max_move_7:       
+        sb      t4, 7(s9)                 
+        li      s3, 7                     
+        jal     minmax_min                
+        sb      zero, 7(s9)               
+        beq     a0, s5, .minmax_max_done  
+        ble     a0, s2, .minmax_max_try_8
+        mv      s2, a0                    
+        bge     a0, s1, .minmax_max_done  
+        ble     a0, s0, .minmax_max_try_8 
+        mv      s0, a0                    
+        j       .minmax_max_try_8
+
+  .minmax_max_move_8:       
+        sb      t4, 8(s9)                 
+        li      s3, 8                     
+        jal     minmax_min                
+        sb      zero, 8(s9)               
+        beq     a0, s5, .minmax_max_done  
+        ble     a0, s2, .minmax_max_loadv_done
+        mv      s2, a0                    
+        bge     a0, s1, .minmax_max_done  
 
   .minmax_max_loadv_done:
         mv      a0, s2             # return value
@@ -455,30 +582,157 @@ minmax_min:
         sd      s3, 24(sp)         # save caller's i loop local
 
         li      s2, maximum_score  # max because we're minimizing
-        li      s3, -1             # start the loop with i at -1
         addi    s7, s7, 1          # next depth
 
-  .minmax_min_loop:                # loop over all possible next moves 0..8
-        beq     s3, t6, .minmax_min_loadv_done
-        addi    s3, s3, 1
+        lbu     t0, 0(s9)
+        beq     t0, zero, .minmax_min_move_0
 
-        add     t1, s3, s9         # is this move position free?
-        lbu     t0, (t1)
-        bne     t0, zero, .minmax_min_loop
+  .minmax_min_try_1:
+        lbu     t0, 1(s9)
+        beq     t0, zero, .minmax_min_move_1
 
-        sb      t5, (t1)           # make the o_piece move
-        jal     minmax_max         # recurse to the max
+  .minmax_min_try_2:
+        lbu     t0, 2(s9)
+        beq     t0, zero, .minmax_min_move_2
 
-        add     t0, s3, s9         # restore a 0 to the last move position
-        sb      zero, (t0)        
+  .minmax_min_try_3:
+        lbu     t0, 3(s9)
+        beq     t0, zero, .minmax_min_move_3
 
+  .minmax_min_try_4:
+        lbu     t0, 4(s9)
+        beq     t0, zero, .minmax_min_move_4
+
+  .minmax_min_try_5:
+        lbu     t0, 5(s9)
+        beq     t0, zero, .minmax_min_move_5
+
+  .minmax_min_try_6:
+        lbu     t0, 6(s9)
+        beq     t0, zero, .minmax_min_move_6
+
+  .minmax_min_try_7:
+        lbu     t0, 7(s9)
+        beq     t0, zero, .minmax_min_move_7
+
+  .minmax_min_try_8:
+        lbu     t0, 8(s9)
+        beq     t0, zero, .minmax_min_move_8
+        j       .minmax_min_loadv_done
+
+  .minmax_min_move_0:        
+        sb      t5, 0(s9)                 # make the o_piece move
+        li      s3, 0                     # move is in position 0
+        jal     minmax_max                # recurse to the max
+        sb      zero, 0(s9)               # restore the board position to 0
         beq     a0, s6, .minmax_min_done  # can't do better than losing when minimizing
-        bge     a0, s2, .minmax_min_loop  # compare score with value and loop again if no worse
+        bge     a0, s2, .minmax_min_try_1 # compare score with value and loop again if no worse
         mv      s2, a0                    # update value with the new low score
         ble     a0, s0, .minmax_min_done  # compare value with alpha and prune/return if <=
-        bge     a0, s1, .minmax_min_loop  # compare value with beta and loop if >=
+        bge     a0, s1, .minmax_min_try_1 # compare value with beta and loop if >=
         mv      s1, a0                    # update beta with value
-        j       .minmax_min_loop          
+        j       .minmax_min_try_1
+
+  .minmax_min_move_1:        
+        sb      t5, 1(s9)
+        li      s3, 1
+        jal     minmax_max
+        sb      zero, 1(s9)        
+        beq     a0, s6, .minmax_min_done
+        bge     a0, s2, .minmax_min_try_2
+        mv      s2, a0                   
+        ble     a0, s0, .minmax_min_done 
+        bge     a0, s1, .minmax_min_try_2
+        mv      s1, a0                   
+        j       .minmax_min_try_2
+
+  .minmax_min_move_2:        
+        sb      t5, 2(s9)
+        li      s3, 2
+        jal     minmax_max
+        sb      zero, 2(s9)        
+        beq     a0, s6, .minmax_min_done
+        bge     a0, s2, .minmax_min_try_3
+        mv      s2, a0                   
+        ble     a0, s0, .minmax_min_done 
+        bge     a0, s1, .minmax_min_try_3
+        mv      s1, a0                   
+        j       .minmax_min_try_3
+
+  .minmax_min_move_3:        
+        sb      t5, 3(s9)
+        li      s3, 3
+        jal     minmax_max
+        sb      zero, 3(s9)        
+        beq     a0, s6, .minmax_min_done
+        bge     a0, s2, .minmax_min_try_4
+        mv      s2, a0                   
+        ble     a0, s0, .minmax_min_done 
+        bge     a0, s1, .minmax_min_try_4
+        mv      s1, a0                   
+        j       .minmax_min_try_4
+
+  .minmax_min_move_4:        
+        sb      t5, 4(s9)
+        li      s3, 4
+        jal     minmax_max
+        sb      zero, 4(s9)        
+        beq     a0, s6, .minmax_min_done
+        bge     a0, s2, .minmax_min_try_5
+        mv      s2, a0                   
+        ble     a0, s0, .minmax_min_done 
+        bge     a0, s1, .minmax_min_try_5
+        mv      s1, a0                   
+        j       .minmax_min_try_5
+
+  .minmax_min_move_5:        
+        sb      t5, 5(s9)
+        li      s3, 5
+        jal     minmax_max
+        sb      zero, 5(s9)        
+        beq     a0, s6, .minmax_min_done
+        bge     a0, s2, .minmax_min_try_6
+        mv      s2, a0                   
+        ble     a0, s0, .minmax_min_done 
+        bge     a0, s1, .minmax_min_try_6
+        mv      s1, a0                   
+        j       .minmax_min_try_6
+
+  .minmax_min_move_6:        
+        sb      t5, 6(s9)
+        li      s3, 6
+        jal     minmax_max
+        sb      zero, 6(s9)        
+        beq     a0, s6, .minmax_min_done
+        bge     a0, s2, .minmax_min_try_7
+        mv      s2, a0                   
+        ble     a0, s0, .minmax_min_done 
+        bge     a0, s1, .minmax_min_try_7
+        mv      s1, a0                   
+        j       .minmax_min_try_7
+
+  .minmax_min_move_7:        
+        sb      t5, 7(s9)
+        li      s3, 7
+        jal     minmax_max
+        sb      zero, 7(s9)        
+        beq     a0, s6, .minmax_min_done
+        bge     a0, s2, .minmax_min_try_8
+        mv      s2, a0                   
+        ble     a0, s0, .minmax_min_done 
+        bge     a0, s1, .minmax_min_try_8
+        mv      s1, a0                   
+        j       .minmax_min_try_8
+
+  .minmax_min_move_8:        
+        sb      t5, 8(s9)
+        li      s3, 8
+        jal     minmax_max
+        sb      zero, 8(s9)        
+        beq     a0, s6, .minmax_min_done
+        bge     a0, s2, .minmax_min_loadv_done
+        mv      s2, a0                   
+        ble     a0, s0, .minmax_min_done 
 
   .minmax_min_loadv_done:
         mv      a0, s2             # return value
