@@ -473,11 +473,11 @@ minmax_max PROC
     align   16
   minmax_max_skip_winner:
     mov     [rbp + A_SPILL_OFFSET], rcx     ; alpha saved in the spill location
-    mov     [rbp + B_SPILL_OFFSET], rdx     ; beta saved in the spill location
     mov     [rbp + V_SPILL_OFFSET], r11     ; save value
     mov     [rbp + I_SPILL_OFFSET], r9      ; save i -- the for loop variable
     mov     r11, minimum_score              ; minimum possible score. maximizing, so find a score higher than this
     mov     r9, r14                         ; r9 is I in the for loop 0..8. avoid a jump by starting at -1
+    inc     r8                              ; next depth 1..8
 
     align   16
   minmax_max_top_of_loop:
@@ -490,18 +490,16 @@ minmax_max PROC
 
     mov     BYTE PTR [r10 + r9], x_piece    ; make the move
 
-    ; if this is the move that fills the board, use the faster terminal function
+if 0
+;    ; if this is the move that fills the board, use the faster terminal function
     cmp     r8, 7
     je      _minmax_max_terminal_move
-
-    ; prepare arguments alpha rcx, beta rdx, depth r8, and move r9 for recursing.
-    inc     r8                              ; next depth 1..8
+endif
 
     ; unlike win64 calling conventions, no registers are preserved aside from r8 and globals in r10, r12, r13, and r15
     call    minmax_min                      ; score is in rax on return
 
-    dec     r8                              ; restore depth to the current level
-    mov     BYTE PTR [r10 + r9], r12b          ; Restore the move on the board to 0 from X
+    mov     BYTE PTR [r10 + r9], r12b       ; Restore the move on the board to 0 from X
 
     cmp     rax, win_score                  ; compare score with the winning score
     je      short minmax_max_unspill        ; can't do better than winning score when maximizing
@@ -519,11 +517,13 @@ minmax_max PROC
     mov     rcx, rax                        ; update alpha with value
     jmp     short minmax_max_top_of_loop
 
+if 0
     align   16
   _minmax_max_terminal_move:
     call    minmax_min_terminal
     mov     BYTE PTR [r10 + r9], r12b       ; Restore the move on the board to 0 from X
     jmp     minmax_max_unspill
+endif
 
     align   16
   minmax_max_loadv_done:
@@ -531,8 +531,8 @@ minmax_max PROC
 
     align   16
   minmax_max_unspill:
+    dec     r8                              ; restore depth to the current level
     mov     rcx, [rbp + A_SPILL_OFFSET]     ; restore alpha
-    mov     rdx, [rbp + B_SPILL_OFFSET]     ; restore beta
     mov     r11, [rbp + V_SPILL_OFFSET]     ; restore value
     mov     r9, [rbp + I_SPILL_OFFSET]      ; restore i
   minmax_max_done:
@@ -581,12 +581,12 @@ minmax_min PROC
 
     align   16
   minmax_min_skip_winner:
-    mov     [rbp + A_SPILL_OFFSET], rcx     ; alpha saved in the spill location
     mov     [rbp + B_SPILL_OFFSET], rdx     ; beta saved in the spill location
     mov     [rbp + V_SPILL_OFFSET], r11     ; save value
     mov     [rbp + I_SPILL_OFFSET], r9      ; save i -- the for loop variable
     mov     r11, maximum_score              ; maximum possible score; minimizing, so find a score lower than this 
     mov     r9, r14                         ; r9 is I in the for loop 0..8. avoid a jump by starting at -1
+    inc     r8                              ; next depth 1..8
 
     align   16
   minmax_min_top_of_loop:
@@ -599,13 +599,9 @@ minmax_min PROC
 
     mov     BYTE PTR [r10 + r9], o_piece    ; make the move
 
-    ; prepare arguments alpha rcx, beta rdx, depth r8, and move r9 for recursing.
-    inc     r8                              ; next depth 1..8
-
     ; unlike win64 calling conventions, no registers are preserved aside from r8 and globals in r10, r12, r13, and r15
     call    minmax_max                      ; score is in rax on return
 
-    dec     r8                              ; restore depth to the current level
     mov     BYTE PTR [r10 + r9], r12b       ; Restore the move on the board to 0 from O
 
     cmp     rax, lose_score
@@ -629,7 +625,7 @@ minmax_min PROC
     mov     rax, r11                        ; load V then return
 
   minmax_min_unspill:
-    mov     rcx, [rbp + A_SPILL_OFFSET]     ; restore alpha
+    dec     r8                              ; restore depth to the current level
     mov     rdx, [rbp + B_SPILL_OFFSET]     ; restore beta
     mov     r11, [rbp + V_SPILL_OFFSET]     ; restore value
     mov     r9, [rbp + I_SPILL_OFFSET]      ; restore i
