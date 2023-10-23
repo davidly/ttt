@@ -152,7 +152,7 @@ _runmm:
 
     mov      x19, 0                              // x19 is the move count
     mov      x27, x0                             // x27 is the initial move    
-    adrp     x20, _winner_functions         // x20 holds the function table
+    adrp     x20, _winner_functions              // x20 holds the function table
     add      x20, x20, :lo12:_winner_functions
 
     // load x21 with the board to use
@@ -184,8 +184,7 @@ _runmm:
   _runmm_loop:
     mov      x23, minimum_score         // alpha
     mov      x24, maximum_score         // beta
-    mov      x2, 0                      // depth
-    mov      x3, x27                    // move (0..8)
+    mov      x25, 0                     // depth
     bl       _minmax_min
     sub      x22, x22, 1
     cmp      x22, 0
@@ -257,35 +256,34 @@ _solve_threaded:
 
 .p2align 2
 _minmax_max:
-    // x0: unused (first argument is in x23)
-    // x1: unused (second argument is in x24)
-    // x2: depth. keep in register x25
-    // x3: move: position of last piece added 0..8. Keep in register for a bit then it's overwritten
+    // x0: temp, local, arg to scoring proc
+    // x1: temp local
+    // x2: unused (depth is in x25)
+    // x3: unused (move s in x27)
     // x19: global move count for this thread
     // x20: winner function table
     // x21: the board for this thread
     // x22: global iteration count
     // x23: alpha (argument)
     // x24: beta (argument)
-    // x25: depth
+    // x25: next depth
     // x26: value: local variable
-    // x27: for loop local variable I
-    // x28: the move to make (X)
+    // x27: move on entry then the for loop local variable I
+    // x28: the piece to move
 
-    stp      x24, x23, [sp, #-64]!      
-    stp      x30, x29, [sp, #48]
+    stp      x30, x29, [sp, #-64]!
     add      x29, sp, #48               
 
     add      x19, x19, 1                // increment global move count
 
-    cmp      x2, 3                     // if fewer that 5 moves played, no winner
+    cmp      x25, 3                     // if fewer that 5 moves played, no winner
     b.le     _minmax_max_skip_winner
 
     // call the winner function for the most recent move
     mov      x0, o_piece                // the piece just played
-    add      x3, x20, x3, lsl #3        // table + function offset
-    ldr      x3, [x3]                   // grab the function pointer
-    blr      x3                         // call it
+    add      x1, x20, x27, lsl #3        // table + function offset
+    ldr      x1, [x1]                   // grab the function pointer
+    blr      x1                         // call it
 
     cmp      w0, o_piece                // did O win?
     mov      w0, lose_score             // move regardless of whether we'll branch
@@ -295,8 +293,9 @@ _minmax_max:
   _minmax_max_skip_winner:
     stp      x26, x25, [sp, #16]        
     stp      x28, x27, [sp, #32]
+    stp      x24, x23, [sp, #48]
 
-    add      x25, x2, 1                 // next depth
+    add      x25, x25, 1                // next depth
     mov      w26, minimum_score         // the value is minimum because we're maximizing
     mov      x27, -1                    // avoid a jump by starting the for loop I at -1
     mov      w28, x_piece               // making X moves below
@@ -313,12 +312,7 @@ _minmax_max:
     b.ne     _minmax_max_top_of_loop
 
     strb     w28, [x1]                  // make the move
-
-    // x23 and x24 arguments are ready to go with alpha and beta
-    mov      x2, x25                    // depth++
-    mov      x3, x27                    // move
     bl       _minmax_min                // recurse to the MIN
-
     strb     wzr, [x21, x27]            // store blank on the board. blank_piece is 0.
 
     cmp      w0, win_score              // winning score? 
@@ -341,52 +335,36 @@ _minmax_max:
   
   .p2align 2
   _minmax_max_done:
+    ldp      x24, x23, [sp, #48]        
     ldp      x28, x27, [sp, #32]
     ldp      x26, x25, [sp, #16]
 
   .p2align 2
   _minmax_max_fastexit:
-    ldp      x30, x29, [sp, #48]        
-    ldp      x24, x23, [sp], #64
+    ldp      x30, x29, [sp], #64
     ret
 
 .p2align 2
 _minmax_min:
-    // x0: unused (first argument is in x23)
-    // x1: unused (second argument is in x24)
-    // x2: depth. keep in register x25
-    // x3: move: position of last piece added 0..8. Keep in register for a bit then it's overwritten
-    // x19: global move count for this thread
-    // x20: winner function table
-    // x21: the board for this thread
-    // x22: global iteration count
-    // x23: alpha (argument)
-    // x24: beta (argument)
-    // x25: depth
-    // x26: value: local variable
-    // x27: for loop local variable I
-    // x28: the move to make (O)
-
-    stp      x24, x23, [sp, #-64]!      
-    stp      x30, x29, [sp, #48]
+    stp      x30, x29, [sp, #-64]!
     add      x29, sp, #48               
 
     add      x19, x19, 1                // update global move count
 
-    cmp      x2, 3                      // can't be a winner if < 5 moves
+    cmp      x25, 3                     // can't be a winner if < 5 moves
     b.le     _minmax_min_skip_winner
 
     // call the winner function for the most recent move
     mov      x0, x_piece                // the piece just played
-    add      x3, x20, x3, lsl #3        // table + function offset
-    ldr      x3, [x3]                   // grab the function pointer
-    blr      x3                         // call it
+    add      x1, x20, x27, lsl #3       // table + function offset
+    ldr      x1, [x1]                   // grab the function pointer
+    blr      x1                         // call it
 
     cmp      w0, x_piece                // did X win?
     mov      w0, win_score              // move this regardless of the result
     b.eq     _minmax_min_fastexit
 
-    cmp      x2, 8                      // recursion can only go 8 deep
+    cmp      x25, 8                     // recursion can only go 8 deep
     mov      x0, tie_score
     b.eq     _minmax_min_fastexit
 
@@ -394,8 +372,9 @@ _minmax_min:
   _minmax_min_skip_winner:
     stp      x26, x25, [sp, #16]        
     stp      x28, x27, [sp, #32]
+    stp      x24, x23, [sp, #48]
 
-    add      x25, x2, 1                 // next depth
+    add      x25, x25, 1                // next depth
     mov      w26, maximum_score         // the value is maximum because we're minimizing
     mov      x27, -1                    // avoid a jump by starting the for loop I at -1
     mov      w28, o_piece               // the move to make below
@@ -412,12 +391,7 @@ _minmax_min:
     b.ne     _minmax_min_top_of_loop
 
     strb     w28, [x1]                  // store the move on the board
-
-    // x23 and x24 arguments are ready to go with alpha and beta
-    mov      x2, x25                    // depth + 1
-    mov      x3, x27                    // move
     bl       _minmax_max                // recurse to the MAX
-
     strb     wzr, [x21, x27]            // store blank on the board. blank_piece is 0.
 
     cmp      w0, lose_score             // losing score? 
@@ -440,13 +414,13 @@ _minmax_min:
   
   .p2align 2
   _minmax_min_done:
+    ldp      x24, x23, [sp, #48]        
     ldp      x28, x27, [sp, #32]
     ldp      x26, x25, [sp, #16]
 
   .p2align 2
   _minmax_min_fastexit:
-    ldp      x30, x29, [sp, #48]        
-    ldp      x24, x23, [sp], #64
+    ldp      x30, x29, [sp], #64
     ret
 
 .p2align 2
