@@ -68,7 +68,7 @@ lose_score   .eq     4              ; losing score
 XPIECE       .eq     1              ; X move piece
 OPIECE       .eq     2              ; Y move piece
 BLANKPIECE   .eq     0              ; empty piece
-ITERATIONS   .eq     1000             ; loop this many times
+ITERATIONS   .eq     1             ; loop this many times
 
 start
     lda      #$0d                   ; every apple 1 app should go to the next line on the console
@@ -232,6 +232,7 @@ _max_no_winner_check
     pha                             ; allocate space for Value
     tsx                             ; put the current stack pointer in X to reference variables
     ldy      #$ff                   ; y has i for the for loop below
+    inc      depth                  ; increment for recursion
 
 _max_loop                           ; for i = 0; i < 9; i++. i is initialized at function entry.
     cpy      #8
@@ -247,7 +248,6 @@ _max_loop                           ; for i = 0; i < 9; i++. i is initialized at
     lda      #XPIECE
     sta      board, y               ; update the board with the move
 
-    inc      depth                  ; increment for recursion
     lda      minmax_arg_beta, x
     pha                             ; arg3: beta
     lda      minmax_arg_alpha, x
@@ -256,7 +256,6 @@ _max_loop                           ; for i = 0; i < 9; i++. i is initialized at
     jsr      minmax_min             ; recurse
     sta      local_score            ; save the score
 
-    dec      depth                  ; restore to pre-recursion
     pla                             ; alpha
     pla                             ; beta
     tsx                             ; restore x to the stack pointer location
@@ -286,6 +285,7 @@ _max_loop                           ; for i = 0; i < 9; i++. i is initialized at
 _max_return_value
     lda      minmax_local_value, x  ; load value for return
 _max_return_a
+    dec      depth                  ; restore to pre-recursion
     tay
     pla                             ; deallocate value
     pla                             ; deallocate i. plb can set D and have side-effects later
@@ -329,6 +329,7 @@ _min_no_winner_check
     pha                             ; allocate space for Value
     tsx                             ; put the current stack pointer in X to reference variables
     ldy      #$ff                   ; y has i for the for loop below
+    inc      depth                  ; increment for recursion
 
 _min_loop                           ; for i = 0; i < 9; i++. i is initialized at function entry.
     cpy      #8
@@ -344,7 +345,6 @@ _min_loop                           ; for i = 0; i < 9; i++. i is initialized at
     lda      #OPIECE
     sta      board, y               ; update the board with the move
 
-    inc      depth                  ; increment for recursion
     lda      minmax_arg_beta, x
     pha                             ; arg3: beta
     lda      minmax_arg_alpha, x
@@ -353,7 +353,6 @@ _min_loop                           ; for i = 0; i < 9; i++. i is initialized at
     jsr      minmax_max             ; recurse
     sta      local_score            ; save the score
 
-    dec      depth                  ; restore depth
     pla                             ; alpha
     pla                             ; beta
     tsx                             ; restore x to the stack pointer location
@@ -383,6 +382,7 @@ _min_loop                           ; for i = 0; i < 9; i++. i is initialized at
 _min_return_value
     lda      minmax_local_value, x  ; load value for return
 _min_return_a
+    dec      depth                  ; restore depth
     tay
     pla                             ; deallocate value
     pla                             ; deallocate i
