@@ -161,6 +161,7 @@ minmax_max proc near
         push     dx                 ; save caller's value
         mov      dl, min_score      ; dx has value
         mov      di, -1             ; di has the move 0..8
+        inc      cx
 
   _max_loop:
         cmp      di, 8
@@ -173,12 +174,10 @@ minmax_max proc near
         push     di
         mov      byte ptr ds: [ offset board + di ], x_piece
 
-        inc      cx
         push     [ bp + beta_offset ]
         push     [ bp + alpha_offset ]
 
         call     minmax_min
-        dec      cx
 
         pop      di
         mov      byte ptr ds: [ offset board + di ], 0
@@ -203,6 +202,7 @@ minmax_max proc near
         mov      ax, dx
 
   _max_restore_value:
+        dec      cx
         pop      dx                 ; restore caller's value
 
   _max_just_return_al:
@@ -235,6 +235,7 @@ minmax_min proc near
         push     dx                 ; save caller's value
         mov      dl, max_score      ; dx has value
         mov      di, -1             ; di has the move 0..8 
+        inc      cx
 
   _min_loop:
         cmp      di, 8
@@ -247,12 +248,10 @@ minmax_min proc near
         push     di
         mov      byte ptr ds: [ offset board + di ], o_piece
 
-        inc      cx
         push     [ bp + beta_offset ]
         push     [ bp + alpha_offset ]
 
         call     minmax_max
-        dec      cx
 
         pop      di
         mov      byte ptr ds: [ offset board + di ], 0
@@ -277,6 +276,7 @@ minmax_min proc near
         mov      ax, dx
 
   _min_restore_value:
+        dec      cx
         pop      dx                 ; restore caller's value
 
   _min_just_return_al:
