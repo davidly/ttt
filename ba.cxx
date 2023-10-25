@@ -472,7 +472,7 @@ static void Usage()
     printf( "                                  3 -- Generate 32-bit Linux arm32 armv8 'gcc / as' compatible assembler code to filename.s\n" );
     printf( "                                  i -- Generate 32-bit i386 (686) Windows x86 'ml' compatible assembler code to filename.asm\n" );
     printf( "                                  I -- Generate 32-bit i386 (386) Windows 98 'ml' compatible assembler code to filename.asm\n" );
-    printf( "                                  m -- Generate 64-bit Mac 'as -arch arm64' compatible assembler code to filename.s\n" );
+    printf( "                                  m -- Generate 64-bit MacOS 'as -arch arm64' compatible assembler code to filename.s\n" );
     printf( "                                  r -- Generate 64-bit RISC-V 64-bit GNU 'as' compatible assembler code to filename.s\n" );
     printf( "                                  x -- Generate 64-bit Windows x64 'ml64' compatible assembler code to filename.asm\n" );
     printf( "                 -d               Generate a dollar sign $ at the end of execution for Apple 1 apps\n" );
@@ -490,10 +490,7 @@ static void Usage()
 
 const char * YesNo( bool f )
 {
-    if ( f )
-        return "yes";
-
-    return "no";
+    return f ? "yes" : "no";
 } //YesNo
 
 long portable_filelen( FILE * fp )
@@ -6361,18 +6358,18 @@ label_no_array_eq_optimization:
                         else if ( Token::VARIABLE == vals[ t + 1 ].token && 2 == vals[ t ].value &&
                                   IsVariableInReg( varmap, vals[ t + 1 ].strValue ) )
                         {
-                            string & varname = vals[ t + 1 ].strValue;
+                            string & varone = vals[ t + 1 ].strValue;
 
                             if ( x64Win == g_AssemblyTarget )
-                                fprintf( fp, "    mov      DWORD PTR [rbx + rax], %s\n", GenVariableReg( varmap, varname ) );
+                                fprintf( fp, "    mov      DWORD PTR [rbx + rax], %s\n", GenVariableReg( varmap, varone ) );
                             else if ( arm32Linux == g_AssemblyTarget )
-                                fprintf( fp, "    str      %s, [r1]\n", GenVariableReg( varmap, varname ) );
+                                fprintf( fp, "    str      %s, [r1]\n", GenVariableReg( varmap, varone ) );
                             else if ( arm64Mac == g_AssemblyTarget || arm64Win == g_AssemblyTarget )
-                                fprintf( fp, "    str      %s, [x1]\n", GenVariableReg( varmap, varname ) );
+                                fprintf( fp, "    str      %s, [x1]\n", GenVariableReg( varmap, varone ) );
                             else if ( x86Win == g_AssemblyTarget )
-                                fprintf( fp, "    mov      DWORD PTR [ebx + eax], %s\n", GenVariableReg( varmap, varname ) );
+                                fprintf( fp, "    mov      DWORD PTR [ebx + eax], %s\n", GenVariableReg( varmap, varone ) );
                             else if ( riscv64 == g_AssemblyTarget )
-                                fprintf( fp, "    sw       %s, (t0)\n", GenVariableReg(varmap, varname ) );
+                                fprintf( fp, "    sw       %s, (t0)\n", GenVariableReg(varmap, varone ) );
 
                             t += 2;
                         }
@@ -11243,7 +11240,7 @@ void InterpretCode( map<string, Variable> & varmap )
                         uint64_t ms = duration_cast<milliseconds>( now.time_since_epoch() ).count() % 1000;
                         auto timer = system_clock::to_time_t( now );
                         std::tm bt = * /*std::*/ localtime( &timer );
-                        printf( "%02u:%02u:%02u.%03u", bt.tm_hour, bt.tm_min, bt.tm_sec, (uint32_t) ms );
+                        printf( "%02u:%02u:%02u.%03u", (uint32_t) bt.tm_hour, (uint32_t) bt.tm_min, (uint32_t) bt.tm_sec, (uint32_t) ms );
                         t += 2;
                     }
                     else if ( Token::ELAP == vals[ t + 1 ].token )
