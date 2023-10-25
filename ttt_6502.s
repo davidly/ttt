@@ -32,12 +32,12 @@ board5       .eq     $37
 board6       .eq     $38
 board7       .eq     $39
 board8       .eq     $3a
-moves        .eq     $3b            ; # of moves examined so far
-moveshigh    .eq     $3c
-iters        .eq     $3d            ; # of iterations in the top-level loop
-itershigh    .eq     $3e           
-wpfun        .eq     $3f            ; temporary spot for the actual winner function pointer
-wpfunhigh    .eq     $40
+moves_lo     .eq     $3b            ; # of moves examined so far
+moves_hi     .eq     $3c
+iters_lo     .eq     $3d            ; # of iterations in the top-level loop
+iters_hi     .eq     $3e           
+wpfun_lo     .eq     $3f            ; temporary spot for the actual winner function pointer
+wpfun_hi     .eq     $40
 depth        .eq     $41            ; global for the current depth
 local_score  .eq     $42            ; just a place to temporarily stash the score
 
@@ -68,7 +68,7 @@ lose_score   .eq     4              ; losing score
 XPIECE       .eq     1              ; X move piece
 OPIECE       .eq     2              ; Y move piece
 BLANKPIECE   .eq     0              ; empty piece
-ITERATIONS   .eq     1             ; loop this many times
+ITERATIONS   .eq     100             ; loop this many times
 
 start
     lda      #$0d                   ; every apple 1 app should go to the next line on the console
@@ -77,54 +77,54 @@ start
     jsr      echo
 
     lda      #proc0                 ; put all the function pointers in the 0-page so they can be called faster
-    sta      winp0_lo+0
+    sta      winp0_lo
     lda      /proc0
-    sta      winp0_lo+1
+    sta      winp0_hi
 
     lda      #proc1
-    sta      winp0_lo+2
+    sta      winp1_lo
     lda      /proc1
-    sta      winp0_lo+3
+    sta      winp1_hi
 
     lda      #proc2
-    sta      winp0_lo+4
+    sta      winp2_lo
     lda      /proc2
-    sta      winp0_lo+5
+    sta      winp2_hi
 
     lda      #proc3
-    sta      winp0_lo+6
+    sta      winp3_lo
     lda      /proc3
-    sta      winp0_lo+7
+    sta      winp3_hi
 
     lda      #proc4
-    sta      winp0_lo+8
+    sta      winp4_lo
     lda      /proc4
-    sta      winp0_lo+9
+    sta      winp4_hi
 
     lda      #proc5
-    sta      winp0_lo+$a
+    sta      winp5_lo
     lda      /proc5
-    sta      winp0_lo+$b
+    sta      winp5_hi
 
     lda      #proc6
-    sta      winp0_lo+$c
+    sta      winp6_lo
     lda      /proc6
-    sta      winp0_lo+$d
+    sta      winp6_hi
 
     lda      #proc7
-    sta      winp0_lo+$e
+    sta      winp7_lo
     lda      /proc7
-    sta      winp0_lo+$f
+    sta      winp7_hi
 
     lda      #proc8
-    sta      winp0_lo+$10
+    sta      winp8_lo
     lda      /proc8
-    sta      winp0_lo+$11
+    sta      winp8_hi
 
     lda      #ITERATIONS
-    sta      iters
+    sta      iters_lo
     lda      /ITERATIONS
-    sta      itershigh
+    sta      iters_hi
 
     lda      #0                     ; clear the board
     sta      board
@@ -139,8 +139,8 @@ start
 
 _again
     lda      #0                     ; reset moves each iteration or it will overflow
-    sta      moves
-    sta      movesHigh
+    sta      moves_lo
+    sta      moves_hi
 
     lda      #0                     ; first X move in position 0
     jsr      runmm
@@ -149,19 +149,19 @@ _again
     lda      #4                     ; first X move in position 4
     jsr      runmm
 
-    lda      iters                  ; loop to solve it again ITERATIONS times
+    lda      iters_lo               ; loop to solve it again ITERATIONS times
     bne      _skip_iters_hi
-    dec      itershigh
+    dec      iters_hi
 _skip_iters_hi
-    dec      iters
+    dec      iters_lo
     bne      _again
-    lda      itershigh
+    lda      iters_hi
     bne      _again
 
 _done
-    lda      movesHigh              ; display the # of moves examined
+    lda      moves_hi               ; display the # of moves examined
     jsr      prbyte
-    lda      moves
+    lda      moves_lo
     jsr      prbyte
     lda      #36                    ; print a $ to indicate the app is done. useful for measuring runtime.
     jsr      echo
@@ -208,17 +208,17 @@ minmax_local_value  .eq  $0101
 ;                move  -- Y register
 
 minmax_max
-    inc      moves
-    bne      _max_skip_moves_high
-    inc      moveshigh
+    inc      moves_lo
+    bne      _max_skip_moves_hi
+    inc      moves_hi
 
-_max_skip_moves_high
+_max_skip_moves_hi
     lda      depth
     cmp      #4                     ; can't be a winner if < 4 moves so far
     bmi      _max_no_winner_check
 
-    tya                             ; y has the move position
-    ldy      #OPIECE                ; x has the most recent piece to move
+    tya                             ; a has the move position
+    ldy      #OPIECE                ; y has the most recent piece to move
     jsr      call_winnerproc
 
     cmp      #OPIECE                ; if O won, return loss
@@ -256,8 +256,8 @@ _max_loop                           ; for i = 0; i < 9; i++. i is initialized at
     jsr      minmax_min             ; recurse
     sta      local_score            ; save the score
 
-    pla                             ; alpha
-    pla                             ; beta
+    pla                             ; alpha stack cleanup
+    pla                             ; beta stack cleanup
     tsx                             ; restore x to the stack pointer location
 
     ldy      minmax_local_i, x      ; load I
@@ -286,7 +286,7 @@ _max_return_value
     lda      minmax_local_value, x  ; load value for return
 _max_return_a
     dec      depth                  ; restore to pre-recursion
-    tay
+    tay                             ; save a while the stack is cleaned up
     pla                             ; deallocate value
     pla                             ; deallocate i. plb can set D and have side-effects later
     tya
@@ -298,17 +298,17 @@ _max_return_a
 ;                move  -- Y register
 
 minmax_min
-    inc      moves
-    bne      _min_skip_moves_high
-    inc      moveshigh
+    inc      moves_lo
+    bne      _min_skip_moves_hi
+    inc      moves_hi
 
-_min_skip_moves_high
+_min_skip_moves_hi
     lda      depth
     cmp      #4                     ; can't be a winner if < 4 moves so far
     bmi      _min_no_winner_check
 
-    tya                             ; y has the move position
-    ldy      #XPIECE                ; a has the most recent piece to move
+    tya                             ; a has the move position
+    ldy      #XPIECE                ; y has the most recent piece to move
     jsr      call_winnerproc
 
     cmp      #XPIECE                ; if X won, return win
@@ -353,8 +353,8 @@ _min_loop                           ; for i = 0; i < 9; i++. i is initialized at
     jsr      minmax_max             ; recurse
     sta      local_score            ; save the score
 
-    pla                             ; alpha
-    pla                             ; beta
+    pla                             ; alpha stack cleanup
+    pla                             ; beta stack cleanup
     tsx                             ; restore x to the stack pointer location
 
     ldy      minmax_local_i, x      ; load I
@@ -383,7 +383,7 @@ _min_return_value
     lda      minmax_local_value, x  ; load value for return
 _min_return_a
     dec      depth                  ; restore depth
-    tay
+    tay                             ; save a while the stack is cleaned up
     pla                             ; deallocate value
     pla                             ; deallocate i
     tya
@@ -396,13 +396,11 @@ call_winnerproc
     asl                             ; each function pointer is 2 bytes long
     tax
     lda     winp0_lo, x
-    sta     wpfun
-
+    sta     wpfun_lo
     lda     winp0_hi, x
-    sta     wpfunhigh
-
+    sta     wpfun_hi
     tya                             ; put the piece to move in A: xpiece or opiece
-    jmp      (wpfun)                ; call it. (wpfun) will return to the caller of this function
+    jmp      (wpfun_lo)             ; call it. (wpfun_lo) will return to the caller of call_winnerproc
 
 proc0
     cmp      board1
