@@ -68,7 +68,7 @@ lose_score   .eq     4              ; losing score
 XPIECE       .eq     1              ; X move piece
 OPIECE       .eq     2              ; Y move piece
 BLANKPIECE   .eq     0              ; empty piece
-ITERATIONS   .eq     100             ; loop this many times
+ITERATIONS   .eq     1000             ; loop this many times
 
 start
     lda      #$0d                   ; every apple 1 app should go to the next line on the console
@@ -162,6 +162,12 @@ _done
     lda      moves_hi               ; display the # of moves examined
     jsr      prbyte
     lda      moves_lo
+    jsr      prbyte
+    lda      #32                    ; print a space
+    jsr      echo
+    lda      /ITERATIONS				; print # of iterations
+    jsr      prbyte
+    lda      #ITERATIONS
     jsr      prbyte
     lda      #36                    ; print a $ to indicate the app is done. useful for measuring runtime.
     jsr      echo
