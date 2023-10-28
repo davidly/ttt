@@ -427,7 +427,6 @@ _minmax_max:
     @ r11: thread-global winner function table
 
     push     {ip, lr}
-    push     {r4, r5, r7, r8}           @ save local variables for the caller
 
     add      r9, r9, #1                 @ increment global move count
 
@@ -446,14 +445,16 @@ _minmax_max:
 
   .p2align 2
   _minmax_max_skip_winner:
+    push     {r4, r5, r7, r8}           @ save local variables for the caller
     mov      r4, #minimum_score         @ the value is minimum because we're maximizing
+    add      r2, r2, #1                 @ depth++
     mov      r5, #-1                    @ avoid a jump by starting the for loop I at -1
 
   .p2align 2
   _minmax_max_top_of_loop:
-    add      r5, r5, #1
-    cmp      r5, #9
+    cmp      r5, #8
     beq      _minmax_max_loadv_done
+    add      r5, r5, #1
 
     add      r1, r10, r5
     ldrb     r0, [r1]                   @ load the board piece at I in the loop
@@ -463,21 +464,19 @@ _minmax_max:
     mov      r0, #x_piece               @ make the move
     strb     r0, [r1]
 
-    add      r2, r2, #1                 @ depth++
     bl       _minmax_min                @ recurse to the MIN
 
-    sub      r2, r2, #1                 @ back to the current depth
     add      r1, r10, r5                @ address of the board + move
     strb     r6, [r1]                   @ store blank on the board
 
     cmp      r0, #win_score             @ winning score? 
-    beq      _minmax_max_done           @ then return
+    beq      _minmax_max_restore_depth  @ then return
 
     cmp      r0, r4                     @ compare score with value
     ble      _minmax_max_top_of_loop
 
     cmp      r0, r8                     @ compare value with beta
-    bge      _minmax_max_done           @ beta pruning
+    bge      _minmax_max_restore_depth  @ beta pruning
 
     mov      r4, r0                     @ update value
     cmp      r4, r7                     @ compare value with alpha
@@ -489,29 +488,19 @@ _minmax_max:
     mov      r0, r4                     @ load the return value with value
   
   .p2align 2
-  _minmax_max_done:
+  _minmax_max_restore_depth:
+    sub      r2, r2, #1                 @ back to the current depth
     pop      {r4, r5, r7, r8}           @ restore local variables for the caller
+
+  .p2align 2
+  _minmax_max_done:
     pop      {ip, pc}
     .cfi_endproc
 
 .p2align 2
 _minmax_min:
     .cfi_startproc
-    @ r0:  workspace
-    @ r1:  workspace
-    @ r2:  argument. depth.
-    @ r3:  unused
-    @ r4:  value: local variable
-    @ r5:  argument: move. later, for loop variable I
-    @ r6:  thread-global zero
-    @ r7:  alpha
-    @ r8:  beta
-    @ r9:  thread-global move count
-    @ r10: thread-global board
-    @ r11: thread-global winner function table
-
     push     {ip, lr}
-    push     {r4, r5, r7, r8}           @ save local variables for the caller
      
     add      r9, r9, #1                 @ increment global move count
 
@@ -534,14 +523,16 @@ _minmax_min:
 
   .p2align 2
   _minmax_min_skip_winner:
+    push     {r4, r5, r7, r8}           @ save local variables for the caller
     mov      r4, #maximum_score         @ the value is maximum because we're minimizing
+    add      r2, r2, #1                 @ depth++
     mov      r5, #-1                    @ avoid a jump by starting the for loop I at -1
 
   .p2align 2
   _minmax_min_top_of_loop:
-    add      r5, r5, #1
-    cmp      r5, #9
+    cmp      r5, #8
     beq      _minmax_min_loadv_done
+    add      r5, r5, #1
 
     add      r1, r10, r5
     ldrb     r0, [r1]                   @ load the board piece at I in the loop
@@ -551,21 +542,19 @@ _minmax_min:
     mov      r0, #o_piece               @ make the move
     strb     r0, [r1]
 
-    add      r2, r2, #1                 @ depth++
     bl       _minmax_max                @ recurse to the MAX
 
-    sub      r2, r2, #1                 @ restore depth
     add      r1, r10, r5                @ address of the board + move
     strb     r6, [r1]                   @ store blank on the board
 
     cmp      r0, #lose_score            @ losing score? 
-    beq      _minmax_min_done           @ then return
+    beq      _minmax_min_restore_depth  @ then return
 
     cmp      r0, r4                     @ compare score with value
     bge      _minmax_min_top_of_loop
 
     cmp      r0, r7                     @ compare value with alpha
-    ble      _minmax_min_done           @ alpha pruning
+    ble      _minmax_min_restore_depth  @ alpha pruning
 
     mov      r4, r0                     @ update value with score
     cmp      r4, r8                     @ compare value with beta
@@ -577,8 +566,12 @@ _minmax_min:
     mov      r0, r4                     @ load the return value with value
   
   .p2align 2
-  _minmax_min_done:
+  _minmax_min_restore_depth:
+    sub      r2, r2, #1                 @ restore depth
     pop      {r4, r5, r7, r8}           @ restore local variables for the caller
+
+  .p2align 2
+  _minmax_min_done:
     pop      {ip, pc}
     .cfi_endproc
 
@@ -586,7 +579,6 @@ _minmax_min:
 .p2align 2
 _pos0func:
     .cfi_startproc
-        push     {ip, lr}
         ldrb     r1, [r10, #1]
         cmp      r0, r1
         bne      LBB3_2
@@ -610,14 +602,13 @@ _pos0func:
   LBB3_6:
         mov      r0, #0
   LBB3_7:
-        pop      {ip, pc}
+        bx       lr
     .cfi_endproc
 
 .globl _pos1func
 .p2align 2
 _pos1func:
     .cfi_startproc
-        push     {ip, lr}
         ldrb     r1, [r10]
         cmp      r0, r1
         bne      LBB4_2
@@ -634,14 +625,13 @@ _pos1func:
   LBB4_4:
         mov      r0, #0
   LBB4_5:
-        pop      {ip, pc}
+        bx       lr
     .cfi_endproc
 
 .globl _pos2func
 .p2align 2
 _pos2func:
     .cfi_startproc
-        push     {ip, lr}
         ldrb     r1, [r10]
         cmp      r0, r1
         bne      LBB5_2
@@ -665,14 +655,13 @@ _pos2func:
   LBB5_6:
         mov      r0, #0
   LBB5_7:
-        pop      {ip, pc}
+        bx       lr
     .cfi_endproc                 
 
 .globl _pos3func
 .p2align 2
 _pos3func:
     .cfi_startproc
-        push     {ip, lr}
         ldrb     r1, [r10, #4]
         cmp      r0, r1
         bne      LBB6_2
@@ -689,14 +678,13 @@ _pos3func:
   LBB6_4:
         mov      r0, #0
   LBB6_5:
-        pop      {ip, pc}
+        bx       lr
     .cfi_endproc
 
 .globl _pos4func
 .p2align 2
 _pos4func:
     .cfi_startproc
-        push     {ip, lr}
         ldrb     r1, [r10]
         cmp      r0, r1
         bne      LBB7_2
@@ -727,14 +715,13 @@ _pos4func:
   LBB7_8:
         mov      r0, #0
   LBB7_9:
-        pop      {ip, pc}
+        bx       lr
     .cfi_endproc
 
 .globl _pos5func
 .p2align 2
 _pos5func:
     .cfi_startproc
-        push     {ip, lr}
         ldrb     r1, [r10, #3]
         cmp      r0, r1
         bne      LBB8_2
@@ -751,14 +738,13 @@ _pos5func:
   LBB8_4:
         mov      r0, #0
   LBB8_5:
-        pop      {ip, pc}
+        bx       lr
     .cfi_endproc
 
 .globl _pos6func
 .p2align 2
 _pos6func:
     .cfi_startproc
-        push     {ip, lr}
         ldrb     r1, [r10, #7]
         cmp      r0, r1
         bne      LBB9_2
@@ -782,14 +768,13 @@ _pos6func:
   LBB9_6:
         mov      r0, #0
   LBB9_7:
-        pop      {ip, pc}
+        bx       lr
      .cfi_endproc
 
 .globl _pos7func
 .p2align 2
 _pos7func:
     .cfi_startproc
-        push     {ip, lr}
         ldrb     r1, [r10, #6]
         cmp      r0, r1
         bne      LBB10_2
@@ -806,14 +791,13 @@ _pos7func:
   LBB10_4:
         mov      r0, #0
   LBB10_5:
-        pop      {ip, pc}
+        bx       lr
     .cfi_endproc
 
 .globl _pos8func
 .p2align 2
 _pos8func:
     .cfi_startproc
-        push     {ip, lr}
         ldrb     r1, [r10, #6]
         cmp      r0, r1
         bne     LBB11_2
@@ -837,7 +821,7 @@ _pos8func:
   LBB11_6:
         mov      r0, #0
   LBB11_7:
-        pop      {ip, pc}
+        bx       lr
     .cfi_endproc
 
 
