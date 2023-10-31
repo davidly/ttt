@@ -319,11 +319,15 @@ NDONE:
 CALLSCOREPROC:
         add      a                  ; double the move position because function pointers are two bytes
         lxi      h, WINPROCS        ; load the pointer to the list of function pointers 0..8
-        add      l                  ; only add the lower-byte since winprocs fits in a single 256-byte area
+
+;        mvi      d, 0              ; to enable winprocs to span a 256-byte page, use this instead.
+;        mov      e, a              ; this method results in overall 1.5% more cpu cycles.
+;        dad      d                 ; mvi is 7 cycles. dad is 10, add is 4, mov is 7. 27 > 11
+        add      l                  ; only add the lower-byte since winprocs fits in a single 256-byte page
         mov      l, a
 
         mov      e, m               ; load the low byte of the proc address
-        inx      h                  ; increment the pointer to the next byte
+        inx      h                  ; increment the pointer to the next byte. inx and inr are both 5 cycles.
         mov      d, m               ; load the high byte of the proc address
         xchg                        ; exchange de and hl
         mov      a, b               ; put the player move (X or O) in a
@@ -587,6 +591,15 @@ negatehl:
 ; incredibly slow iterative addition.
 
 imul:
+        mov      a, l               ; first check if hl is 0 and just return if so
+        cpi      0
+        jnz      mul$start
+        mov      a, h
+        cpi      0
+        jnz      mul$start
+        ret
+
+  mul$start:
         push     b
         mvi      b, 80h
         mov      a, h
@@ -662,37 +675,27 @@ atou:                               ; in: hl points to string. out: hl has integ
         ret
 
 DisplayOneCharacter:                ; display the character in a
-        push    b
-        push    d
-        push    h
+        push    b ! push d ! push h
 
         mvi     c, WCONF
         mov     e, a
         call    BDOS
 
-        pop     h
-        pop     d
-        pop     b
+        pop     h ! pop d ! pop b
         ret
 
 DisplayDigit:                       ; Argument # 0-9 is in register B
-        push    b
-        push    d
-        push    h
+        push    b ! push d ! push h
 
         mvi     a, 48
         add     b
         call    DisplayOneCharacter
 
-        pop     h
-        pop     d
-        pop     b
+        pop     h ! pop d ! pop b
         ret
 
 DISPLY:                             ; display null-terminated string pointed to by hl
-        push    h
-        push    d
-        push    b
+        push    b ! push d ! push h
 
         mov     b, h
         mov     c, l
@@ -706,9 +709,7 @@ DISPLY:                             ; display null-terminated string pointed to 
         jmp     DNEXT
 
   DDONE:
-        pop     b
-        pop     d
-        pop     h
+        pop     h ! pop d ! pop b
         ret
 
 PUTHL:                              ; print the signed 16-bit number in HL
