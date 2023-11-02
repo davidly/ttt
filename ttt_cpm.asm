@@ -203,7 +203,7 @@ XLOOP:
 
         lxi     h, V
         cmp     m                   ; compare score with value
-        jz      XLOOP            ; no j <= instruction on 8080
+        jz      XLOOP               ; no j <= instruction on 8080
         jm      XLOOP
 
         mov     m, a                ; update value with score
@@ -213,7 +213,7 @@ XLOOP:
 
         lxi     h, ALPHA            ; save the address of alpha
         cmp     m                   ; compare value with alpha
-        jz      XLOOP            ; no j <= instruction on 8080
+        jz      XLOOP               ; no j <= instruction on 8080
         jm      XLOOP
 
         mov     m, a                ; update alpha with value
@@ -337,7 +337,7 @@ proc0:
         lxi      h, BOARD + 1
         cmp      m
         jnz      proc0nextwin
-        lxi      h, BOARD + 2
+        inx      h ; to 2
         cmp      m
         rz
 
@@ -385,7 +385,7 @@ proc2:
         lxi      h, BOARD + 0
         cmp      m
         jnz      proc2nextwin
-        lxi      h, BOARD + 1
+        inx      h ; to 1
         cmp      m
         rz
 
@@ -469,7 +469,7 @@ proc5:
         lxi      h, BOARD + 3
         cmp      m
         jnz      proc5nextwin
-        lxi      h, BOARD + 4
+        inx      h ; to 4
         cmp      m
         rz
 
@@ -505,7 +505,7 @@ proc6:
         lxi      h, BOARD + 7
         cmp      m
         jnz      proc6no
-        lxi      h, BOARD + 8
+        inx      h ; to 8
         cmp      m
         rz
 
@@ -553,7 +553,7 @@ proc8:
         lxi      h, BOARD + 6
         cmp      m
         jnz      proc8no
-        lxi      h, BOARD + 7
+        inx      h ; to 7
         cmp      m
         rz
 
