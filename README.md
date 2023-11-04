@@ -138,6 +138,6 @@ To run ttt_trs80.asm on a TRS-80. (renamed as ttt.asm)
             Run lt.ba, which loads t.do, converts it to binary in RAM, and executes the app
 
 The table below shows runtimes of various implementations on various devices physical, virtual, and imaginary (WOPR).
-![table](https://github.com/davidly/ttt/assets/1497921/11c5b8f5-c07d-4084-a6df-012617817c79)
-![slide](https://github.com/davidly/ttt/assets/1497921/1415ed8a-1b1c-4e29-8658-9931c0f7d7f2)
 
+![table](https://github.com/davidly/ttt/assets/1497921/ed496868-7de6-4cd6-9fac-5a176bf186a9)
+![slide](https://github.com/davidly/ttt/assets/1497921/b654c64c-030d-4d76-945b-daba53e2c29c)
