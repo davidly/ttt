@@ -7,11 +7,20 @@
 
     #if _MSC_VER > 1200  // not sure when this actually starts working
         #define USE_CHRONO
+    #else
+        typedef unsigned __int64 uint64_t;
     #endif
 
     typedef unsigned __int64 LoopType;
 
-#else // _WIN32
+#elif defined( WATCOM )
+
+    #include <stdlib.h>
+    #include <stdint.h>
+    #include <string.h>
+    typedef uint32_t LoopType;
+
+#else
 
     #define USE_CHRONO
     #include <pthread.h>
@@ -35,6 +44,26 @@
     long GetMilliseconds( ticktype nowTicks, ticktype thenTicks )
     {
         return (long) duration_cast<std::chrono::milliseconds>( nowTicks - thenTicks ).count();
+    }
+
+#elif defined( WATCOM )
+
+    #include <dos.h>
+    typedef uint32_t ticktype;
+    ticktype GetTicks()
+    {
+        struct dostime_t tNow;
+        _dos_gettime( &tNow );
+        uint32_t t = (uint32_t) tNow.hour * 60 * 60 * 100;
+        t += (uint32_t) tNow.minute * 60 * 100;
+        t += (uint32_t) tNow.second * 100;
+        t += (uint32_t) tNow.hsecond;
+        return t * 10;
+    } //GetTicks
+
+    long GetMilliseconds( ticktype nowTicks, ticktype thenTicks )
+    {
+        return nowTicks - thenTicks;
     }
 
 #else // USE_CHRONO
@@ -239,7 +268,7 @@ void Sp( int x )
         printf( " " );
 }
 
-int MinMax( char * board, int alpha, int beta, int depth, int move, uint64_t & moveCount )
+int MinMax( char * board, int alpha, int beta, int depth, int move, LoopType & moveCount )
 {
     moveCount++;
 
@@ -267,8 +296,9 @@ int MinMax( char * board, int alpha, int beta, int depth, int move, uint64_t & m
 
     int value;
     char pieceMove;
+    depth++;
 
-    if ( depth & 1 ) //maximize
+    if ( ! ( depth & 1 ) ) // maximize
     {
         value = SCORE_MIN;
         pieceMove = PieceX;
@@ -284,10 +314,10 @@ int MinMax( char * board, int alpha, int beta, int depth, int move, uint64_t & m
         if ( PieceBlank == board[ p ] )
         {
             board[p] = pieceMove;
-            int score = MinMax( board, alpha, beta, depth + 1, p, moveCount );
+            int score = MinMax( board, alpha, beta, depth, p, moveCount );
             board[p] = PieceBlank;
 
-            if ( depth & 1 ) //maximize 
+            if ( ! ( depth & 1 ) ) // maximize 
             {
                 if ( WinLosePrune && SCORE_WIN == score )
                     return SCORE_WIN;
@@ -331,6 +361,8 @@ int MinMax( char * board, int alpha, int beta, int depth, int move, uint64_t & m
 
 #ifdef _WIN32
     DWORD WINAPI
+#elif defined( WATCOM )
+    LoopType
 #else
     void * 
 #endif
@@ -341,13 +373,15 @@ TTTThreadProc( void * param )
     char board[ 9 ];
     memset( board, 0, sizeof board );
     board[ position ] = PieceX;
-    uint64_t moveCount = 0;
+    LoopType moveCount = 0;
 
     for ( LoopType times = 0; times < loopCount; times++ )
         MinMax( board, SCORE_MIN, SCORE_MAX, 0, position, moveCount );
 
 #ifdef _WIN32
     return (DWORD) moveCount;
+#elif defined( WATCOM )
+    return moveCount;
 #else
     return (void *) moveCount;
 #endif
@@ -395,7 +429,7 @@ int main( int argc, char * argv[] )
         }
     }
 
-#elif !defined(__APPLE__)
+#elif !defined(__APPLE__) && !defined(WATCOM)
 
     //{
     //    cpu_set_t mask;
@@ -449,6 +483,9 @@ int main( int argc, char * argv[] )
     DWORD dwID = 0; // required for Win98. On NT you can pass 0.
     aHandles[ 0 ] = CreateThread( 0, 0, TTTThreadProc, (void *) 0, 0, &dwID );
     aHandles[ 1 ] = CreateThread( 0, 0, TTTThreadProc, (void *) 4, 0, &dwID );
+#elif defined( WATCOM )
+    parallelRan = false;
+    goto no_threads;
 #else
     pthread_t threads[ 2 ];
     int ret = pthread_create( &threads[ 0 ], 0, TTTThreadProc, (void *) 0 ); 
@@ -472,6 +509,7 @@ int main( int argc, char * argv[] )
     moveCountParallel += dw;
     CloseHandle( aHandles[ 0 ] );
     CloseHandle( aHandles[ 1 ] );
+#elif defined( WATCOM )
 #else
     void * moveCounts[2];
     pthread_join( threads[ 0 ], &moveCounts[0] );
