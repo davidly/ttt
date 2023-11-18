@@ -139,5 +139,7 @@ To run ttt_trs80.asm on a TRS-80. (renamed as ttt.asm)
 
 The table below shows runtimes of various implementations on various devices physical, virtual, and imaginary (WOPR).
 ![slide](https://github.com/davidly/ttt/assets/1497921/a33e692c-47eb-4fcf-9c0a-3f1f0babe681)
-![table](https://github.com/davidly/ttt/assets/1497921/e4c8d74d-ec09-4739-8d7b-4100f6b23128)
+![table](https://github.com/davidly/ttt/assets/1497921/e7ffb8a1-eb28-467e-97e7-efa8c625fad0)
+
+
 
