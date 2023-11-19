@@ -116,7 +116,6 @@
     (return piece-blank)
 ))
 
-(setq procs (hunk proc0 proc1 proc2 proc3 proc4 proc5 proc6 proc7 proc8))
 
 (defun mmMax (alpha beta depth move) (prog (i value nextDepth) ; this is how local variables are declared
     (setq moves (+ 1 moves))
@@ -124,6 +123,7 @@
 
     (cond ((> depth 3)
            ;(setq win (winner)) ; almost 2x slower than using procs
+           ;(setq win (funcall (concat 'proc move))) ; slower than using the procs hunk
            (setq win (funcall (cxr move procs)))
            (cond ((= win piece-o) (return score-lose))))
     )
@@ -162,6 +162,7 @@
 
     (cond ((> depth 3)
            ;(setq win (winner)) ; almost 2x slower than using procs
+           ;(setq win (funcall (concat 'proc move))) ; slower than using the procs hunk
            (setq win (funcall (cxr move procs)))
            (cond ((= win piece-x) (return score-win))
                  ((= depth 8) (return score-tie))
@@ -201,6 +202,8 @@
     (mmMin score-min score-max 0 position)
     (rplacx position board piece-blank)
 )
+
+(setq procs (hunk proc0 proc1 proc2 proc3 proc4 proc5 proc6 proc7 proc8))
 
 ; solve for each of the 3 unique (after reflections) opening moves
 (setq startTime (sys:time))
