@@ -1,9 +1,9 @@
-; Prove you can't win at tic-tac-toe if the oppontent is competent
+; Prove you can't win at tic-tac-toe if the opponent is competent.
 ; Tested with PC-LISP V3.00. Likely won't work with more modern LISP implementations.
 ; This takes roughly half an hour to run on a 4.77Mhz 8088.
-; This runs in about 4 seconds in the NTVDM emulator on an AMD 5950x
+; This runs in about 3.4 seconds in the NTVDM emulator on an AMD 5950x
 ; I am not proficient in LISP; there are likely easy ways to improve performance.
-; More recent versions of LISP have functions including:
+; More recent versions of LISP have helpful functions including:
 ;    /= not equal
 ;    bitwise operators like logand
 ;    byte datatype instead of 4-byte integers
@@ -16,7 +16,7 @@
 (setq score-min 2)
 (setq piece-blank 0)
 (setq piece-x 1)
-(setq piece-y 2)
+(setq piece-o 2)
 (setq moves 0)
 (setq board (hunk 0 0 0 0 0 0 0 0 0))
 
@@ -118,61 +118,77 @@
 
 (setq procs (hunk proc0 proc1 proc2 proc3 proc4 proc5 proc6 proc7 proc8))
 
-(defun minmax (alpha beta depth move) (prog (i value score halt pieceMove nextDepth) ; this is how local variables are declared
+(defun mmMax (alpha beta depth move) (prog (i value nextDepth) ; this is how local variables are declared
     (setq moves (+ 1 moves))
-    ;(princ board) (princ " ") (princ alpha) (princ " ") (princ beta) (princ " ") (princ move) (princ " ") (princ depth) (princ "\n")
+    ;(princ "max: ") (princ board) (princ " ") (princ alpha) (princ " ") (princ beta) (princ " ") (princ move) (princ " ") (princ depth) (princ "\n")
+
+    (cond ((> depth 3)
+           ;(setq win (winner)) ; almost 2x slower than using procs
+           (setq win (funcall (cxr move procs)))
+           (cond ((= win piece-o) (return score-lose))))
+    )
+
+    (setq value score-min)
+    (setq nextDepth (+ 1 depth))
+    (setq i 0)
+    _nexti_
+    (cond ((= (b i) piece-blank)
+           (rplacx i board piece-x)
+           (setq score (mmMin alpha beta nextDepth i))
+           (rplacx i board piece-blank)
+
+           (cond ((= score score-win) 
+                  (return score-win)) 
+                 ((> score value)
+                  (setq value score)
+                  (cond ((>= value beta)
+                         (return value))
+                        ((> value alpha)
+                         (setq alpha value))))
+           ))
+    )
+
+    (cond ((< i 8)
+           (setq i (+ i 1))
+           (go _nexti_))
+    )
+
+    (return value)
+))
+
+(defun mmMin (alpha beta depth move) (prog (i value nextDepth) ; this is how local variables are declared
+    (setq moves (+ 1 moves))
+    ;(princ "min: ") (princ board) (princ " ") (princ alpha) (princ " ") (princ beta) (princ " ") (princ move) (princ " ") (princ depth) (princ "\n")
 
     (cond ((> depth 3)
            ;(setq win (winner)) ; almost 2x slower than using procs
            (setq win (funcall (cxr move procs)))
            (cond ((= win piece-x) (return score-win))
-                 ((= win piece-y) (return score-lose))
                  ((= depth 8) (return score-tie))
            ))
     )
 
-    (cond ((evenp depth)
-           (setq value score-max)
-           (setq pieceMove piece-y))
-          (t ; else
-           (setq value score-min)
-           (setq pieceMove piece-x))
-    )
-
+    (setq value score-max)
     (setq nextDepth (+ 1 depth))
     (setq i 0)
     _nexti_
     (cond ((= (b i) piece-blank)
-           (rplacx i board pieceMove)
-           (setq score (minmax alpha beta nextDepth i))
+           (rplacx i board piece-o)
+           (setq score (mmMax alpha beta nextDepth i))
            (rplacx i board piece-blank)
 
-           (cond ((oddp depth)
-                  (cond ((= score score-win) 
-                         (setq halt t)) ; return doesn't work in pc-lisp in this context (3 deep in cond)
-                  )
-                  (cond ((> score value)
-                         (setq value score)
-                         (cond ((>= value beta)
-                                (setq halt t)))
-                         (cond ((> value alpha)
-                                (setq alpha value))))
-                  ))
-                 (t ; lisp for else
-                  (cond ((= score score-lose) 
-                         (setq halt t))
-                  )
-                  (cond ((< score value)
-                         (setq value score)
-                         (cond ((<= value alpha)
-                                (setq halt t)))
-                         (cond ((< value beta)
-                                (setq beta value))))
-                  ))
+           (cond ((= score score-lose) 
+                  (return score-lose)) 
+                 ((< score value)
+                  (setq value score)
+                  (cond ((<= value alpha)
+                         (return value)) 
+                        ((< value beta)
+                         (setq beta value))))
            ))
     )
 
-    (cond ((and (not halt) (< i 8))
+    (cond ((< i 8)
            (setq i (+ i 1))
            (go _nexti_))
     )
@@ -182,16 +198,19 @@
 
 (defun runmm ( position )
     (rplacx position board piece-x)
-    (minmax score-min score-max 0 position)
+    (mmMin score-min score-max 0 position)
     (rplacx position board piece-blank)
 )
 
 ; solve for each of the 3 unique (after reflections) opening moves
+(setq startTime (sys:time))
 (runmm 0)
 (runmm 1)
 (runmm 4)
+(setq endTime (sys:time))
 
 (princ "moves: ") (princ moves) (princ "\n") ; should be 6493
+(princ "elapsed seconds: ") (princ (- endTime startTime)) (princ "\n")
 
 ;(princ "memstat:         ") (princ (memstat)) (princ "\n")
 ;(gc)
