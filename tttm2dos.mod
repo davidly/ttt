@@ -12,12 +12,8 @@ FROM SYSTEM IMPORT WORD, BYTE, ADDRESS;
 FROM NumberConversion IMPORT StringToCard;
 FROM Strings IMPORT Assign;
 FROM DOS3 IMPORT GetProgramSegmentPrefix;
-
-IMPORT InOut;
-FROM InOut IMPORT WriteLn, WriteInt, WriteString, ReadString;
-
-IMPORT TimeDate;
-FROM TimeDate IMPORT Time, GetTime, TimeToString;
+FROM InOut IMPORT WriteLn, WriteInt, WriteCard, WriteString;
+FROM TimeDate IMPORT Time, GetTime;
 
 CONST
     scoreWin = 6;
@@ -43,8 +39,7 @@ VAR
     procs : ARRAY[ 0..8 ] OF scoreProc;
 
 PROCEDURE lookForWinner() : CARDINAL;
-VAR
-    t : CARDINAL;
+VAR t : CARDINAL;
 BEGIN
     t := board[ 0 ];
     IF pieceBlank <> t THEN
@@ -78,11 +73,9 @@ BEGIN
 END lookForWinner;
 
 PROCEDURE proc0() : CARDINAL;
-VAR
-    x : CARDINAL;
+VAR x : CARDINAL;
 BEGIN
     x := board[0];
-    
     IF ( ( ( x = board[1] ) AND ( x = board[2] ) ) OR
          ( ( x = board[3] ) AND ( x = board[6] ) ) OR
          ( ( x = board[4] ) AND ( x = board[8] ) ) )
@@ -91,11 +84,9 @@ BEGIN
 END proc0;
 
 PROCEDURE proc1() : CARDINAL;
-VAR
-    x : CARDINAL;
+VAR x : CARDINAL;
 BEGIN
     x := board[1];
-    
     IF ( ( ( x = board[0] ) AND ( x = board[2] ) ) OR
          ( ( x = board[4] ) AND ( x = board[7] ) ) )
         THEN RETURN x; END;
@@ -103,11 +94,9 @@ BEGIN
 END proc1;
 
 PROCEDURE proc2() : CARDINAL;
-VAR
-    x : CARDINAL;
+VAR x : CARDINAL;
 BEGIN
     x := board[2];
-    
     IF ( ( ( x = board[0] ) AND ( x = board[1] ) ) OR
          ( ( x = board[5] ) AND ( x = board[8] ) ) OR
          ( ( x = board[4] ) AND ( x = board[6] ) ) )
@@ -116,11 +105,9 @@ BEGIN
 END proc2;
 
 PROCEDURE proc3() : CARDINAL;
-VAR
-    x : CARDINAL;
+VAR x : CARDINAL;
 BEGIN
     x := board[3];
-    
     IF ( ( ( x = board[4] ) AND ( x = board[5] ) ) OR
          ( ( x = board[0] ) AND ( x = board[6] ) ) )
         THEN RETURN x; END;
@@ -128,11 +115,9 @@ BEGIN
 END proc3;
 
 PROCEDURE proc4() : CARDINAL;
-VAR
-    x : CARDINAL;
+VAR x : CARDINAL;
 BEGIN
     x := board[4];
-    
     IF ( ( ( x = board[0] ) AND ( x = board[8] ) ) OR
          ( ( x = board[2] ) AND ( x = board[6] ) ) OR
          ( ( x = board[1] ) AND ( x = board[7] ) ) OR
@@ -142,11 +127,9 @@ BEGIN
 END proc4;
 
 PROCEDURE proc5() : CARDINAL;
-VAR
-    x : CARDINAL;
+VAR x : CARDINAL;
 BEGIN
     x := board[5];
-    
     IF ( ( ( x = board[3] ) AND ( x = board[4] ) ) OR
          ( ( x = board[2] ) AND ( x = board[8] ) ) )
         THEN RETURN x; END;
@@ -154,11 +137,9 @@ BEGIN
 END proc5;
 
 PROCEDURE proc6() : CARDINAL;
-VAR
-    x : CARDINAL;
+VAR x : CARDINAL;
 BEGIN
     x := board[6];
-    
     IF ( ( ( x = board[7] ) AND ( x = board[8] ) ) OR
          ( ( x = board[0] ) AND ( x = board[3] ) ) OR
          ( ( x = board[4] ) AND ( x = board[2] ) ) )
@@ -167,11 +148,9 @@ BEGIN
 END proc6;
 
 PROCEDURE proc7() : CARDINAL;
-VAR
-    x : CARDINAL;
+VAR x : CARDINAL;
 BEGIN
     x := board[7];
-    
     IF ( ( ( x = board[6] ) AND ( x = board[8] ) ) OR
          ( ( x = board[1] ) AND ( x = board[4] ) ) )
         THEN RETURN x; END;
@@ -179,11 +158,9 @@ BEGIN
 END proc7;
 
 PROCEDURE proc8() : CARDINAL;
-VAR
-    x : CARDINAL;
+VAR x : CARDINAL;
 BEGIN
     x := board[8];
-    
     IF ( ( ( x = board[6] ) AND ( x = board[7] ) ) OR
          ( ( x = board[2] ) AND ( x = board[5] ) ) OR
          ( ( x = board[0] ) AND ( x = board[4] ) ) )
@@ -192,8 +169,7 @@ BEGIN
 END proc8;
 
 PROCEDURE minmax( alpha: CARDINAL; beta: CARDINAL; move: CARDINAL; depth: CARDINAL ): CARDINAL;
-VAR
-    p, value, pieceMove, score : CARDINAL;
+VAR p, value, pieceMove, score : CARDINAL;
 BEGIN
     evaluated := evaluated + 1;
     value := scoreInvalid;
@@ -250,38 +226,23 @@ BEGIN
     RETURN value;
 END minmax;
 
-PROCEDURE TimeStr( t: Time; VAR s: ARRAY OF CHAR );
-    VAR
-        hour, minute, second, ms: CARDINAL;
-        str : ARRAY [0..17] OF CHAR;
-
-    PROCEDURE NumToStr( a, n : CARDINAL );
-    BEGIN
-        str[a]   := CHR( n DIV 10 + ORD( '0' ) );
-        str[a+1] := CHR( n MOD 10 + ORD( '0') ); 
-    END NumToStr;
-
+PROCEDURE TimeStamp() : CARDINAL;
+VAR
+    t : Time;
+    hour, minute, second, hs: CARDINAL;
 BEGIN
-    ms := ( t.millisec DIV 10 ) MOD 100;
+    GetTime( t );
+
+    hs := ( t.millisec DIV 10 ) MOD 100;
     second := t.millisec DIV 1000;
     minute := t.minute MOD 60;
     hour := t.minute DIV 60;
 
-    NumToStr( 9, ms );
-    str[8] := '.';
-    NumToStr( 6, second );
-    str[5] := ':';
-    NumToStr( 3, minute );
-    str[2] := ':';
-    NumToStr( 0, hour );
-
-    str[11] := 0c;
-    Assign( str, s );
-END TimeStr;
+    RETURN hs + second * 100 + minute * 60 * 100; (* hundredths of a second *)
+END TimeStamp;
 
 PROCEDURE runit( move : CARDINAL );
-VAR
-    score : CARDINAL;
+VAR score : CARDINAL;
 BEGIN
     board[move] := pieceX;
     score := minmax( scoreMin, scoreMax, move, 0 );
@@ -290,14 +251,13 @@ END runit;
 
 (* Exhibits #327, 328, and 329 of why Modula-2 never took off *)
 PROCEDURE CommandTail( VAR s: ARRAY OF CHAR );
-    VAR PSPSegment, w, wch : WORD;
-        str : ARRAY [0..127] OF CHAR;
-        a : ADDRESS;
-        i : CARDINAL;
-        c : CHAR;
+VAR
+    PSPSegment, w, wch : WORD;
+    a : ADDRESS;
+    i : CARDINAL;
 BEGIN
     PSPSegment := WORD( 0 );
-    str[ 0 ] := 0c;
+    s[ 0 ] := 0c;
     GetProgramSegmentPrefix( PSPSegment );
 
     IF ( WORD( 0 ) <> PSPSegment ) THEN
@@ -311,30 +271,24 @@ BEGIN
                 a.OFFSET := CARDINAL( 128 ) + CARDINAL( 2 ) + CARDINAL( i );
                 wch := a^;
                 wch := WORD( BITSET( wch ) * BITSET( 255 ) );
-                str[ i ] := CHAR( VAL( BYTE, INTEGER( wch ) ) ); (* is there a better cast? *)
+                s[ i ] := CHAR( VAL( BYTE, INTEGER( wch ) ) ); (* is there a better cast? *)
             END;
-            str[ CARDINAL( w ) - 1 ] := 0c;
+            s[ CARDINAL( w ) - 1 ] := 0c;
         END;
     END;
-    Assign( str, s );
 END CommandTail;
 
 VAR
     i, loops : CARDINAL;
     result : BOOLEAN;
     cmd : ARRAY[0..127] OF CHAR;
-    time : ARRAY[0..20] OF CHAR;
-    tstart, tend : Time;
     done : BOOLEAN;
+    tsstart, tsend : CARDINAL;
 BEGIN
     loops := 0;
     CommandTail( cmd );
     StringToCard( cmd, loops, done );
     IF ( loops = 0 ) THEN loops := defaultIterations; END;
-
-    GetTime( tstart );
-    TimeStr( tstart, time );
-    WriteString( time ); WriteLn;
 
     procs[ 0 ] := proc0;
     procs[ 1 ] := proc1;
@@ -346,10 +300,11 @@ BEGIN
     procs[ 7 ] := proc7;
     procs[ 8 ] := proc8;
 
-
     FOR i := 0 TO 8 DO
         board[i] := pieceBlank;
     END;
+
+    tsstart := TimeStamp();
 
     FOR i := 1 TO loops DO
         evaluated := 0;  (* once per loop to prevent overflow *)
@@ -358,15 +313,10 @@ BEGIN
         runit( 4 );
     END;
 
-    GetTime( tend );
-    TimeStr( tend, time );
-    WriteString( time ); WriteLn;
+    tsend := TimeStamp();
 
-    WriteString( "moves evaluated: " );
-    WriteInt( evaluated, 5 );
-    WriteLn;
-    WriteString( "iterations:      " );
-    WriteInt( loops, 5 );
-    WriteLn;
+    WriteString( "elapsed hundredths of a second: " ); WriteCard( tsend - tsstart, 8 ); WriteLn;
+    WriteString( "moves evaluated:                " ); WriteInt( evaluated, 8 ); WriteLn;
+    WriteString( "iterations:                     " ); WriteInt( loops, 8 ); WriteLn;
 END ttt.
 

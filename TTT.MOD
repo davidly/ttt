@@ -1,4 +1,12 @@
-(* Turbo Modula 2 version of proving you can't win at tic-tac-toe if the opponent is competent *)
+(*  Turbo Modula 2 version of proving you can't win at tic-tac-toe if the opponent is competent
+
+    In order for turbo modula 2 to produce a .com file:
+    
+    1) go in Options and select Native
+    2) when Linking, specify xxx.com as the output file
+    
+    otherwise it'll build a p-code .mcd file, not a Z80 code .com file.
+*)
 
 MODULE ttt;
 
@@ -29,8 +37,7 @@ VAR
     procs : ARRAY[ 0..8 ] OF scoreProc;
 
 PROCEDURE lookForWinner() : CARDINAL;
-VAR
-    t : CARDINAL;
+VAR t : CARDINAL;
 BEGIN
     t := board[ 0 ];
     IF pieceBlank <> t THEN
@@ -64,11 +71,9 @@ BEGIN
 END lookForWinner;
 
 PROCEDURE proc0() : CARDINAL;
-VAR
-    x : CARDINAL;
+VAR x : CARDINAL;
 BEGIN
     x := board[0];
-    
     IF ( ( ( x = board[1] ) AND ( x = board[2] ) ) OR
          ( ( x = board[3] ) AND ( x = board[6] ) ) OR
          ( ( x = board[4] ) AND ( x = board[8] ) ) )
@@ -77,11 +82,9 @@ BEGIN
 END proc0;
 
 PROCEDURE proc1() : CARDINAL;
-VAR
-    x : CARDINAL;
+VAR x : CARDINAL;
 BEGIN
     x := board[1];
-    
     IF ( ( ( x = board[0] ) AND ( x = board[2] ) ) OR
          ( ( x = board[4] ) AND ( x = board[7] ) ) )
         THEN RETURN x; END;
@@ -89,11 +92,9 @@ BEGIN
 END proc1;
 
 PROCEDURE proc2() : CARDINAL;
-VAR
-    x : CARDINAL;
+VAR x : CARDINAL;
 BEGIN
     x := board[2];
-    
     IF ( ( ( x = board[0] ) AND ( x = board[1] ) ) OR
          ( ( x = board[5] ) AND ( x = board[8] ) ) OR
          ( ( x = board[4] ) AND ( x = board[6] ) ) )
@@ -102,11 +103,9 @@ BEGIN
 END proc2;
 
 PROCEDURE proc3() : CARDINAL;
-VAR
-    x : CARDINAL;
+VAR x : CARDINAL;
 BEGIN
     x := board[3];
-    
     IF ( ( ( x = board[4] ) AND ( x = board[5] ) ) OR
          ( ( x = board[0] ) AND ( x = board[6] ) ) )
         THEN RETURN x; END;
@@ -114,11 +113,9 @@ BEGIN
 END proc3;
 
 PROCEDURE proc4() : CARDINAL;
-VAR
-    x : CARDINAL;
+VAR x : CARDINAL;
 BEGIN
     x := board[4];
-    
     IF ( ( ( x = board[0] ) AND ( x = board[8] ) ) OR
          ( ( x = board[2] ) AND ( x = board[6] ) ) OR
          ( ( x = board[1] ) AND ( x = board[7] ) ) OR
@@ -128,11 +125,9 @@ BEGIN
 END proc4;
 
 PROCEDURE proc5() : CARDINAL;
-VAR
-    x : CARDINAL;
+VAR x : CARDINAL;
 BEGIN
     x := board[5];
-    
     IF ( ( ( x = board[3] ) AND ( x = board[4] ) ) OR
          ( ( x = board[2] ) AND ( x = board[8] ) ) )
         THEN RETURN x; END;
@@ -140,11 +135,9 @@ BEGIN
 END proc5;
 
 PROCEDURE proc6() : CARDINAL;
-VAR
-    x : CARDINAL;
+VAR x : CARDINAL;
 BEGIN
     x := board[6];
-    
     IF ( ( ( x = board[7] ) AND ( x = board[8] ) ) OR
          ( ( x = board[0] ) AND ( x = board[3] ) ) OR
          ( ( x = board[4] ) AND ( x = board[2] ) ) )
@@ -153,11 +146,9 @@ BEGIN
 END proc6;
 
 PROCEDURE proc7() : CARDINAL;
-VAR
-    x : CARDINAL;
+VAR x : CARDINAL;
 BEGIN
     x := board[7];
-    
     IF ( ( ( x = board[6] ) AND ( x = board[8] ) ) OR
          ( ( x = board[1] ) AND ( x = board[4] ) ) )
         THEN RETURN x; END;
@@ -165,11 +156,9 @@ BEGIN
 END proc7;
 
 PROCEDURE proc8() : CARDINAL;
-VAR
-    x : CARDINAL;
+VAR x : CARDINAL;
 BEGIN
     x := board[8];
-    
     IF ( ( ( x = board[6] ) AND ( x = board[7] ) ) OR
          ( ( x = board[2] ) AND ( x = board[5] ) ) OR
          ( ( x = board[0] ) AND ( x = board[4] ) ) )
@@ -178,8 +167,7 @@ BEGIN
 END proc8;
 
 PROCEDURE minmax( alpha: CARDINAL; beta: CARDINAL; move: CARDINAL; depth: CARDINAL ): CARDINAL;
-VAR
-    p, value, pieceMove, score : CARDINAL;
+VAR p, value, pieceMove, score : CARDINAL;
 BEGIN
     evaluated := evaluated + 1;
     value := scoreInvalid;
@@ -237,8 +225,7 @@ BEGIN
 END minmax;
 
 PROCEDURE runit( move : CARDINAL );
-VAR
-    score: CARDINAL;
+VAR score : CARDINAL;
 BEGIN
     board[move] := pieceX;
     score := minmax( scoreMin, scoreMax, move, 0 );
@@ -248,7 +235,7 @@ END runit;
 VAR
     i, loops : CARDINAL;
     result : BOOLEAN;
-    cmd : ARRAY[0..10] OF CHAR;
+    cmd : ARRAY[0..127] OF CHAR;
 BEGIN
     procs[ 0 ] := proc0;
     procs[ 1 ] := proc1;
