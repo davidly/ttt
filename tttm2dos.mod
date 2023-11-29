@@ -34,7 +34,7 @@ TYPE
     scoreProc = PROCEDURE() : CARDINAL;
 
 VAR
-    evaluated: CARDINAL;
+    evaluated: CARDINAL; (* # of board positions evaluated *)
     board: boardType;
     procs : ARRAY[ 0..8 ] OF scoreProc;
 
@@ -236,9 +236,10 @@ BEGIN
     hs := ( t.millisec DIV 10 ) MOD 100;
     second := t.millisec DIV 1000;
     minute := t.minute MOD 60;
-    hour := t.minute DIV 60;
+    hour := t.minute DIV 60; (* no 4-byte integers so ignore hours *)
 
-    RETURN hs + second * 100 + minute * 60 * 100; (* hundredths of a second *)
+    (* hundredths of a second since CARDINAL is just 2-bytes and DOS only offers this precision *)
+    RETURN hs + second * 100 + minute * 60 * 100;
 END TimeStamp;
 
 PROCEDURE runit( move : CARDINAL );
@@ -266,11 +267,11 @@ BEGIN
         w := a^; (* can only read WORDs, not BYTEs *)
         w := WORD( BITSET( w ) * BITSET( 255 ) );
 
-        IF ( w > WORD( 1 ) ) THEN
+        IF ( w > WORD( 1 ) ) THEN (* 0 for no arguments otherwise >= 2 since args start with a space *)
             FOR i := 0 TO CARDINAL( w ) - 2 DO
                 a.OFFSET := CARDINAL( 128 ) + CARDINAL( 2 ) + CARDINAL( i );
                 wch := a^;
-                wch := WORD( BITSET( wch ) * BITSET( 255 ) );
+                wch := WORD( BITSET( wch ) * BITSET( 255 ) ); (* bitwise AND to get lower byte *)
                 s[ i ] := CHAR( VAL( BYTE, INTEGER( wch ) ) ); (* is there a better cast? *)
             END;
             s[ CARDINAL( w ) - 1 ] := 0c;
@@ -279,11 +280,9 @@ BEGIN
 END CommandTail;
 
 VAR
-    i, loops : CARDINAL;
-    result : BOOLEAN;
+    i, loops, tsstart, tsend : CARDINAL;
     cmd : ARRAY[0..127] OF CHAR;
     done : BOOLEAN;
-    tsstart, tsend : CARDINAL;
 BEGIN
     loops := 0;
     CommandTail( cmd );
