@@ -2,8 +2,6 @@
 --    Build like this:
 --        ntvcm janus %1 /L
 --        ntvcm jlink %1
---    Note: this doesn't compile and I can't find a manual for function pointers in Janus Ada
---          type scoreproc is access function return integer;
 
 With Util, Strlib;
 
@@ -57,6 +55,99 @@ begin
     return PieceBlank;
 end LookForWinner;
 
+function pos0func( x : in integer )  return integer is
+begin
+    if ( ( x = board(1) and x = board(2) ) or
+         ( x = board(3) and x = board(6) ) or
+         ( x = board(4) and x = board(8) ) ) then return x; end if;
+    return PieceBlank;
+end pos0func;
+
+function pos1func( x : in integer )  return integer is
+begin
+    if ( ( x = board(0) and x = board(2) ) or
+         ( x = board(4) and x = board(7) ) ) then return x; end if;
+    return PieceBlank;
+end pos1func;
+
+function pos2func( x : in integer )  return integer is
+begin
+    if ( ( x = board(0) and x = board(1) ) or
+         ( x = board(5) and x = board(8) ) or
+         ( x = board(4) and x = board(6) ) ) then return x; end if;
+    return PieceBlank;
+end pos2func;
+
+function pos3func( x : in integer )  return integer is
+begin
+    if ( ( x = board(4) and x = board(5) ) or
+         ( x = board(0) and x = board(6) ) ) then return x; end if;
+    return PieceBlank;
+end pos3func;
+
+function pos4func( x : in integer )  return integer is
+begin
+    if ( ( x = board(0) and x = board(8) ) or
+         ( x = board(2) and x = board(6) ) or
+         ( x = board(1) and x = board(7) ) or
+         ( x = board(3) and x = board(5) ) ) then return x; end if;
+    return PieceBlank;
+end pos4func;
+
+function pos5func( x : in integer )  return integer is
+begin
+    if ( ( x = board(3) and x = board(4) ) or
+         ( x = board(2) and x = board(8) ) ) then return x; end if;
+    return PieceBlank;
+end pos5func;
+
+function pos6func( x : in integer )  return integer is
+begin
+    if ( ( x = board(7) and x = board(8) ) or
+         ( x = board(0) and x = board(3) ) or
+         ( x = board(4) and x = board(2) ) ) then return x; end if;
+    return PieceBlank;
+end pos6func;
+
+function pos7func( x : in integer ) return integer is
+begin
+    if ( ( x = board(6) and x = board(8) ) or
+         ( x = board(1) and x = board(4) ) ) then return x; end if;
+    return PieceBlank;
+end pos7func;
+
+function pos8func( x : in integer ) return integer is
+begin
+    if ( ( x = board(6) and x = board(7) ) or
+         ( x = board(2) and x = board(5) ) or
+         ( x = board(0) and x = board(4) ) ) then return x; end if;
+    return PieceBlank;
+end pos8func;
+
+function LookForWin( move : integer ) return integer is
+x : integer;
+begin
+    -- Note: the function type below doesn't compile and I can't find a manual for Janus Ada
+    --       type scoreproc is access function return integer;
+    -- As a (much slower) fallback, use a case statement
+
+    x := board( move );
+
+    case move is
+        when 0 => return pos0func(x);
+        when 1 => return pos1func(x);
+        when 2 => return pos2func(x);
+        when 3 => return pos3func(x);
+        when 4 => return pos4func(x);
+        when 5 => return pos5func(x);
+        when 6 => return pos6func(x);
+        when 7 => return pos7func(x);
+        when 8 => return pos8func(x);
+    end case;
+
+    return PieceBlank;
+end LookForWin;
+
 function MinMax( alphaarg : in integer; betaarg : in integer; depth : in integer; move : in integer ) return integer is
 alpha, beta, p, value, score, pieceMove : integer;
 begin
@@ -64,7 +155,8 @@ begin
     beta := betaarg;
     moves := moves + 1;
     if ( depth >= 4 ) then
-        p := LookForWinner();
+        --p := LookForWinner();
+        p := LookForWin( move ); -- about 10% fewer cycles than LookForWinner
         if ( PieceBlank /= p ) then
             if ( PieceX = p ) then return ScoreWin; end if;
             return ScoreLose;
