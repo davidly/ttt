@@ -5,7 +5,7 @@ Source code referred to here: https://medium.com/@davidly_33504/tic-tac-toe-and-
 
 In short, this repo contains various implementations of code to prove that you can't win at tic-tac-toe if the opponent is competent.
 
-Aside from tic-tac-toe, this code provides examples of how to do things in various languages (go, Python, Lua, Julia, Rust, Visual Basic, Pascal, C#, C++, Swift, assembly language for 6502, 8080, 8086, 32-bit x86, Arm32, x64, and Arm64) including concurrency, high resolution timing, pointers to functions, passing arguments by reference and value, basic control flow, atomic increments, etc.
+Aside from tic-tac-toe, this code provides examples of how to do things in various languages (Ada, Modula-2, LISP, Fortran, go, Python, Lua, Julia, Rust, CBASIC, Visual Basic, Pascal, C#, C++, Swift, assembly language for 6502, 8080, Z80, 8086, 32-bit x86, Arm32, x64, and Arm64) including concurrency, high resolution timing, pointers to functions, passing arguments by reference and value, basic control flow, atomic increments, etc.
 
 To build:
 
@@ -139,6 +139,6 @@ To run ttt_trs80.asm on a TRS-80. (renamed as ttt.asm)
 
 The table below shows runtimes of various implementations on various devices physical, virtual, and imaginary (WOPR).
 
-![table](https://github.com/davidly/ttt/assets/1497921/dafa92d9-5952-4353-8ead-caed4850c2c5)
+![table](https://github.com/davidly/ttt/assets/1497921/af369d04-f45c-4acf-a224-b58ba500d973)
 ![slide](https://github.com/davidly/ttt/assets/1497921/cd9d89e5-7313-44c2-8e10-4a7a82008aa8)
 
