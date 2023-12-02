@@ -1,0 +1,241 @@
+/*
+    PL/I version of an app that proves you can't win at tic-tac-toe if the opponent is competent.
+    Written for Digital Research PL/I-86 version 1.0 for MS-DOS
+    To build (first build PL/I's ms-dos system call wrappers in pcdio.a86)
+        ntvdm rasm86 pcdio
+        ntvdm pli %1
+        ntvdm link86 %1,pcdio.obj
+*/
+
+ttt:
+
+proc options(main);
+    %include 'diomod.dcl';
+    %replace
+        ScoreWin by 6,
+        ScoreTie by 5,
+        ScoreLose by 4,
+        ScoreMax by 9,
+        ScoreMin by 2,
+        pieceX by 1,
+        pieceO by 2,
+        pieceBlank by 0,
+        DefaultIterations by 1;
+
+    dcl board(9) fixed binary(7);
+    dcl dummy1 fixed binary;
+    dcl movecount fixed binary;
+    dcl dummy2 fixed binary;
+    dcl ( x, iterations, tstart, tend ) fixed binary;
+
+    iterations = readcommandtail();
+
+    if 0 = iterations then
+        iterations = DefaultIterations;
+
+    tstart = getticks();
+
+    do x = 1 to iterations;
+        movecount = 0;
+        call findsolution( 0 );
+        call findsolution( 1 );
+        call findsolution( 4 );
+    end;
+
+    tend = getticks();
+
+    put skip list( 'moves:                  ', movecount );
+    put skip list( 'iterations:             ', iterations );
+    put skip list( 'hundredths of a second: ', tend - tstart );
+    stop;
+
+findsolution: proc( move );
+    dcl move fixed binary;
+    dcl res fixed binary;
+
+    board( move ) = pieceX;
+    res = minmax( ScoreMin, ScoreMax, 0, move );
+    board( move ) = pieceBlank;
+end findsolution;
+
+minmax: proc( alpha, beta, depth, move ) returns ( fixed binary ) recursive;
+    dcl (alpha, beta, depth, move) fixed binary;
+    dcl (value, score, pieceMove, p, p2, m) fixed binary;
+
+    /*
+    put skip list( '{', board(0), board(1), board(2), board(3), board(4), board(5),
+                   board(6), board(7), board(8), '}', alpha, beta, depth, move );
+    */
+
+    movecount = movecount + 1;
+
+    if depth >= 4 then do;
+        /* winner2 with a computed goto is a small amount faster than winner */
+        /*p = winner();*/
+        p  = winner2( move );
+
+        if pieceBlank ^= p then do;
+            if pieceX = p then return ( ScoreWin );
+            return ( ScoreLose );
+        end;
+
+        if 8 = depth then return ( ScoreTie );
+    end;
+
+    if 1 = mod( depth, 2 ) then do;
+        value = ScoreMin;
+        pieceMove = pieceX;
+    end;
+    else do;
+        value = ScoreMax;
+        pieceMove = pieceO;
+    end;
+
+    do m = 0 to 8;
+        if pieceBlank = board( m ) then do;
+            board( m ) = pieceMove;
+            score = minmax( alpha, beta, depth + 1, m );
+            board( m ) = pieceBlank;
+    
+            if 1 = mod( depth, 2 ) then do;
+                /* put skip list ( 'odd depth, score: ', score ); */
+                if ScoreWin = score then return ( ScoreWin );
+                if score > value then do;
+                    /* put skip list ( 'score > value, alpha and beta ', score, value, alpha, beta ); */
+                    value = score;
+                    if value >= beta then return ( value );
+                    if value > alpha then alpha = value;
+                end;
+            end;
+            else do;
+                /* put skip list ( 'even depth, score: ', score ); */
+                if ScoreLose = score then return ( ScoreLose );
+                if score < value then do;
+                    /* put skip list ( 'score < value, alpha and beta ', score, value, alpha, beta ); */
+                    value = score;
+                    if value <= alpha then return ( value );
+                    if value < beta then beta = value;
+                end;
+            end;
+        end;
+    end;
+
+    return ( value );
+end minmax;
+
+winner: proc returns ( fixed binary );
+    dcl p fixed binary;
+
+    p = board( 0 );
+    if pieceBlank ^= p then do;
+        if p = board(1) & p = board(2) then return ( p );
+        if p = board(3) & p = board(6) then return ( p );
+    end;
+    
+    p = board(3);
+    if PieceBlank ^= p & p = board(4) & p = board(5) then return ( p );
+
+    p = board(6);
+    if PieceBlank ^= p & p = board(7) & p = board(8) then return ( p );
+
+    p = board(1);
+    if PieceBlank ^= p & p = board(4) & p = board(7) then return ( p );
+
+    p = board(2);
+    if PieceBlank ^= p & p = board(5) & p = board(8) then return ( p );
+
+    p = board(4);
+    if pieceBlank ^= p then do;
+        if p = board(0) & p = board(8) then return ( p );
+        if p = board(2) & p = board(6) then return ( p );
+    end;
+
+    return ( pieceBlank );
+end winner;
+
+winner2: proc( m ) returns ( fixed binary );
+    dcl m fixed binary;
+    dcl v fixed binary;
+    
+    v = board( m );
+
+    /* the 'if' expressions below can't be combined or the DOS version of
+       PL/I generates bad code. */
+
+    go to q( m );
+    q(0):
+        if ( v = board(1) & v = board(2) ) then return ( v );
+        if ( v = board(3) & v = board(6) ) then return ( v );
+        if ( v = board(4) & v = board(8) ) then return ( v );
+        return ( pieceBlank );
+    q(1):
+        if ( v = board(0) & v = board(2) ) then return ( v );
+        if ( v = board(4) & v = board(7) ) then return ( v );
+        return ( pieceBlank );
+    q(2):
+        if ( v = board(0) & v = board(1) ) then return ( v );
+        if ( v = board(5) & v = board(8) ) then return ( v );
+        if ( v = board(4) & v = board(6) ) then return ( v );
+        return ( pieceBlank );
+    q(3):
+        if ( v = board(4) & v = board(5) ) then return ( v );
+        if ( v = board(0) & v = board(6) ) then return ( v );
+        return ( pieceBlank );
+    q(4):
+        if ( v = board(0) & v = board(8) ) then return ( v );
+        if ( v = board(2) & v = board(6) ) then return ( v );
+        if ( v = board(1) & v = board(7) ) then return ( v );
+        if ( v = board(3) & v = board(5) ) then return ( v );
+        return ( pieceBlank );
+    q(5):
+        if ( v = board(3) & v = board(4) ) then return ( v );
+        if ( v = board(2) & v = board(8) ) then return ( v );
+        return ( pieceBlank );
+    q(6):
+        if ( v = board(7) & v = board(8) ) then return ( v );
+        if ( v = board(0) & v = board(3) ) then return ( v );
+        if ( v = board(4) & v = board(2) ) then return ( v );
+        return ( pieceBlank );
+    q(7):
+        if ( v = board(6) & v = board(8) ) then return ( v );
+        if ( v = board(1) & v = board(4) ) then return ( v );
+        return ( pieceBlank );
+    q(8):
+        if ( v = board(6) & v = board(7) ) then return ( v );
+        if ( v = board(2) & v = board(5) ) then return ( v );
+        if ( v = board(0) & v = board(4) ) then return ( v );
+        return ( pieceBlank );
+    endq:
+
+    return ( pieceBlank );
+end winner2;
+
+readcommandtail: proc returns ( fixed binary );
+    dcl dbuff_ptr pointer,
+        command character(127) varying based ( dbuff_ptr );
+    dcl memory (0:256) bit(8) based( dbuff_ptr );
+    dcl ( r, v, x ) fixed binary;
+
+    r = 0;
+
+    dbuff_ptr = dbuff();
+    /*put edit ('Command Tail: ',command) (a);*/
+
+    if 0 ^= memory( 0 ) then do;
+        do x = 2 to 10;
+            v = memory( x );
+            if v < 48 | v > 57 then return ( r );
+            r = ( r * 10 ) + v - 48;
+        end;
+    end;
+
+    return ( r );
+end readcommandtail;
+
+getticks: proc returns ( fixed binary );
+    dcl ( hour, minute, second, fraction ) fixed(7);
+    call gettime( addr(hour), addr(minute), addr(second), addr(fraction) );
+    return ( minute * 60 * 100 + second * 100 + fraction );
+end getticks;
+
+end ttt;
