@@ -1,4 +1,4 @@
-; i8080 version of an app that proves you can't win at tic-tac-toe
+; Z80 version of an app that proves you can't win at tic-tac-toe
 ;
 ; copy / assemble, link, and run for cp/m using:
 ; zmac -z --od . tttz80.src
@@ -136,7 +136,7 @@ RunMinMax:                          ; Run the MINMAX function for a given first 
 ;   e: argument on entry: the most recent move. Later, i (0..8)
 ;  iy: base pointer for this stack frame
 ;  ix: global depth
-;  hl: temporary until the Loop where it poins to the board position of the next (potential) move
+;  hl: temporary until the Loop where it points to the board position of the next (potential) move
 
 MinMaxMaximize:                     ; the recursive scoring function. defer frame creation until needed
         ld      hl, (Moves)         ; no 16-bit memory increment, so load in hl for that
