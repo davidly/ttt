@@ -23,9 +23,7 @@ proc options(main);
         DefaultIterations by 1;
 
     dcl board(9) fixed binary(7);
-    dcl dummy1 fixed binary;
     dcl movecount fixed binary;
-    dcl dummy2 fixed binary;
     dcl ( x, iterations, tstart, tend ) fixed binary;
 
     iterations = readcommandtail();
@@ -60,7 +58,7 @@ end findsolution;
 
 minmax: proc( alpha, beta, depth, move ) returns ( fixed binary ) recursive;
     dcl (alpha, beta, depth, move) fixed binary;
-    dcl (value, score, pieceMove, p, p2, m) fixed binary;
+    dcl (value, score, pieceMove, p, m) fixed binary;
 
     /*
     put skip list( '{', board(0), board(1), board(2), board(3), board(4), board(5),
@@ -220,6 +218,8 @@ readcommandtail: proc returns ( fixed binary );
 
     dbuff_ptr = dbuff();
     /*put edit ('Command Tail: ',command) (a);*/
+
+    /* command tail is bytes with length, space, and the command-line arguments */
 
     if 0 ^= memory( 0 ) then do;
         do x = 2 to 10;
