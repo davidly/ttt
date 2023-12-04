@@ -20,32 +20,15 @@ proc options(main);
         pieceBlank by 0,
         DefaultIterations by 1;
 
-    dcl movecount fixed binary(15);
-    dcl dummy fixed binary; /* memory corruption if this isn't here; not sure why */
     dcl board(9) fixed binary(7);
-    dcl ( x, iterations, tailLen, ch ) fixed binary;
-    dcl memptr pointer;
-    dcl memory (0:256) bit(8) based( memptr );
+    dcl movecount fixed binary;
+    dcl ( i, iterations ) fixed binary;
 
-    tailLen = memory( 128 ); /* rely on memptr being initialized to 0 */
-    iterations = 0;
-    if tailLen > 0 then do;
-        do x = 1 to tailLen - 1;
-            ch = memory( 129 + x );
-            if ch < 48 | ch > 57 then do; /* is it 0-9? */
-                put skip list( 'invalid argument; expecting a number from 1 to 32767' );
-                stop;
-            end;
-            ch = ch - 48;
-            iterations = iterations * 10;
-            iterations = iterations + ch;
-        end;
-    end;
-
+    iterations = readcommandtail();
     if 0 = iterations then
         iterations = DefaultIterations;
 
-    do x = 1 to iterations;
+    do i = 1 to iterations;
         movecount = 0;
         call findsolution( 0 );
         call findsolution( 1 );
@@ -57,17 +40,17 @@ proc options(main);
     stop;
 
 findsolution: proc( move );
-    dcl move fixed binary;
-    dcl res fixed binary;
+    dcl move fixed binary(7);
+    dcl res fixed binary(7);
 
     board( move ) = pieceX;
     res = minmax( ScoreMin, ScoreMax, 0, move );
     board( move ) = pieceBlank;
 end findsolution;
 
-minmax: proc( alpha, beta, depth, move ) returns ( fixed binary ) recursive;
-    dcl (alpha, beta, depth, move) fixed binary;
-    dcl (value, score, pieceMove, p, m) fixed binary;
+minmax: proc( alpha, beta, depth, move ) returns ( fixed binary(7) ) recursive;
+    dcl (alpha, beta, depth, move) fixed binary(7);
+    dcl (value, score, pieceMove, p, m) fixed binary(7);
 
     /*
     put skip list( '{', board(0), board(1), board(2), board(3), board(4), board(5),
@@ -130,8 +113,8 @@ minmax: proc( alpha, beta, depth, move ) returns ( fixed binary ) recursive;
     return ( value );
 end minmax;
 
-winner: proc returns ( fixed binary );
-    dcl p fixed binary;
+winner: proc returns ( fixed binary(7) );
+    dcl p fixed binary(7);
 
     p = board( 0 );
     if pieceBlank ^= p then do;
@@ -160,9 +143,9 @@ winner: proc returns ( fixed binary );
     return ( pieceBlank );
 end winner;
 
-winner2: proc( m ) returns ( fixed binary );
-    dcl m fixed binary;
-    dcl x fixed binary;
+winner2: proc( m ) returns ( fixed binary(7) );
+    dcl m fixed binary(7);
+    dcl x fixed binary(7);
     
     x = board( m );
 
@@ -213,5 +196,27 @@ winner2: proc( m ) returns ( fixed binary );
 
     return ( pieceBlank );
 end winner2;
+
+readcommandtail: proc returns ( fixed binary );
+    dcl memptr pointer;
+    dcl memory (0:256) bit(8) based( memptr );
+    dcl r fixed binary;
+    dcl ( ch, tailLen, x ) fixed binary(7);
+
+    tailLen = memory( 128 );
+    r = 0;
+    if tailLen > 0 then do;
+        do x = 1 to tailLen - 1;
+            ch = memory( 129 + x );
+            if ch < 48 | ch > 57 then do; /* is it 0-9? */
+                put skip list( 'invalid argument; expecting a number from 1 to 32767' );
+                stop;
+            end;
+            r = r * 10 + ch - 48;
+        end;
+    end;
+
+    return ( r );
+end readcommandtail;
 
 end ttt;
