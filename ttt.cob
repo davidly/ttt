@@ -40,6 +40,7 @@
 
              MOVE 0 TO ITER.
          NEXTITER.
+             MOVE 0 TO MOVECOUNT.
              MOVE 1 TO FIRSTMOVE.
              PERFORM RUNMM.
              MOVE 2 TO FIRSTMOVE.
