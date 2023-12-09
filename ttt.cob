@@ -1,6 +1,6 @@
          IDENTIFICATION DIVISION.
          PROGRAM-ID.  TTT.
-      *  REMARKS. prov tic-tac-toe is not winnable against a good foe.
+      *  REMARKS. prove tic-tac-toe is not winnable against a good foe.
          ENVIRONMENT DIVISION.
          CONFIGURATION SECTION.
          DATA DIVISION.
