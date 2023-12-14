@@ -169,7 +169,7 @@ begin
   PTR := @CMD;
   CommandString := PTR^;
   ch := CommandString[ 0 ];
-  x := ORD( ch );
+  len := ORD( ch );
   if 0 <> len then begin
     offset := 2;
     ch := CommandString[ 2 ];
