@@ -77,6 +77,7 @@ begin
                     else
                     begin
                         t := board[4];
+                        { these two can't be combined or an internal compiler error is hit }
                         if ( ( t = board[0] ) and ( t = board[8] ) ) then
                             x := t
                         else if ( ( t = board[2] ) and ( t = board[6] ) ) then
