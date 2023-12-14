@@ -160,30 +160,28 @@ end;
 
 function argAsInt : integer;
 var
-  ch : char;
-  offset, x, len, result : integer;
-  CommandString : STRING[ 127 ];
-  PTR : PSTRING;
+    offset, x, len, result : integer;
+    CommandString : STRING[ 127 ];
+    PTR : PSTRING;
 begin
-  result := 0;
-  PTR := @CMD;
-  CommandString := PTR^;
-  ch := CommandString[ 0 ];
-  len := ORD( ch );
-  if 0 <> len then begin
-    offset := 2;
-    ch := CommandString[ 2 ];
-    x := ORD( ch );
-    while ( ( x >= 48 ) and ( x <= 57 ) ) do begin
-      result := result * 10;
-      result := result + x - 48;
-      offset := offset + 1;
-      ch := CommandString[ offset ];
-      x := ORD( ch );
+    result := 0;
+    PTR := @CMD;
+    CommandString := PTR^;
+    len := ORD( CommandString[ 0 ] );
+    if 0 <> len then
+    begin
+        offset := 2;
+        x := ORD( CommandString[ 2 ] );
+        while ( ( x >= 48 ) and ( x <= 57 ) ) do
+        begin
+            result := result * 10;
+            result := result + x - 48;
+            offset := offset + 1;
+            x := ORD( CommandString[ offset ] );
+        end;
     end;
-  end;
-
-  argAsInt := result;
+  
+    argAsInt := result;
 end;
 
 function tickCount : longint;
