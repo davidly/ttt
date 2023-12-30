@@ -585,7 +585,6 @@ minmax_min PROC
     mov      [ebx], eax                                    ; update beta
     jmp      short minmax_min_top_of_loop
 
-
   minmax_min_loadv_done:
     mov      eax, DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ]
 
