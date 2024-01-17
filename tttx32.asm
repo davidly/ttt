@@ -18,6 +18,8 @@
 ;    - the number of iterations to run. Default is defaultIterations.
 ;    - the hex affinity mask to select which cores to run on. Default is up to the OS
 ;    - e.g.: tttx64 10000 0x3
+;
+; GetTickCount is MUCH more accurate on Win7 and earlier. QueryPerformanceCounter is more accurate on later versions.
 
 defaultIterations   equ    100000         ; # of times to solve the boards
 defaultAffinityMask equ    0              ; use all processors by default
@@ -450,11 +452,13 @@ minmax_max PROC
     mov      al, o_piece
     call     DWORD PTR [ winprocs + edx * 4 ]
 
+align 4
     cmp      al, o_piece                                   ; check if o won and exit early
     jne      minmax_max_skip_winner
     mov      eax, lose_score                               ; this mov may be wasted
     ret      8
 
+align 4
   minmax_max_skip_winner:
     push     ebp
     mov      ebp, esp
@@ -464,6 +468,7 @@ minmax_max PROC
     mov      edx, -1
     inc      ecx
 
+align 4
   minmax_max_top_of_loop:
     cmp      edx, 8                                        ; done iterating all the moves?
     je       short minmax_max_loadv_done
@@ -472,7 +477,6 @@ minmax_max PROC
     cmp      BYTE PTR [ edi + edx ], 0                     ; is that move free on the board?
     jne      short minmax_max_top_of_loop
     mov      DWORD PTR [ ebp - LOCAL_I_OFFSET ], edx
-
     mov      BYTE PTR [ edi + edx ], x_piece               ; make the move
 
     ; edx already has the move
@@ -500,9 +504,11 @@ minmax_max PROC
     mov      [ebx], eax                                    ; update alpha
     jmp      short minmax_max_top_of_loop
 
+align 4
   minmax_max_loadv_done:
     mov      eax, DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ]
 
+align 4
   minmax_max_done:
     dec      ecx
     mov      esp, ebp
@@ -529,6 +535,7 @@ minmax_min PROC
     mov      al, x_piece
     call     DWORD PTR [ winprocs + edx * 4 ]
     
+align 4
     cmp      al, x_piece                                   ; check if x won and exit early
     jne      minmax_min_check_tail
     mov      eax, win_score                                ; this mov may be wasted
@@ -540,6 +547,7 @@ minmax_min PROC
     mov      eax, tie_score                                ; this mov may be wasted
     ret      8
 
+align 4
   minmax_min_skip_winner:
     push     ebp
     mov      ebp, esp
@@ -549,6 +557,7 @@ minmax_min PROC
     mov      edx, -1
     inc      ecx
 
+align 4
   minmax_min_top_of_loop:
     cmp      edx, 8
     je       short minmax_min_loadv_done
@@ -557,7 +566,6 @@ minmax_min PROC
     cmp      BYTE PTR [ edi + edx ], 0
     jne      short minmax_min_top_of_loop
     mov      DWORD PTR [ ebp - LOCAL_I_OFFSET ], edx
-
     mov      BYTE PTR [ edi + edx ], o_piece               ; make the move
 
     ; edx already has the move
@@ -585,9 +593,11 @@ minmax_min PROC
     mov      [ebx], eax                                    ; update beta
     jmp      short minmax_min_top_of_loop
 
+align 4
   minmax_min_loadv_done:
     mov      eax, DWORD PTR [ ebp - LOCAL_VALUE_OFFSET ]
 
+align 4
   minmax_min_done:
     dec      ecx
     mov      esp, ebp
