@@ -12,10 +12,10 @@ C    piece blank: 0
 $include : 'forexec.inc'
 
       program ttt
-      integer*2 b(9), savep(10), sv(10), sa(10), sb(10)
+      integer*2 b(9), sp(10), sv(10), sa(10), sb(10), sm(10)
       integer*2 mc, l
-      integer*2 alpha, beta, wi, st, sc, v, p
-      common /area/ b,savep,sv,sa,sb,mc,l,alpha,beta,wi,st,sc,v,p
+      integer*2 alpha, beta, wi, st, sc, v, p, pm, m
+      common /area/ b,sp,sv,sa,sb,sm,mc,l,alpha,beta,wi,st,sc,v,p,pm,m
 
       integer*2 system
 
@@ -24,38 +24,42 @@ $include : 'forexec.inc'
  6    continue
 
       l = system('tm'c)
-      do 10 l = 1, 1000, 1
+
+      do 10 l = 1, 101, 1
           mc = 0
-          alpha = 2
-          beta = 9
-          p = 1
-          b(p) = 1
-          call minmax
-          alpha = 2
-          beta = 9
-          b(1) = 0
-          p = 2
-          b(p) = 1
-          call minmax
-          alpha = 2
-          beta = 9
-          b(2) = 0
-          p = 5
-          b(p) = 1
-          call minmax
-          b(5) = 0
+          m = 1
+          call runmm
+          m = 2
+          call runmm
+          m = 5
+          call runmm
  10   continue
 
       l = system('tm'c)
-      write( *, 1000 ) mc
- 1000 format( '  moves: ', I6 )
+      write( *, 20 ) mc
+ 20   format( '  moves: ', I6 )
+      end
+
+ 1000 subroutine runmm
+      integer*2 b(9), sp(10), sv(10), sa(10), sb(10), sm(10)
+      integer*2 mc, l
+      integer*2 alpha, beta, wi, st, sc, v, p, pm, m
+      common /area/ b,sp,sv,sa,sb,sm,mc,l,alpha,beta,wi,st,sc,v,p,pm,m
+
+      alpha = 2
+      beta = 9
+      p = m
+      b(m) = 1
+      call minmax
+      b(m) = 0
+      return
       end
 
  2000 subroutine winner
-      integer*2 b(9), savep(10), sv(10), sa(10), sb(10)
+      integer*2 b(9), sp(10), sv(10), sa(10), sb(10), sm(10)
       integer*2 mc, l
-      integer*2 alpha, beta, wi, st, sc, v, p
-      common /area/ b,savep,sv,sa,sb,mc,l,alpha,beta,wi,st,sc,v,p
+      integer*2 alpha, beta, wi, st, sc, v, p, pm, m
+      common /area/ b,sp,sv,sa,sb,sm,mc,l,alpha,beta,wi,st,sc,v,p,pm,m
 
       wi = b( 1 )
       if ( 0 .eq. wi ) go to 2100
@@ -81,10 +85,10 @@ $include : 'forexec.inc'
       end
 
  4000 subroutine minmax
-      integer*2 b(9), savep(10), sv(10), sa(10), sb(10)
+      integer*2 b(9), sp(10), sv(10), sa(10), sb(10), sm(10)
       integer*2 mc, l
-      integer*2 alpha, beta, wi, st, sc, v, p
-      common /area/ b,savep,sv,sa,sb,mc,l,alpha,beta,wi,st,sc,v,p
+      integer*2 alpha, beta, wi, st, sc, v, p, pm, m
+      common /area/ b,sp,sv,sa,sb,sm,mc,l,alpha,beta,wi,st,sc,v,p,pm,m
 
       st = 0
       v = 0
@@ -102,29 +106,30 @@ C      call winner
  4140 if ( st .ne. 8 ) go to 4150
       sc = 5
       go to 4280
- 4150 if ( mod( st, 2 ) .ne. 1 ) go to 4160
+ 4150 if ( b( p ) .eq. 1 ) go to 4160
       v = 2
+      pm = 1
       go to 4170
  4160 v = 9
+      pm = 2
  4170 p = 1
  4180 if ( b( p ) .ne. 0 ) go to 4500
-      if ( mod( st, 2 ) .ne. 1 ) goto 4181
-      b( p ) = 1
-      go to 4182
- 4181 b( p ) = 2
+      b( p ) = pm
  4182 st = st + 1
-      savep( st ) = p
+      sp( st ) = p
       sv( st ) = v
       sa( st ) = alpha
       sb( st ) = beta
+      sm( st ) = pm
       go to 4100
- 4280 p = savep( st )
+ 4280 p = sp( st )
       v = sv( st )
       alpha = sa( st )
       beta = sb( st )
+      pm = sm( st )
       st = st - 1
       b( p ) = 0
-      if ( mod( st, 2 ) .eq. 1 ) go to 4340
+      if ( pm .eq. 1 ) go to 4340
       if ( sc .eq. 4 ) go to 4530
       if ( sc .lt.  v ) v = sc
       if ( v .lt. beta ) beta = v
@@ -201,4 +206,5 @@ C      call winner
       go to 4110
 
       end
+
 
