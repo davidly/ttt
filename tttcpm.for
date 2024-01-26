@@ -1,4 +1,5 @@
 C fortran version of proving you can't win at tic-tac-toe if the opponent is competent
+C making mc integer*4 slows overall performance by 40%
 C constants:
 C    score win:   6
 C    score tie:   5
@@ -10,16 +11,20 @@ C    piece O:     2
 C    piece blank: 0
 
       program ttt
+      integer*4 moves
       integer*1 b(9), sp(10), sv(10), sa(10), sb(10), sm(10)
       integer*2 mc, l
       integer*1 alpha, beta, wi, st, sc, v, p, pm, m
-      common /area/ b,sp,sv,sa,sb,sm,mc,l,alpha,beta,wi,st,sc,v,p,pm,m
+      common /area/ b,sp,sv,sa,sb,sm,mc,alpha,beta,wi,st,sc,v,p,pm,m
 
       do 6 l = 1, 9, 1
           b( l ) = 0
  6    continue
 
-      do 10 l = 1, 2, 1
+      moves = 0
+
+C      do 10 l = 1, 100, 1
+      do 10 l = 1, 1, 1
           mc = 0
           m = 1
           call runmm
@@ -27,9 +32,10 @@ C    piece blank: 0
           call runmm
           m = 5
           call runmm
+          moves = moves + mc
  10   continue
 
-      write( 1, 20 ) mc
+      write( 1, 20 ) moves
  20   format( '  moves: ', I6 )
       end
 
@@ -37,7 +43,7 @@ C    piece blank: 0
       integer*1 b(9), sp(10), sv(10), sa(10), sb(10), sm(10)
       integer*2 mc, l
       integer*1 alpha, beta, wi, st, sc, v, p, pm, m
-      common /area/ b,sp,sv,sa,sb,sm,mc,l,alpha,beta,wi,st,sc,v,p,pm,m
+      common /area/ b,sp,sv,sa,sb,sm,mc,alpha,beta,wi,st,sc,v,p,pm,m
 
       alpha = 2
       beta = 9
@@ -52,7 +58,7 @@ C    piece blank: 0
       integer*1 b(9), sp(10), sv(10), sa(10), sb(10), sm(10)
       integer*2 mc, l
       integer*1 alpha, beta, wi, st, sc, v, p, pm, m
-      common /area/ b,sp,sv,sa,sb,sm,mc,l,alpha,beta,wi,st,sc,v,p,pm,m
+      common /area/ b,sp,sv,sa,sb,sm,mc,alpha,beta,wi,st,sc,v,p,pm,m
 
       wi = b( 1 )
       if ( 0 .eq. wi ) go to 2100
@@ -81,7 +87,7 @@ C    piece blank: 0
       integer*1 b(9), sp(10), sv(10), sa(10), sb(10), sm(10)
       integer*2 mc, l
       integer*1 alpha, beta, wi, st, sc, v, p, pm, m
-      common /area/ b,sp,sv,sa,sb,sm,mc,l,alpha,beta,wi,st,sc,v,p,pm,m
+      common /area/ b,sp,sv,sa,sb,sm,mc,alpha,beta,wi,st,sc,v,p,pm,m
 
       st = 0
       v = 0

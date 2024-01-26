@@ -12,10 +12,11 @@ C    piece blank: 0
 $include : 'forexec.inc'
 
       program ttt
+      integer*4 moves
       integer*2 b(9), sp(10), sv(10), sa(10), sb(10), sm(10)
       integer*2 mc, l
       integer*2 alpha, beta, wi, st, sc, v, p, pm, m
-      common /area/ b,sp,sv,sa,sb,sm,mc,l,alpha,beta,wi,st,sc,v,p,pm,m
+      common /area/ b,sp,sv,sa,sb,sm,mc,alpha,beta,wi,st,sc,v,p,pm,m
 
       integer*2 system
 
@@ -24,8 +25,10 @@ $include : 'forexec.inc'
  6    continue
 
       l = system('tm'c)
+      moves = 0
 
-      do 10 l = 1, 101, 1
+C      do 10 l = 1, 100, 1
+      do 10 l = 1, 1, 1
           mc = 0
           m = 1
           call runmm
@@ -33,10 +36,11 @@ $include : 'forexec.inc'
           call runmm
           m = 5
           call runmm
+          moves = moves + mc
  10   continue
 
       l = system('tm'c)
-      write( *, 20 ) mc
+      write( *, 20 ) moves
  20   format( '  moves: ', I6 )
       end
 
@@ -44,7 +48,7 @@ $include : 'forexec.inc'
       integer*2 b(9), sp(10), sv(10), sa(10), sb(10), sm(10)
       integer*2 mc, l
       integer*2 alpha, beta, wi, st, sc, v, p, pm, m
-      common /area/ b,sp,sv,sa,sb,sm,mc,l,alpha,beta,wi,st,sc,v,p,pm,m
+      common /area/ b,sp,sv,sa,sb,sm,mc,alpha,beta,wi,st,sc,v,p,pm,m
 
       alpha = 2
       beta = 9
@@ -59,7 +63,7 @@ $include : 'forexec.inc'
       integer*2 b(9), sp(10), sv(10), sa(10), sb(10), sm(10)
       integer*2 mc, l
       integer*2 alpha, beta, wi, st, sc, v, p, pm, m
-      common /area/ b,sp,sv,sa,sb,sm,mc,l,alpha,beta,wi,st,sc,v,p,pm,m
+      common /area/ b,sp,sv,sa,sb,sm,mc,alpha,beta,wi,st,sc,v,p,pm,m
 
       wi = b( 1 )
       if ( 0 .eq. wi ) go to 2100
@@ -88,7 +92,7 @@ $include : 'forexec.inc'
       integer*2 b(9), sp(10), sv(10), sa(10), sb(10), sm(10)
       integer*2 mc, l
       integer*2 alpha, beta, wi, st, sc, v, p, pm, m
-      common /area/ b,sp,sv,sa,sb,sm,mc,l,alpha,beta,wi,st,sc,v,p,pm,m
+      common /area/ b,sp,sv,sa,sb,sm,mc,alpha,beta,wi,st,sc,v,p,pm,m
 
       st = 0
       v = 0

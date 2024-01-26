@@ -27,7 +27,6 @@ proc options(main);
     dcl ( x, iterations, tstart, tend ) fixed binary;
 
     iterations = readcommandtail();
-
     if 0 = iterations then
         iterations = DefaultIterations;
 
@@ -80,7 +79,7 @@ minmax: proc( alpha, beta, depth, move ) returns ( fixed binary ) recursive;
         if 8 = depth then return ( ScoreTie );
     end;
 
-    if 1 = mod( depth, 2 ) then do;
+    if pieceO = board( move ) then do;
         value = ScoreMin;
         pieceMove = pieceX;
     end;
@@ -95,13 +94,13 @@ minmax: proc( alpha, beta, depth, move ) returns ( fixed binary ) recursive;
             score = minmax( alpha, beta, depth + 1, m );
             board( m ) = pieceBlank;
     
-            if 1 = mod( depth, 2 ) then do;
+            if pieceX = pieceMove then do;
                 /* put skip list ( 'odd depth, score: ', score ); */
                 if ScoreWin = score then return ( ScoreWin );
                 if score > value then do;
                     /* put skip list ( 'score > value, alpha and beta ', score, value, alpha, beta ); */
+                    if score >= beta then return ( score );
                     value = score;
-                    if value >= beta then return ( value );
                     if value > alpha then alpha = value;
                 end;
             end;
@@ -110,8 +109,8 @@ minmax: proc( alpha, beta, depth, move ) returns ( fixed binary ) recursive;
                 if ScoreLose = score then return ( ScoreLose );
                 if score < value then do;
                     /* put skip list ( 'score < value, alpha and beta ', score, value, alpha, beta ); */
+                    if score <= alpha then return ( score );
                     value = score;
-                    if value <= alpha then return ( value );
                     if value < beta then beta = value;
                 end;
             end;
