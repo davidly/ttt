@@ -166,6 +166,49 @@ BEGIN
     RETURN pieceBlank;
 END proc8;
 
+PROCEDURE winner2( move: CARDINAL ) : CARDINAL;
+VAR x : CARDINAL;
+BEGIN
+    x := board[ move ];
+    CASE move OF
+        0:  IF NOT ( ( ( x = board[1] ) AND ( x = board[2] ) ) OR
+                     ( ( x = board[3] ) AND ( x = board[6] ) ) OR
+                     ( ( x = board[4] ) AND ( x = board[8] ) ) )
+                THEN RETURN pieceBlank; END; |
+        1:  IF NOT ( ( ( x = board[0] ) AND ( x = board[2] ) ) OR
+                     ( ( x = board[4] ) AND ( x = board[7] ) ) )
+                THEN x := pieceBlank; END; |
+        2:  IF NOT ( ( ( x = board[0] ) AND ( x = board[1] ) ) OR
+                     ( ( x = board[5] ) AND ( x = board[8] ) ) OR
+                     ( ( x = board[4] ) AND ( x = board[6] ) ) )
+                THEN x := pieceBlank; END; |
+        3:  IF NOT ( ( ( x = board[4] ) AND ( x = board[5] ) ) OR
+                     ( ( x = board[0] ) AND ( x = board[6] ) ) )
+                THEN x := pieceBlank; END; |
+        4:  IF NOT ( ( ( x = board[0] ) AND ( x = board[8] ) ) OR
+                     ( ( x = board[2] ) AND ( x = board[6] ) ) OR
+                     ( ( x = board[1] ) AND ( x = board[7] ) ) OR
+                     ( ( x = board[3] ) AND ( x = board[5] ) ) )
+                THEN x := pieceBlank; END; |
+        5:  IF NOT ( ( ( x = board[3] ) AND ( x = board[4] ) ) OR
+                     ( ( x = board[2] ) AND ( x = board[8] ) ) )
+                THEN x := pieceBlank; END; |
+        6:  IF NOT ( ( ( x = board[7] ) AND ( x = board[8] ) ) OR
+                     ( ( x = board[0] ) AND ( x = board[3] ) ) OR
+                     ( ( x = board[4] ) AND ( x = board[2] ) ) )
+                THEN x := pieceBlank; END; |
+        7:  IF NOT ( ( ( x = board[6] ) AND ( x = board[8] ) ) OR
+                     ( ( x = board[1] ) AND ( x = board[4] ) ) )
+                THEN x := pieceBlank; END; |
+        8:  IF NOT ( ( ( x = board[6] ) AND ( x = board[7] ) ) OR
+                     ( ( x = board[2] ) AND ( x = board[5] ) ) OR
+                     ( ( x = board[0] ) AND ( x = board[4] ) ) )
+                THEN x := pieceBlank; END;
+    END;
+
+    RETURN x;
+END winner2;
+
 PROCEDURE minmax( alpha: CARDINAL; beta: CARDINAL; move: CARDINAL; depth: CARDINAL ): CARDINAL;
 VAR p, value, pieceMove, score : CARDINAL;
 BEGIN
@@ -173,7 +216,9 @@ BEGIN
     value := scoreInvalid;
     IF depth >= 4 THEN
         (* lookForWinner is >20% faster than using scoring procs, unlike almost every other language *)
-        p := lookForWinner();
+        (* winner2 is even faster *)
+        (* p := lookForWinner(); *)
+        p := winner2( move );
         (* p := procs[ move ](); *)
           
         IF p <> pieceBlank THEN
