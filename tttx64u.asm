@@ -25,6 +25,8 @@
 ;    - the number of iterations to run. Default is defaultIterations.
 ;    - the hex affinity mask to select which cores to run on. Default is up to the OS
 ;    - e.g.: tttx64 10000 0x3
+;
+; This version unrolls the loop for better performance
 
 extern printf: PROC
 extern _atoi64: PROC
@@ -75,6 +77,10 @@ data_ttt SEGMENT ALIGN( 4096 ) 'DATA'
     BOARD4        db     0,0,0,0,1,0,0,0,0
   align 256 ;
     WINPROCS      dq     proc0, proc1, proc2, proc3, proc4, proc5, proc6, proc7, proc8
+  align 256 ;
+    NEXTMIN       dq     minmax_min_try_1, minmax_min_try_2, minmax_min_try_3, minmax_min_try_4, minmax_min_try_5, minmax_min_try_6, minmax_min_try_7, minmax_min_try_8, minmax_min_try_9 
+  align 256 ;
+    NEXTMAX       dq     minmax_max_try_1, minmax_max_try_2, minmax_max_try_3, minmax_max_try_4, minmax_max_try_5, minmax_max_try_6, minmax_max_try_7, minmax_max_try_8, minmax_max_try_9 
   align 128
     runTime       db     'runtime in microseconds (-6): %lld', 10, 13, 0
     caption       db     'Hello world!', 0
@@ -265,7 +271,6 @@ TTTThreadProc PROC
     
     xor     r13, r13                     ; and r13 to be the move count
     lea     rsi, [WINPROCS]              ; rsi has the win proc function table
-    mov     r14, -1                      ; r14 has -1
     mov     r12, 0                       ; r12 has 0
     
     mov     boardIndex$[rsp], rcx        ; save the initial move board position
@@ -451,7 +456,6 @@ minmax_max PROC
     ; r11: value. Spilled.
     ; r12: 0 constant
     ; r13: global minmax call count
-    ; r14: -1 constant
     ; r15: reserved for global loop of 10000 calls
     ; rsi: pointer to WINPROCS
 
@@ -476,54 +480,65 @@ minmax_max PROC
     mov     [rbp + V_SPILL_OFFSET], r11     ; save value
     mov     [rbp + I_SPILL_OFFSET], r9      ; save i -- the for loop variable
     mov     r11, minimum_score              ; minimum possible score. maximizing, so find a score higher than this
-    mov     r9, r14                         ; r9 is I in the for loop 0..8. avoid a jump by starting at -1
     inc     r8                              ; next depth 1..8
 
-    align   16
-  minmax_max_top_of_loop:
-    cmp     r9, 8                           ; 8 because the board is 0..8. check before incrementing
-    je      short minmax_max_loadv_done
+  minmax_max_try_0::
+    mov     r9, 0
+    cmp     BYTE PTR [r10 + 0], r12b
+    je      minmax_max_move
+  minmax_max_try_1::
     inc     r9
+    cmp     BYTE PTR [r10 + 1], r12b
+    je      minmax_max_move
+  minmax_max_try_2::
+    inc     r9
+    cmp     BYTE PTR [r10 + 2], r12b
+    je      minmax_max_move
+  minmax_max_try_3::
+    inc     r9
+    cmp     BYTE PTR [r10 + 3], r12b
+    je      minmax_max_move
+  minmax_max_try_4::
+    inc     r9
+    cmp     BYTE PTR [r10 + 4], r12b
+    je      minmax_max_move
+  minmax_max_try_5::
+    inc     r9
+    cmp     BYTE PTR [r10 + 5], r12b
+    je      minmax_max_move
+  minmax_max_try_6::
+    inc     r9
+    cmp     BYTE PTR [r10 + 6], r12b
+    je      minmax_max_move
+  minmax_max_try_7::
+    inc     r9
+    cmp     BYTE PTR [r10 + 7], r12b
+    je      minmax_max_move
+  minmax_max_try_8::
+    inc     r9
+    cmp     BYTE PTR [r10 + 8], r12b
+    je      minmax_max_move
+  minmax_max_try_9::
+    jmp     minmax_max_loadv_done
 
-    cmp     BYTE PTR [r10 + r9], r12b       ; is the board position free?
-    jne     short minmax_max_top_of_loop    ; move to the next spot on the board
-
+    align   16
+  minmax_max_move:
     mov     BYTE PTR [r10 + r9], x_piece    ; make the move
-
-if 0
-;    ; if this is the move that fills the board, use the faster terminal function
-    cmp     r8, 7
-    je      _minmax_max_terminal_move
-endif
-
-    ; unlike win64 calling conventions, no registers are preserved aside from r8 and globals in r10, r12, r13, and r15
-    call    minmax_min                      ; score is in rax on return
-
-    mov     BYTE PTR [r10 + r9], r12b       ; Restore the move on the board to 0 from X
-
+    call    minmax_min
+    mov     BYTE PTR[ r10 + r9], r12b
     cmp     rax, win_score                  ; compare score with the winning score
     je      short minmax_max_unspill        ; can't do better than winning score when maximizing
-
     cmp     rax, r11                        ; compare score with value
-    jle     short minmax_max_top_of_loop
-
+    jle     minmax_max_next
     cmp     rax, rdx                        ; compare value with beta
     jge     short minmax_max_unspill        ; beta pruning
-
     mov     r11, rax                        ; update value with score
     cmp     rax, rcx                        ; compare value with alpha
-    jle     short minmax_max_top_of_loop
-
+    jle     minmax_max_next
     mov     rcx, rax                        ; update alpha with value
-    jmp     short minmax_max_top_of_loop
-
-if 0
-    align   16
-  _minmax_max_terminal_move:
-    call    minmax_min_terminal
-    mov     BYTE PTR [r10 + r9], r12b       ; Restore the move on the board to 0 from X
-    jmp     minmax_max_unspill
-endif
+  minmax_max_next:
+    lea     r14, [NEXTMAX]
+    jmp     QWORD PTR [r14 + r9 * 8 ]
 
     align   16
   minmax_max_loadv_done:
@@ -556,7 +571,6 @@ minmax_min PROC
     ; r11: value
     ; r12: 0 constant
     ; r13: global minmax call count
-    ; r14: -1 constant
     ; r15: reserved for global loop of 10000 calls
     ; rsi: pointer to WINPROCS
 
@@ -585,40 +599,65 @@ minmax_min PROC
     mov     [rbp + V_SPILL_OFFSET], r11     ; save value
     mov     [rbp + I_SPILL_OFFSET], r9      ; save i -- the for loop variable
     mov     r11, maximum_score              ; maximum possible score; minimizing, so find a score lower than this 
-    mov     r9, r14                         ; r9 is I in the for loop 0..8. avoid a jump by starting at -1
     inc     r8                              ; next depth 1..8
 
-    align   16
-  minmax_min_top_of_loop:
-    cmp     r9, 8                           ; 8 because the board is 0..8. check before incrementing
-    je      short minmax_min_loadv_done
+  minmax_min_try_0::
+    mov     r9, 0
+    cmp     BYTE PTR [r10 + 0], r12b
+    je      minmax_min_move
+  minmax_min_try_1::
     inc     r9
+    cmp     BYTE PTR [r10 + 1], r12b
+    je      minmax_min_move
+  minmax_min_try_2::
+    inc     r9
+    cmp     BYTE PTR [r10 + 2], r12b
+    je      minmax_min_move
+  minmax_min_try_3::
+    inc     r9
+    cmp     BYTE PTR [r10 + 3], r12b
+    je      minmax_min_move
+  minmax_min_try_4::
+    inc     r9
+    cmp     BYTE PTR [r10 + 4], r12b
+    je      minmax_min_move
+  minmax_min_try_5::
+    inc     r9
+    cmp     BYTE PTR [r10 + 5], r12b
+    je      minmax_min_move
+  minmax_min_try_6::
+    inc     r9
+    cmp     BYTE PTR [r10 + 6], r12b
+    je      minmax_min_move
+  minmax_min_try_7::
+    inc     r9
+    cmp     BYTE PTR [r10 + 7], r12b
+    je      minmax_min_move
+  minmax_min_try_8::
+    inc     r9
+    cmp     BYTE PTR [r10 + 8], r12b
+    je      minmax_min_move
+  minmax_min_try_9::
+    jmp     minmax_min_loadv_done
 
-    cmp     BYTE PTR [r10 + r9], r12b       ; is the board position free?
-    jne     short minmax_min_top_of_loop    ; move to the next spot on the board
-
-    mov     BYTE PTR [r10 + r9], o_piece    ; make the move
-
-    ; unlike win64 calling conventions, no registers are preserved aside from r8 and globals in r10, r12, r13, and r15
-    call    minmax_max                      ; score is in rax on return
-
-    mov     BYTE PTR [r10 + r9], r12b       ; Restore the move on the board to 0 from O
-
+    align   16
+  minmax_min_move:
+    mov     BYTE PTR[ r10 + r9], o_piece
+    call    minmax_max
+    mov     BYTE PTR[ r10 + r9], r12b
     cmp     rax, lose_score
     je      short minmax_min_unspill        ; can't do better than losing score when minimizing
-
     cmp     rax, r11                        ; compare score with value
-    jge     short minmax_min_top_of_loop
-
+    jge     minmax_min_next
     cmp     rax, rcx                        ; compare value with alpha
     jle     short minmax_min_unspill        ; alpha pruning
-
     mov     r11, rax                        ; update value with score
     cmp     rax, rdx                        ; compare value with beta
-    jge     short minmax_min_top_of_loop
-
+    jge     minmax_min_next
     mov     rdx, rax                        ; update beta with value
-    jmp     short minmax_min_top_of_loop    ; loop for the next i
+  minmax_min_next:
+    lea     r14, [NEXTMIN]
+    jmp     QWORD PTR [r14 + r9 * 8 ]
 
     align   16
   minmax_min_loadv_done:
