@@ -77,10 +77,8 @@ data_ttt SEGMENT ALIGN( 4096 ) 'DATA'
     BOARD4        db     0,0,0,0,1,0,0,0,0
   align 256 ;
     WINPROCS      dq     proc0, proc1, proc2, proc3, proc4, proc5, proc6, proc7, proc8
-  align 256 ;
-    NEXTMIN       dq     minmax_min_try_1, minmax_min_try_2, minmax_min_try_3, minmax_min_try_4, minmax_min_try_5, minmax_min_try_6, minmax_min_try_7, minmax_min_try_8, minmax_min_try_9 
-  align 256 ;
-    NEXTMAX       dq     minmax_max_try_1, minmax_max_try_2, minmax_max_try_3, minmax_max_try_4, minmax_max_try_5, minmax_max_try_6, minmax_max_try_7, minmax_max_try_8, minmax_max_try_9 
+    NEXTMIN       dq     minmax_min_try_1, minmax_min_try_2, minmax_min_try_3, minmax_min_try_4, minmax_min_try_5, minmax_min_try_6, minmax_min_try_7, minmax_min_try_8, minmax_min_loadv_done
+    NEXTMAX       dq     minmax_max_try_1, minmax_max_try_2, minmax_max_try_3, minmax_max_try_4, minmax_max_try_5, minmax_max_try_6, minmax_max_try_7, minmax_max_try_8, minmax_max_loadv_done
   align 128
     runTime       db     'runtime in microseconds (-6): %lld', 10, 13, 0
     caption       db     'Hello world!', 0
@@ -456,7 +454,8 @@ minmax_max PROC
     ; r11: value. Spilled.
     ; r12: 0 constant
     ; r13: global minmax call count
-    ; r15: reserved for global loop of 10000 calls
+    ; r14: temporary location of jump table
+    ; r15: reserved for global loop of N iterations
     ; rsi: pointer to WINPROCS
 
     inc     r13                             ; r13 is a global variable with the # of calls to minmax_max and minmax_min
@@ -482,9 +481,8 @@ minmax_max PROC
     mov     r11, minimum_score              ; minimum possible score. maximizing, so find a score higher than this
     inc     r8                              ; next depth 1..8
 
-  minmax_max_try_0::
-    mov     r9, 0
-    cmp     BYTE PTR [r10 + 0], r12b
+    xor     r9, r9
+    cmp     BYTE PTR [r10], r12b
     je      minmax_max_move
   minmax_max_try_1::
     inc     r9
@@ -517,9 +515,7 @@ minmax_max PROC
   minmax_max_try_8::
     inc     r9
     cmp     BYTE PTR [r10 + 8], r12b
-    je      minmax_max_move
-  minmax_max_try_9::
-    jmp     minmax_max_loadv_done
+    jne     minmax_max_loadv_done
 
     align   16
   minmax_max_move:
@@ -534,15 +530,14 @@ minmax_max PROC
     jge     short minmax_max_unspill        ; beta pruning
     mov     r11, rax                        ; update value with score
     cmp     rax, rcx                        ; compare value with alpha
-    jle     minmax_max_next
-    mov     rcx, rax                        ; update alpha with value
+    cmovg   rcx, rax			    ; update alpha if new value is better
   minmax_max_next:
     lea     r14, [NEXTMAX]
     jmp     QWORD PTR [r14 + r9 * 8 ]
 
     align   16
-  minmax_max_loadv_done:
-    mov     rax, r11                        ; load V then return
+  minmax_max_loadv_done::
+    mov     rax, r11                        ; load value then return
 
     align   16
   minmax_max_unspill:
@@ -571,7 +566,8 @@ minmax_min PROC
     ; r11: value
     ; r12: 0 constant
     ; r13: global minmax call count
-    ; r15: reserved for global loop of 10000 calls
+    ; r14: temporary location of jump table
+    ; r15: reserved for global loop of N iterations
     ; rsi: pointer to WINPROCS
 
     inc     r13                             ; r13 is a global variable with the # of calls to minmax_max and minmax_min
@@ -601,7 +597,6 @@ minmax_min PROC
     mov     r11, maximum_score              ; maximum possible score; minimizing, so find a score lower than this 
     inc     r8                              ; next depth 1..8
 
-  minmax_min_try_0::
     mov     r9, 0
     cmp     BYTE PTR [r10 + 0], r12b
     je      minmax_min_move
@@ -636,9 +631,7 @@ minmax_min PROC
   minmax_min_try_8::
     inc     r9
     cmp     BYTE PTR [r10 + 8], r12b
-    je      minmax_min_move
-  minmax_min_try_9::
-    jmp     minmax_min_loadv_done
+    jne     minmax_min_loadv_done
 
     align   16
   minmax_min_move:
@@ -653,15 +646,14 @@ minmax_min PROC
     jle     short minmax_min_unspill        ; alpha pruning
     mov     r11, rax                        ; update value with score
     cmp     rax, rdx                        ; compare value with beta
-    jge     minmax_min_next
-    mov     rdx, rax                        ; update beta with value
+    cmovl   rdx, rax			    ; update beta if new value is worse
   minmax_min_next:
     lea     r14, [NEXTMIN]
     jmp     QWORD PTR [r14 + r9 * 8 ]
 
     align   16
-  minmax_min_loadv_done:
-    mov     rax, r11                        ; load V then return
+  minmax_min_loadv_done::
+    mov     rax, r11                        ; load value then return
 
   minmax_min_unspill:
     dec     r8                              ; restore depth to the current level

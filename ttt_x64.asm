@@ -418,23 +418,6 @@ printboard PROC
     ret
 printboard ENDP
 
-minmax_min_terminal PROC
-    inc     r13                             ; r13 is a global variable with the # of calls to minmax_max and minmax_min
-
-    mov     rax, x_piece                    ; rax contains the player with the latest move on input
-    call    QWORD PTR [rsi + r9 * 8]        ; call the proc that checks for wins starting with last piece added
-
-    cmp     rax, x_piece                    ; did X win? 
-    je      _min_terminal_win
-
-    mov     rax, tie_score
-    ret
-
-  _min_terminal_win:
-    mov     rax, win_score
-    ret
-minmax_min_terminal ENDP
-
 ; Odd depth = maximize for X in subsequent moves, O just took a move in r9
 align 16
 minmax_max PROC
@@ -490,12 +473,6 @@ minmax_max PROC
 
     mov     BYTE PTR [r10 + r9], x_piece    ; make the move
 
-if 0
-;    ; if this is the move that fills the board, use the faster terminal function
-    cmp     r8, 7
-    je      _minmax_max_terminal_move
-endif
-
     ; unlike win64 calling conventions, no registers are preserved aside from r8 and globals in r10, r12, r13, and r15
     call    minmax_min                      ; score is in rax on return
 
@@ -512,18 +489,8 @@ endif
 
     mov     r11, rax                        ; update value with score
     cmp     rax, rcx                        ; compare value with alpha
-    jle     short minmax_max_top_of_loop
-
-    mov     rcx, rax                        ; update alpha with value
+    cmovg   rcx, rax                        ; update alpha with value
     jmp     short minmax_max_top_of_loop
-
-if 0
-    align   16
-  _minmax_max_terminal_move:
-    call    minmax_min_terminal
-    mov     BYTE PTR [r10 + r9], r12b       ; Restore the move on the board to 0 from X
-    jmp     minmax_max_unspill
-endif
 
     align   16
   minmax_max_loadv_done:
@@ -615,9 +582,7 @@ minmax_min PROC
 
     mov     r11, rax                        ; update value with score
     cmp     rax, rdx                        ; compare value with beta
-    jge     short minmax_min_top_of_loop
-
-    mov     rdx, rax                        ; update beta with value
+    cmovl   rdx, rax                        ; update beta with value
     jmp     short minmax_min_top_of_loop    ; loop for the next i
 
     align   16
