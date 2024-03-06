@@ -1,38 +1,24 @@
 /*
    Tic-Tac-Toe proof you can't win for the Apple 1.
-   This version is for CC65. https://cc65.github.io/
-   Uses Hex Dump app hd to generate an Apple 1 .hex file: https://github.com/davidly/hd
-   Build on Windows like this:
-
-        rem none defaults to a machine with RAM from 0 to $8000, perfect for the emulator and replica
-        cc65 -T -Oi -Or -t none ttt.c
-        ca65 ttt.s
-        ld65 -o ttt -t none ttt.o none.lib
-        hd -w:0x1000 ttt >ttt.hex
-
-   To run in the ntvao Apple 1 emulator: https://github.com/davidly/ntvao
-
-        rem ntvao -p -c /s:1022727 ttt.hex
-        ntvao -p -c ttt.hex
-
-   To run on the RetroTechLife Apple 1 Replica use ss (send serial): https://github.com/davidly/ss
-
-        ss /p:7 /s:ttt.hex /r:1000
+   This version builds with Aztec CG65 v3.2c 10-2-89 on MS-DOS targeting 6502.
+   That compiler expects an Apple II, so there are hacks here for the Apple 1.
+   There are dependencies on start.a, which initialzes for the Apple 1.
+   Aztec C treats the char type as unsigned, and expands to 16 bits for any expression (slow!)
 */
 
+#define LINT_ARGS
+
 #include <stdio.h>
-#include <stdint.h>
 
 #define true 1
 #define false 0
 
-/* Function Pointers are the fastest implementation for almost every compiler, but not for cc65 */
+/* Function Pointers are the fastest implementation for almost every compiler */
 #define UseFunPointers 1
 #define UseWinner2 2
 #define UseLookForWinner 3
-#define WinMethod UseWinner2
+#define WinMethod UseFunPointers
 
-#define USE_SPRINTF false    /* this makes the app 2x as big, making transfers to the Apple 1 slow */
 #define ABPrune true         /* alpha beta pruning */
 #define WinLosePrune true    /* stop early on win/lose */
 #define ScoreWin 6
@@ -40,21 +26,23 @@
 #define ScoreLose  4
 #define ScoreMax 9
 #define ScoreMin 2
-#define DefaultIterations 10
+#define DefaultIterations 1
 
 #define PieceX 1
 #define PieceO 2
 #define PieceBlank 0
 
-typedef uint8_t ttype;  /* 8-bit and 16-bit cpus do best with char aside from register in locals */
-uint16_t g_Moves = 0;
-uint8_t g_board[ 9 ];
+typedef char ttype;  /* 8-bit and 16-bit cpus do best with char aside from register in locals */
+
+int g_Iterations = DefaultIterations;
+ttype g_board[ 9 ];
 
 #if WinMethod == UseFunPointers
 
-uint8_t pos0func()
+ttype pos0func()
 {
-    register uint8_t x = g_board[0];
+    /* using "register int" instead of "ttype" for x is faster on 8086 and Z80 */
+    register int x = g_board[0];
     
     if ( ( x == g_board[1] && x == g_board[2] ) ||
          ( x == g_board[3] && x == g_board[6] ) ||
@@ -63,9 +51,9 @@ uint8_t pos0func()
     return PieceBlank;
 }
 
-uint8_t pos1func()
+ttype pos1func()
 {
-    register uint8_t x = g_board[1];
+    register int x = g_board[1];
     
     if ( ( x == g_board[0] && x == g_board[2] ) ||
          ( x == g_board[4] && x == g_board[7] ) )
@@ -73,9 +61,9 @@ uint8_t pos1func()
     return PieceBlank;
 } 
 
-uint8_t pos2func()
+ttype pos2func()
 {
-    register uint8_t x = g_board[2];
+    register int x = g_board[2];
     
     if ( ( x == g_board[0] && x == g_board[1] ) ||
          ( x == g_board[5] && x == g_board[8] ) ||
@@ -84,9 +72,9 @@ uint8_t pos2func()
     return PieceBlank;
 } 
 
-uint8_t pos3func()
+ttype pos3func()
 {
-    register uint8_t x = g_board[3];
+    register int x = g_board[3];
     
     if ( ( x == g_board[4] && x == g_board[5] ) ||
          ( x == g_board[0] && x == g_board[6] ) )
@@ -94,9 +82,9 @@ uint8_t pos3func()
     return PieceBlank;
 } 
 
-uint8_t pos4func()
+ttype pos4func()
 {
-    register uint8_t x = g_board[4];
+    register int x = g_board[4];
     
     if ( ( x == g_board[0] && x == g_board[8] ) ||
          ( x == g_board[2] && x == g_board[6] ) ||
@@ -106,9 +94,9 @@ uint8_t pos4func()
     return PieceBlank;
 } 
 
-uint8_t pos5func()
+ttype pos5func()
 {
-    register uint8_t x = g_board[5];
+    register int x = g_board[5];
     
     if ( ( x == g_board[3] && x == g_board[4] ) ||
          ( x == g_board[2] && x == g_board[8] ) )
@@ -116,9 +104,9 @@ uint8_t pos5func()
     return PieceBlank;
 } 
 
-uint8_t pos6func()
+ttype pos6func()
 {
-    register uint8_t x = g_board[6];
+    register int x = g_board[6];
     
     if ( ( x == g_board[7] && x == g_board[8] ) ||
          ( x == g_board[0] && x == g_board[3] ) ||
@@ -127,9 +115,9 @@ uint8_t pos6func()
     return PieceBlank;
 } 
 
-uint8_t pos7func()
+ttype pos7func()
 {
-    register uint8_t x = g_board[7];
+    register int x = g_board[7];
     
     if ( ( x == g_board[6] && x == g_board[8] ) ||
          ( x == g_board[1] && x == g_board[4] ) )
@@ -137,9 +125,9 @@ uint8_t pos7func()
     return PieceBlank;
 } 
 
-uint8_t pos8func()
+ttype pos8func()
 {
-    register uint8_t x = g_board[8];
+    register int x = g_board[8];
     
     if ( ( x == g_board[6] && x == g_board[7] ) ||
          ( x == g_board[2] && x == g_board[5] ) ||
@@ -148,7 +136,7 @@ uint8_t pos8func()
     return PieceBlank;
 } 
 
-typedef uint8_t pfunc_t();
+typedef ttype pfunc_t();
 
 pfunc_t * winner_functions[9] =
 {
@@ -169,85 +157,85 @@ pfunc_t * winner_functions[9] =
 
 ttype winner2( move ) ttype move;
 {
-    register ttype x; 
+    register int x;  /* faster than ttype x on the stack */
 
     switch( move ) /* msc v3 from 1985 generates a jump table! */
     {
         case 0:
         {
             x = g_board[ 0 ];
-            if ( ( x == g_board[1] && x == g_board[2] ) ||
-                 ( x == g_board[3] && x == g_board[6] ) ||
-                 ( x == g_board[4] && x == g_board[8] ) )
+            if ( ( ( x == g_board[1] ) && ( x == g_board[2] ) ) ||
+                 ( ( x == g_board[3] ) && ( x == g_board[6] ) ) ||
+                 ( ( x == g_board[4] ) && ( x == g_board[8] ) ) )
                return x;
             break;
         }
         case 1:
         {
             x = g_board[ 1 ];
-            if ( ( x == g_board[0] && x == g_board[2] ) ||
-                 ( x == g_board[4] && x == g_board[7] ) )
+            if ( ( ( x == g_board[0] ) && ( x == g_board[2] ) ) ||
+                 ( ( x == g_board[4] ) && ( x == g_board[7] ) ) )
                 return x;
             break;
         }
         case 2:
         {
             x = g_board[ 2 ];
-            if ( ( x == g_board[0] && x == g_board[1] ) ||
-                 ( x == g_board[5] && x == g_board[8] ) ||
-                 ( x == g_board[4] && x == g_board[6] ) )
+            if ( ( ( x == g_board[0] ) && ( x == g_board[1] ) ) ||
+                 ( ( x == g_board[5] ) && ( x == g_board[8] ) ) ||
+                 ( ( x == g_board[4] ) && ( x == g_board[6] ) ) )
                 return x;
             break;
         }
         case 3:
         {
             x = g_board[ 3 ];
-            if ( ( x == g_board[4] && x == g_board[5] ) ||
-                 ( x == g_board[0] && x == g_board[6] ) )
+            if ( ( ( x == g_board[4] ) && ( x == g_board[5] ) ) ||
+                 ( ( x == g_board[0] ) && ( x == g_board[6] ) ) )
                 return x;
             break;
         }
         case 4:
         {
             x = g_board[ 4 ];
-            if ( ( x == g_board[0] && x == g_board[8] ) ||
-                 ( x == g_board[2] && x == g_board[6] ) ||
-                 ( x == g_board[1] && x == g_board[7] ) ||
-                 ( x == g_board[3] && x == g_board[5] ) )
+            if ( ( ( x == g_board[0] ) && ( x == g_board[8] ) ) ||
+                 ( ( x == g_board[2] ) && ( x == g_board[6] ) ) ||
+                 ( ( x == g_board[1] ) && ( x == g_board[7] ) ) ||
+                 ( ( x == g_board[3] ) && ( x == g_board[5] ) ) )
                 return x;
             break;
         }
         case 5:
         {
             x = g_board[ 5 ];
-            if ( ( x == g_board[3] && x == g_board[4] ) ||
-                 ( x == g_board[2] && x == g_board[8] ) )
+            if ( ( ( x == g_board[3] ) && ( x == g_board[4] ) ) ||
+                 ( ( x == g_board[2] ) && ( x == g_board[8] ) ) )
                 return x;
             break;
         }
         case 6:
         {
             x = g_board[ 6 ];
-            if ( ( x == g_board[7] && x == g_board[8] ) ||
-                 ( x == g_board[0] && x == g_board[3] ) ||
-                 ( x == g_board[4] && x == g_board[2] ) )
+            if ( ( ( x == g_board[7] ) && ( x == g_board[8] ) ) ||
+                 ( ( x == g_board[0] ) && ( x == g_board[3] ) ) ||
+                 ( ( x == g_board[4] ) && ( x == g_board[2] ) ) )
                 return x;
             break;
         }
         case 7:
         {
             x = g_board[ 7 ];
-            if ( ( x == g_board[6] && x == g_board[8] ) ||
-                 ( x == g_board[1] && x == g_board[4] ) )
+            if ( ( ( x == g_board[6] ) && ( x == g_board[8] ) ) ||
+                 ( ( x == g_board[1] ) && ( x == g_board[4] ) ) )
                 return x;
             break;
         }
         case 8:
         {
             x = g_board[ 8 ];
-            if ( ( x == g_board[6] && x == g_board[7] ) ||
-                 ( x == g_board[2] && x == g_board[5] ) ||
-                 ( x == g_board[0] && x == g_board[4] ) )
+            if ( ( ( x == g_board[6] ) && ( x == g_board[7] ) ) ||
+                 ( ( x == g_board[2] ) && ( x == g_board[5] ) ) ||
+                 ( ( x == g_board[0] ) && ( x == g_board[4] ) ) )
                 return x;
             break;
          }
@@ -260,14 +248,15 @@ ttype winner2( move ) ttype move;
 
 #if WinMethod == UseLookForWinner
 
-uint8_t LookForWinner()
+ttype LookForWinner()
 {
-    register uint8_t p = g_board[0];
+    register int p = g_board[0]; /* faster as register int than ttype on aztec 6502, 8086 and Z80 */
     if ( PieceBlank != p )
     {
-        if ( ( p == g_board[1] && p == g_board[2] ) ||
-             ( p == g_board[3] && p == g_board[6] ) ||
-             ( p == g_board[4] && p == g_board[8] ) )
+        if ( p == g_board[1] && p == g_board[2] )
+            return p;
+
+        if ( p == g_board[3] && p == g_board[6] )
             return p;
     }
 
@@ -284,10 +273,16 @@ uint8_t LookForWinner()
         return p;
 
     p = g_board[2];
+    if ( PieceBlank != p && p == g_board[5] && p == g_board[8] )
+        return p;
+
+    p = g_board[4];
     if ( PieceBlank != p )
     {
-        if ( ( p == g_board[5] && p == g_board[8] ) ||
-             ( p == g_board[4] && p == g_board[6] ) )
+        if ( ( p == g_board[0] ) && ( p == g_board[8] ) )
+            return p;
+
+        if ( ( p == g_board[2] ) && ( p == g_board[6] ) )
             return p;
     }
 
@@ -296,16 +291,14 @@ uint8_t LookForWinner()
 
 #endif
 
-#if WinMethod == UseLookForWinner
-int MinMax( alpha, beta, depth ) uint8_t alpha; uint8_t beta; uint8_t depth;
-#else
-int MinMax( alpha, beta, depth, move ) uint8_t alpha; uint8_t beta; uint8_t depth; uint8_t move;
-#endif
-{
-    uint8_t pieceMove, score;
-    uint8_t value, p;
+int g_IMoves = 0;
 
-    g_Moves++;
+ttype MinMax( alpha, beta, depth, move ) ttype alpha; ttype beta; ttype depth; ttype move;
+{
+    ttype pieceMove, score;   /* better perf with char than int. out of registers so use stack */
+    register int p, value;    /* better perf with these as an int on Z80, 8080, and 8086 */
+
+    g_IMoves++;
 
     if ( depth >= 4 )
     {
@@ -342,21 +335,17 @@ int MinMax( alpha, beta, depth, move ) uint8_t alpha; uint8_t beta; uint8_t dept
         pieceMove = PieceO;
     }
 
-    for ( p = 0; p < 9; ++p )
+    for ( p = 0; p < 9; p++ )
     {
         if ( PieceBlank == g_board[ p ] )
         {
             g_board[p] = pieceMove;
-#if WinMethod == UseLookForWinner
-            score = MinMax( alpha, beta, depth + 1 );
-#else
             score = MinMax( alpha, beta, depth + 1, p );
-#endif
             g_board[p] = PieceBlank;
 
             if ( depth & 1 ) 
             {
-#if WinLosePrune   /* #if statements must be in column 0 for MS C 1.0 */
+#if WinLosePrune   /* #if statements must be in first column for MS C 1.0 */
                 if ( ScoreWin == score )
                     return ScoreWin;
 #endif
@@ -398,24 +387,67 @@ int MinMax( alpha, beta, depth, move ) uint8_t alpha; uint8_t beta; uint8_t dept
     return value;
 }  /*MinMax*/
 
-void show_int( val ) uint16_t val;
-{
-    static uint8_t h, l;
-    h = (uint8_t) ( val >> 8 );
-    l = (uint8_t) val;
+long g_Moves = 0;
 
-    __asm__( "lda     %v", h );
-    __asm__( "jsr     $ffdc" );
-    __asm__( "lda     %v", l );
-    __asm__( "jsr     $ffdc" );
+int FindSolution( position ) ttype position;
+{
+    register int i;
+
+    for ( i = 0; i < 9; i++ )
+        g_board[ i ] = PieceBlank;
+
+    g_board[ position ] = PieceX;
+
+    for ( i = 0; i < g_Iterations; i++ )
+    {
+        g_IMoves = 0;
+        MinMax( ScoreMin, ScoreMax, 0, position );
+    }
+
+    g_Moves += g_IMoves;  /* do the 4-byte long addition once per loop to save work */
+
+    return 0;
+} /*FindSolution*/
+
+void show_int( val ) int val;
+{
+    int * pi = (int *) 0xc0;  
+    *pi = val;
+
+    #asm
+        lda     $c1          /* print the high byte first */
+        jsr     $ffdc
+        lda     $c0
+        jsr     $ffdc
+    #endasm
 } /*show_int*/
+
+void show_long( val ) long val;
+{
+    long * pl = (long *) 0xc0; 
+    *pl = val;
+
+    #asm
+        lda     $c3          /* print the high byte first */
+        jsr     $ffdc
+        lda     $c2          /* print the high byte first */
+        jsr     $ffdc
+        lda     $c1
+        jsr     $ffdc
+        lda     $c0
+        jsr     $ffdc
+    #endasm
+} /*show_long*/
 
 void show_char( val ) char val;
 {
-    static uint8_t s_val;
-    s_val = val;
-    __asm__( "lda     %v", s_val );
-    __asm__( "jsr     $ffef" );
+    char * pc = (char *) 0xc0;
+    *pc = val;
+
+    #asm
+        lda     $c0
+        jsr     $ffef
+    #endasm
 } /*show_char*/
 
 void show_string( str ) char * str;
@@ -429,58 +461,25 @@ void show_string( str ) char * str;
 
 void bye()
 {
-    __asm__( "jsr     $ff1f" );
+    #asm
+        jsr $ff1f
+    #endasm
 } /*bye*/
-
-int FindSolution( position ) uint8_t position;
-{
-    g_board[ position ] = PieceX;
-#if WinMethod == UseLookForWinner
-    MinMax( ScoreMin, ScoreMax, 0 );
-#else
-    MinMax( ScoreMin, ScoreMax, 0, position );
-#endif
-    g_board[ position ] = PieceBlank;
-
-    return 0;
-} /*FindSolution*/
 
 int main()
 {
-#if USE_SPRINTF
-    static char ac[40];
-#endif
-    uint8_t i;
-
-    for ( i = 0; i < 9; ++i )
-        g_board[ i ] = PieceBlank;
-
-    for ( i = 0; i < DefaultIterations; i++ )
-    {
-        g_Moves = 0;
-        FindSolution( 0 );
-        FindSolution( 1 );
-        FindSolution( 4 );
-    }
-
-#if USE_SPRINTF
-    sprintf( ac, " moves %d", g_Moves );
-    show_string( ac );
-    sprintf( ac, ", iterations %d", DefaultIterations );
-    show_string( ac );
-#else
-    show_string( " moves " );
-    show_int( g_Moves );
-    show_string( ", " );
-    show_int( DefaultIterations );
-#endif
-
-    show_string( ", " );
+    show_char( '!' );
     show_string( ( WinMethod == UseFunPointers ) ? "function pointers" :
                  ( WinMethod == UseWinner2 ) ? "winner2" :
                  ( WinMethod == UseLookForWinner ) ? "look for winner" :
                  "invalid method" );
-    show_char( '$' ); // signal to elapsed time measurement app that execution is complete
+
+    FindSolution( 0 );
+    FindSolution( 1 );
+    FindSolution( 4 );
+
+    show_int( g_Moves );
+    show_char( '$' );
 
     /* The C runtime doesn't know how to exit or even return to the entry proc
        on an Apple 1, so exit with bye() */
