@@ -9,9 +9,9 @@
 
 ; DOS constants
 
-dos_write_char     equ   2h
-dos_get_systemtime equ   1ah
-dos_exit           equ   4ch
+dos_write_char          equ   2h
+dos_read_realtime_clock equ   1ah
+dos_exit                equ   4ch
 
 default_iterations  equ     10   ; # of times to run (max 32767)
 max_score           equ     9    ; maximum score
@@ -60,7 +60,7 @@ startup proc near
 
 done_with_arguments:
         xor      ax, ax
-        int      dos_get_systemtime
+        int      dos_read_realtime_clock
         mov      word ptr ds: [ starttime ], dx
         mov      word ptr ds: [ starttime + 2 ], cx
 
@@ -105,9 +105,10 @@ again:
         call     printint
         call     printcrlf
 
-        mov      al, 0
-        mov      ah, dos_exit
-        int      21h
+;        mov      al, 0
+;        mov      ah, dos_exit
+;        int      21h
+        ret
 startup endp
 
 runmm proc near
@@ -533,32 +534,32 @@ printelap proc near
         push     di
         push     si
         xor      ax, ax
-        int      dos_get_systemtime
+        int      dos_read_realtime_clock
         mov      word ptr ds: [ scratchpad ], dx
         mov      word ptr ds: [ scratchpad + 2 ], cx
         mov      dl, 0
         mov      ax, word ptr ds: [ scratchpad ]
         mov      bx, word ptr ds: [ starttime ]
         sub      ax, bx
-        mov      word ptr ds: [ result ], ax
+        mov      word ptr ds: [ runtime ], ax
         mov      ax, word ptr ds: [ scratchpad + 2 ]
         mov      bx, word ptr ds: [ starttime + 2 ]
         sbb      ax, bx
-        mov      word ptr ds: [ result + 2 ], ax
-        mov      dx, word ptr ds: [ result + 2 ]
-        mov      ax, word ptr ds: [ result ]
+        mov      word ptr ds: [ runtime + 2 ], ax
+        mov      dx, word ptr ds: [ runtime + 2 ]
+        mov      ax, word ptr ds: [ runtime ]
         mov      bx, 10000
         mul      bx
-        mov      bx, 18206
+        mov      bx, 1821 ; 18206 / 10
         div      bx
         xor      dx, dx
-        mov      bx, 10
+        mov      bx, 100
         div      bx
         push     dx
         call     printint
         call     prperiod
         pop      ax
-        call     printint
+        call     printint ; this will be low by up to .055 seconds given the tickcount update frequency
         pop      si
         pop      di
         pop      dx
@@ -832,7 +833,7 @@ totaliters dw      0        ; # of iterations to run in total
 align 4
 scratchpad dd      0
 starttime  dd      0
-result     dd      0
+runtime     dd      0
 
 align 2
 winprocs   dw      proc0, proc1, proc2, proc3, proc4, proc5, proc6, proc7, proc8
