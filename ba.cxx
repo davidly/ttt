@@ -1447,6 +1447,9 @@ int EvaluateFactor( int & iToken, int beyond, vector<TokenValue> const & vals )
         {
             iToken++;
             value = EvaluateExpression( iToken, beyond, vals );
+            if ( EnableTracing && g_Tracing )
+                printf( " after evaluateexpression, iToken: %d\n", iToken );
+
             assert( Token_CLOSEPAREN == vals[ iToken ].token );
             iToken++;
         }
@@ -1580,7 +1583,7 @@ int EvaluateExpression( int & iToken, int beyond, vector<TokenValue> const & val
 
     if ( EnableTracing && g_Tracing )
     {
-        printf( "Evaluate expression for line %d token # %d %s\n", g_lineno, iToken, TokenStr( vals[ iToken ].token ) );
+        printf( "Evaluate expression for line %d token # %d %s, beyond %d\n", g_lineno, iToken, TokenStr( vals[ iToken ].token ), beyond );
 
         for ( int i = iToken; i < vals.size(); i++ )
             printf( "    %d:    %s\n", i, TokenStr( vals[ i ].token ) );
@@ -9609,10 +9612,7 @@ label_no_if_optimization:
 
         fprintf( fp, "imul:\n" );
         fprintf( fp, "    mov      a, l\n" );
-        fprintf( fp, "    cpi      0\n" );
-        fprintf( fp, "    jnz      mul$notzero\n" );
-        fprintf( fp, "    mov      a, h\n" );
-        fprintf( fp, "    cpi      0\n" );
+        fprintf( fp, "    ora      h\n" );
         fprintf( fp, "    jnz      mul$notzero\n" );
         fprintf( fp, "    ret\n" );
         fprintf( fp, "  mul$notzero:\n" );
@@ -9623,18 +9623,12 @@ label_no_if_optimization:
         fprintf( fp, "    call     neg$hl\n" );
         fprintf( fp, "    call     neg$de\n" );
         fprintf( fp, "  mul$notneg:\n" );
-        fprintf( fp, "    push     h\n" );
-        fprintf( fp, "    pop      b\n" );
+        fprintf( fp, "    mov      b, h\n" );
+        fprintf( fp, "    mov      c, l\n" );
         fprintf( fp, "    lxi      h, 0\n" );
-        fprintf( fp, "    shld     mulTmp\n" );
         fprintf( fp, "  mul$loop:\n" );
         fprintf( fp, "    dad      d\n" );
         fprintf( fp, "    jnc      mul$done\n" );
-        fprintf( fp, "    push     h\n" );
-        fprintf( fp, "    lhld     mulTmp\n" );
-        fprintf( fp, "    inx      h\n" );
-        fprintf( fp, "    shld     mulTmp\n" );
-        fprintf( fp, "    pop      h\n" );
         fprintf( fp, "  mul$done:\n" );
         fprintf( fp, "    dcx      b\n" );
         fprintf( fp, "    mov      a, b\n" );
