@@ -5560,10 +5560,11 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
     
                     assert( Token_EXPRESSION == vals[ t ].token );
 
-                    if ( i8080CPM == g_AssemblyTarget || !g_ExpressionOptimization )
+                    if ( !g_ExpressionOptimization )
                         goto label_no_eq_optimization;
 
-                    if ( Token_CONSTANT == vals[ t + 1 ].token &&
+                    if ( i8080CPM != g_AssemblyTarget &&
+                         Token_CONSTANT == vals[ t + 1 ].token &&
                          2 == vals[ t ].value  )
                     {
                         // e.g.: x% = 3
@@ -5817,6 +5818,31 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                         }
 
                         t += vals[ t ].value;
+                    }
+                    else if ( i8080CPM == g_AssemblyTarget &&
+                              8 == vals.size() &&
+                              Token_VARIABLE == vals[ t + 1 ].token &&
+                              Token_PLUS == vals[ t + 2 ].token &&
+                              Token_VARIABLE == vals[ t + 3 ].token &&
+                              !stcmp( vals[ t + 1 ].strValue, vals[ t + 3 ].strValue ) &&
+                              Token_PLUS == vals[ t + 4 ].token &&
+                              Token_CONSTANT == vals[ t + 5 ].token )
+                    {
+                        // line 105 has 8 tokens  ====>> 105 PR% = I% + I% + 3
+                        //   token   0 VARIABLE, value 0, strValue 'pr%'
+                        //   token   1 EQ, value 0, strValue ''
+                        //   token   2 EXPRESSION, value 6, strValue ''
+                        //   token   3 VARIABLE, value 0, strValue 'i%'
+                        //   token   4 PLUS, value 0, strValue ''
+                        //   token   5 VARIABLE, value 0, strValue 'i%'
+                        //   token   6 PLUS, value 0, strValue ''
+                        //   token   7 CONSTANT, value 3, strValue ''
+
+                        fprintf( fp, "    lhld     %s\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                        fprintf( fp, "    dad      h\n" );
+                        fprintf( fp, "    lxi      d, %d\n", vals[ t + 5 ].value );
+                        fprintf( fp, "    dad      d\n" );
+                        fprintf( fp, "    shld     %s\n", GenVariableName( vals[ variableToken ].strValue ) );
                     }
                     else if ( mos6502Apple1 == g_AssemblyTarget &&
                               6 == vals[ t ].value &&
@@ -6685,15 +6711,16 @@ label_no_array_eq_optimization:
                 }
                 else if ( i8080CPM == g_AssemblyTarget )
                 {
+                    fprintf( fp, "    inx      h\n" );
                     fprintf( fp, "    xchg\n" );
                     fprintf( fp, "    lhld     %s\n", GenVariableName( varname ) );
-                    Generate8080Relation( fp, Token_GE, "fc$", (int) l );
+                    Generate8080Relation( fp, Token_NE, "fc$", (int) l );
                     fprintf( fp, "    jmp      af$%zd\n", l ); // af == after for
                     fprintf( fp, "  fc$%zd:\n", l );  // fc == for code
                 }
                 else if ( mos6502Apple1 == g_AssemblyTarget )
                 {
-                    Generate6502Relation( fp, GenVariableName( varname ), "curOperand", Token_LE, "_for_continue_", (int) l );
+                    Generate6502Relation( fp, GenVariableName( varname ), "curOperand", Token_LE, "_for_continue_", (int) l  );
                     fprintf( fp, "    jmp      after_for_loop_%zd\n", l );
                     fprintf( fp, "_for_continue_%zd:\n", l );
                 }
@@ -8420,6 +8447,85 @@ label_no_array_eq_optimization:
                     fprintf( fp, "    mov      a, h\n" );
                     fprintf( fp, "    ora      l\n" );
                     fprintf( fp, "    jz       ln$%d\n", vals[ t + 4 ].value );
+
+                    break;
+                }
+                else if ( i8080CPM == g_AssemblyTarget &&
+                          11 == vals.size() &&
+                          Token_VARIABLE == vals[ t + 1 ].token &&
+                          Token_OPENPAREN == vals[ t + 2 ].token &&
+                          Token_VARIABLE == vals[ t + 4 ].token &&
+                          Token_EQ == vals[ t + 6 ].token &&
+                          Token_CONSTANT == vals[ t + 7 ].token &&
+                          0 == vals[ t + 7 ].value &&
+                          Token_THEN == vals[ t + 8 ].token &&
+                          Token_GOTO == vals[ t + 9 ].token )
+                {
+                    // line 100 has 11 tokens  ====>> 100 IF FL%(I%) = 0 THEN goto 180
+                    //   token   0 IF, value 0, strValue ''
+                    //   token   1 EXPRESSION, value 8, strValue ''
+                    //   token   2 VARIABLE, value 0, strValue 'fl%'
+                    //   token   3 OPENPAREN, value 0, strValue ''
+                    //   token   4 EXPRESSION, value 2, strValue ''
+                    //   token   5 VARIABLE, value 0, strValue 'i%'
+                    //   token   6 CLOSEPAREN, value 0, strValue ''
+                    //   token   7 EQ, value 0, strValue ''
+                    //   token   8 CONSTANT, value 0, strValue ''
+                    //   token   9 THEN, value 0, strValue ''
+                    //   token  10 GOTO, value 180, strValue ''
+
+                    fprintf( fp, "    lhld     %s\n", GenVariableName( vals[ t + 4 ].strValue ) );
+                    fprintf( fp, "    dad      h\n" ); // 2 byte integers
+                    fprintf( fp, "    lxi      d, %s\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                    fprintf( fp, "    dad      d\n" );
+                    fprintf( fp, "    mov      a, m\n" );
+                    fprintf( fp, "    inx      h\n" );
+                    fprintf( fp, "    ora      m\n" );
+                    fprintf( fp, "    jz       ln$%d\n", vals[ t + 9 ].value );
+
+                    break;
+                }
+                else if ( i8080CPM == g_AssemblyTarget &&
+                          7 == vals.size() &&
+                          Token_VARIABLE == vals[ t + 1 ].token &&
+                          Token_GT == vals[ t + 2 ].token &&
+                          Token_VARIABLE == vals[ t + 3 ].token &&
+                          Token_THEN == vals[ t + 4 ].token &&
+                          Token_GOTO == vals[ t + 5 ].token )
+                {
+                    // line 130 has 7 tokens  ====>> 130 IF K% > SI% THEN goto 170
+                    //   token   0 IF, value 0, strValue ''
+                    //   token   1 EXPRESSION, value 4, strValue ''
+                    //   token   2 VARIABLE, value 0, strValue 'k%'
+                    //   token   3 GT, value 0, strValue ''
+                    //   token   4 VARIABLE, value 0, strValue 'si%'
+                    //   token   5 THEN, value 0, strValue ''
+                    //   token   6 GOTO, value 170, strValue ''
+
+                    fprintf( fp, "    lhld     %s\n", GenVariableName( vals[ t + 3 ].strValue ) );
+                    fprintf( fp, "    xchg\n" );
+                    fprintf( fp, "    lhld     %s\n", GenVariableName( vals[ t + 1 ].strValue ) );
+
+                    // are the high bits the same and so the same signs?
+            
+                    fprintf( fp, "    mov      a, d\n" );
+                    fprintf( fp, "    xra      h\n" );
+                    fprintf( fp, "    jp       ss%d\n", s_uniqueLabel );
+            
+                    fprintf( fp, "    xra      d\n" );
+                    fprintf( fp, "    jm       nogoto%d\n", s_uniqueLabel );
+                    fprintf( fp, "    jmp      ln$%d\n", vals[ t + 5 ].value );
+            
+                    fprintf( fp, "  ss%d:\n", s_uniqueLabel ); // same sign
+            
+                    fprintf( fp, "    mov      a, e\n" );
+                    fprintf( fp, "    sub      l\n" );
+                    fprintf( fp, "    mov      a, d\n" );
+                    fprintf( fp, "    sbb      h\n" );
+                    fprintf( fp, "    jc       ln$%d\n", vals[ t + 5 ].value );
+
+                    fprintf( fp, "  nogoto%d:\n", s_uniqueLabel );
+                    s_uniqueLabel++;
 
                     break;
                 }
