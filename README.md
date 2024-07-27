@@ -5,7 +5,7 @@ Source code referred to here: https://medium.com/@davidly_33504/tic-tac-toe-and-
 
 In short, this repo contains various implementations of code to prove that you can't win at tic-tac-toe if the opponent is competent.
 
-Aside from tic-tac-toe, this code provides examples of how to do things in various languages (Algol-M, Ada, Cobol, PL/I, Modula-2, LISP, Fortran, go, Python, Lua, Julia, Rust, CBASIC, Visual Basic, Pascal, C#, C++, Swift, assembly language for 6502, 8080, Z80, 8086, 32-bit x86, Arm32, RISC-V 64, x64, and Arm64) including concurrency, high resolution timing, pointers to functions, passing arguments by reference and value, basic control flow, atomic increments, etc.
+Aside from tic-tac-toe, this code provides examples of how to do things in various languages (Algol-M, Ada, Cobol, PL/I, Modula-2, LISP, Fortran, go, Python, Lua, Julia, Rust, CBASIC, Visual Basic, Pascal, C#, C++, Swift, assembly language for 6502, 8080, Z80, 8086, 32-bit x86, x64, Arm32, Arm64, 64-bit RISC-V) including concurrency, high resolution timing, pointers to functions, passing arguments by reference and value, basic control flow, atomic increments, etc.
 
 To build:
 
