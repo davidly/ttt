@@ -15,14 +15,15 @@
 18 rem mc%  -- Move count total for debugging. Should be a multiple of 6493
 19 rem Note: Can't use real recursion with GOSUB because stack is limited to roughly 5 deep
 20 rem       BASIC doesn't support goto/gosub using arrays for target line numbers
-30 dim b%(9)
-32 dim sp%(10)
-34 dim sv%(10)
-36 dim sa%(10)
-37 dim sb%(10)
-38 mc% = 0
-39 print "start time: "; time$
-40 for l% = 1 to 10
+25 dim b%(9)
+26 dim sp%(10)
+27 dim sv%(10)
+28 dim sa%(10)
+29 dim sb%(10)
+30 mc% = 0
+31 print "start time: "; time$
+32 if 0 <> av% then lo% = av% else lo% = 1
+40 for l% = 1 to lo%
 41 mc% = 0
 42 al% = 2
 43 be% = 9
@@ -41,7 +42,7 @@
 73 b%(4) = 0
 74 rem print "mc: "; mc%; "  l is "; l%
 80 next l%
-85 print elap$ ; " for "; l% - 1; " iterations"
+85 print elap$ ; " for "; lo%; " iterations"
 86 print "end time: "; time$
 87 print "final move count "; mc%
 100 end
@@ -78,7 +79,7 @@
 4102 rem gosub 3000
 4104 if st% < 4 then goto 4150
 4105 gosub 2000
-4106 if 0 = wi% then goto 4140
+4107 if 0 = wi% then goto 4140
 4110 if wi% = 1 then re% = 6: goto 4280
 4115 re% = 4
 4116 goto 4280
