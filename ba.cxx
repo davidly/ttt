@@ -3414,7 +3414,7 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
             else if ( oiOS == g_AssemblyTarget )
             {
                 fprintf( fp, "    ld      rres, [%s]\n", GenVariableName( varname ) );
-                fprintf( fp, "    inv     rres\n", GenVariableName( varname ) );
+                fprintf( fp, "    inv     rres\n" );
             }
 
             iToken++;
@@ -4942,7 +4942,7 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
         fprintf( fp, "  .p2align 4\n" );
     else if ( riscv64 == g_AssemblyTarget )
         fprintf( fp, "  .align 3\n" );
-    else if ( oiOS == g_AssemblyTarget );
+    else if ( oiOS == g_AssemblyTarget )
         fprintf( fp, "    align\n" );
 
     int num6502ZeroPageVariables = 0;
