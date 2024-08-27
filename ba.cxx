@@ -1095,7 +1095,7 @@ const char * ParseStatements( Token token, vector<TokenValue> & lineTokens, cons
         token = readToken( pline, tokenLen ); // redundant read to get length
 
         if ( EnableTracing && g_Tracing )
-            printf( "ParseStatements loop read top-level token %s\n", TokenStr( token ) );
+            printf( "  ParseStatements loop read top-level token %s\n", TokenStr( token ) );
 
         if ( Token_VARIABLE == token )
         {
@@ -1212,6 +1212,8 @@ const char * ParseStatements( Token token, vector<TokenValue> & lineTokens, cons
         else if ( Token_PRINT == token )
         {
             lineTokens.push_back( tokenValue );
+            size_t iPrintToken = lineTokens.size() - 1;
+
             pline = pastWhite( pline + tokenLen );
 
             do
@@ -1220,9 +1222,17 @@ const char * ParseStatements( Token token, vector<TokenValue> & lineTokens, cons
                 pline = pastWhite( pline );
                 token = readToken( pline, tokenLen );
 
+                if ( EnableTracing && g_Tracing )
+                    printf( "  in Token_PRINT processing read token %s\n", TokenStr( token ) );
+
                 if ( Token_SEMICOLON == token )
                 {
                     pline = pastWhite( pline + tokenLen );
+                    if ( 0 == *pline )
+                    {
+                        lineTokens[ iPrintToken ].extra = 1; // indicate that no CR/LF should be printed since PRINT ended in semicolon
+                        break;
+                    }
                     continue;
                 }
                 else if ( Token_ELSE == token )
@@ -7176,6 +7186,7 @@ label_no_array_eq_optimization:
             }
             else if ( Token_PRINT == token )
             {
+                bool withholdCRLF = ( 1 == vals[ t ].extra );
                 t++;
     
                 while ( t < vals.size() )
@@ -7402,39 +7413,42 @@ label_no_array_eq_optimization:
                         }
                     }
                 }
-    
-                if ( x64Win == g_AssemblyTarget )
+
+                if ( !withholdCRLF )
                 {
-                    fprintf( fp, "    lea      rcx, [newlineString]\n" );
-                    fprintf( fp, "    call     call_printf\n" );
-                }
-                else if ( arm32Linux == g_AssemblyTarget )
-                {
-                    LoadArm32Label( fp, "r0", "newlineString" );
-                    fprintf( fp, "    bl       call_printf\n" );
-                }
-                else if ( arm64Mac == g_AssemblyTarget || arm64Win == g_AssemblyTarget )
-                {
-                    LoadArm64Label( fp, "x0", "newlineString" );
-                    fprintf( fp, "    bl       call_printf\n" );
-                }
-                else if ( i8080CPM == g_AssemblyTarget )
-                {
-                    fprintf( fp, "    lxi      h, newlineString\n" );
-                    fprintf( fp, "    call     DISPLAY\n" );
-                }
-                else if ( mos6502Apple1 == g_AssemblyTarget )
-                    fprintf( fp, "    jsr      prcrlf\n" ); 
-                else if ( i8086DOS == g_AssemblyTarget )
-                    fprintf( fp, "    call     printcrlf\n" );
-                else if ( x86Win == g_AssemblyTarget )
-                    fprintf( fp, "    call     printcrlf\n" );
-                else if ( riscv64 == g_AssemblyTarget )
-                    fprintf( fp, "    jal      print_crlf\n" );
-                else if ( oiOS == g_AssemblyTarget )
-                {
-                    fprintf( fp, "    ldi      rarg1, newlineString\n" );
-                    fprintf( fp, "    syscall  1\n" );
+                    if ( x64Win == g_AssemblyTarget )
+                    {
+                        fprintf( fp, "    lea      rcx, [newlineString]\n" );
+                        fprintf( fp, "    call     call_printf\n" );
+                    }
+                    else if ( arm32Linux == g_AssemblyTarget )
+                    {
+                        LoadArm32Label( fp, "r0", "newlineString" );
+                        fprintf( fp, "    bl       call_printf\n" );
+                    }
+                    else if ( arm64Mac == g_AssemblyTarget || arm64Win == g_AssemblyTarget )
+                    {
+                        LoadArm64Label( fp, "x0", "newlineString" );
+                        fprintf( fp, "    bl       call_printf\n" );
+                    }
+                    else if ( i8080CPM == g_AssemblyTarget )
+                    {
+                        fprintf( fp, "    lxi      h, newlineString\n" );
+                        fprintf( fp, "    call     DISPLAY\n" );
+                    }
+                    else if ( mos6502Apple1 == g_AssemblyTarget )
+                        fprintf( fp, "    jsr      prcrlf\n" ); 
+                    else if ( i8086DOS == g_AssemblyTarget )
+                        fprintf( fp, "    call     printcrlf\n" );
+                    else if ( x86Win == g_AssemblyTarget )
+                        fprintf( fp, "    call     printcrlf\n" );
+                    else if ( riscv64 == g_AssemblyTarget )
+                        fprintf( fp, "    jal      print_crlf\n" );
+                    else if ( oiOS == g_AssemblyTarget )
+                    {
+                        fprintf( fp, "    ldi      rarg1, newlineString\n" );
+                        fprintf( fp, "    syscall  1\n" );
+                    }
                 }
 
                 if ( t == vals.size() )
@@ -11791,6 +11805,7 @@ void InterpretCode( map<string, Variable> & varmap, bool showExecutionTime )
             }
             else if ( Token_PRINT == token )
             {
+                int printToken = t;
                 g_pc++;
                 t++;
 
@@ -11848,7 +11863,8 @@ void InterpretCode( map<string, Variable> & varmap, bool showExecutionTime )
                     }
                 }
 
-                printf( "\n" );
+                if ( 0 == vals[ printToken ].extra )
+                    printf( "\n" );
                 goto label_next_pc;
             }
             else if ( Token_ELSE == token )
