@@ -3266,7 +3266,7 @@ void GenerateFactor( FILE * fp, map<string, Variable> const & varmap, int & iTok
                 else if ( oiOS == g_AssemblyTarget )
                 {
                     fprintf( fp, "    ldi      rtmp, %u\n", pvar->dims[ 1 ] );
-                    fprintf( fp, "    mathst   rtmp, rtmp, mul\n" );
+                    fprintf( fp, "    mathst   rtmp, rtmp, imul\n" );
                     fprintf( fp, "    add      rres, rtmp\n" );
                     fprintf( fp, "    ldae     %s[ rres ]\n", GenVariableName( varname )  );
                 }
@@ -5823,6 +5823,40 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
 
                         t += vals[ t ].value;
                     }
+#if 0 // generates fewer instructions, but the MATH instruction runs more slowly than addst on older systems
+                    else if ( oiOS == g_AssemblyTarget &&
+                              6 == vals.size() &&
+                              isTokenSimpleValue( vals[ t + 1 ].token ) &&
+                              isTokenOperator( vals[ t + 2 ].token ) &&
+                              isTokenSimpleValue( vals[ t + 3 ].token ) )
+                    {
+                        // line 120 has 6 tokens  ====>> 120 K% = I% + PR%
+                        //   0 VARIABLE, value 0, strValue 'k%'
+                        //   1 EQ, value 0, strValue ''
+                        //   2 EXPRESSION, value 4, strValue ''
+                        //   3 VARIABLE, value 0, strValue 'i%'
+                        //   4 PLUS, value 0, strValue ''
+                        //   5 VARIABLE, value 0, strValue 'pr%'
+
+                        if ( Token_CONSTANT == vals[ t + 1 ].token )
+                            fprintf( fp, "    ldi      rres, %d\n", vals[ t + 1 ].value );
+                        else
+                            fprintf( fp, "    ld       rres, [%s]\n", GenVariableName( vals[ t + 1 ].strValue ) );
+
+                        if ( Token_CONSTANT == vals[ t + 3 ].token )
+                            fprintf( fp, "    ldi      rtmp, %d\n", vals[ t + 3 ].value );
+                        else
+                            fprintf( fp, "    ld       rtmp, [%s]\n", GenVariableName( vals[ t + 3 ].strValue ) );
+
+                        if ( isOperatorRelational( vals[ t + 2 ].token )  )
+                            fprintf( fp, "    cmp      rres, rres, rtmp, %s\n", ConditionsArm[ vals[ t + 2 ].token ] );
+                        else
+                            fprintf( fp, "    %s      rres, rtmp\n", OperatorInstructionX64[ vals[ t + 2 ].token ] );
+                        fprintf( fp, "    st       [%s], rres\n", GenVariableName( vals[ variableToken ].strValue ) );
+
+                        t += vals[ t ].value;
+                    }
+#endif
                     else if ( 6 == vals[ t ].value &&
                               Token_VARIABLE == vals[ t + 1 ].token &&
                               IsVariableInReg( varmap, vals[ variableToken ].strValue ) &&
@@ -6012,6 +6046,31 @@ void GenerateASM( const char * outputfile, map<string, Variable> & varmap, bool 
                         fprintf( fp, "    lxi      d, %d\n", vals[ t + 5 ].value );
                         fprintf( fp, "    dad      d\n" );
                         fprintf( fp, "    shld     %s\n", GenVariableName( vals[ variableToken ].strValue ) );
+                    }
+                    else if ( oiOS == g_AssemblyTarget &&
+                              8 == vals.size() &&
+                              Token_VARIABLE == vals[ t + 1 ].token &&
+                              Token_PLUS == vals[ t + 2 ].token &&
+                              Token_VARIABLE == vals[ t + 3 ].token &&
+                              !stcmp( vals[ t + 1 ].strValue, vals[ t + 3 ].strValue ) &&
+                              Token_PLUS == vals[ t + 4 ].token &&
+                              Token_CONSTANT == vals[ t + 5 ].token )
+                    {
+                        // line 105 has 8 tokens  ====>> 105 PR% = I% + I% + 3
+                        //   token   0 VARIABLE, value 0, strValue 'pr%'
+                        //   token   1 EQ, value 0, strValue ''
+                        //   token   2 EXPRESSION, value 6, strValue ''
+                        //   token   3 VARIABLE, value 0, strValue 'i%'
+                        //   token   4 PLUS, value 0, strValue ''
+                        //   token   5 VARIABLE, value 0, strValue 'i%'
+                        //   token   6 PLUS, value 0, strValue ''
+                        //   token   7 CONSTANT, value 3, strValue ''
+
+                        fprintf( fp, "    ld      rres, [%s]\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                        fprintf( fp, "    ldi     rtmp, %d\n", vals[ t + 5 ].value );
+                        fprintf( fp, "    add     rres, rres\n" );
+                        fprintf( fp, "    add     rres, rtmp\n" );
+                        fprintf( fp, "    st      [%s], rres\n", GenVariableName( vals[ variableToken ].strValue ) );
                     }
                     else if ( mos6502Apple1 == g_AssemblyTarget &&
                               6 == vals[ t ].value &&
@@ -6314,6 +6373,32 @@ label_no_eq_optimization:
                         }
                         break;
                     }
+                    else if ( oiOS == g_AssemblyTarget &&
+                              8 == vals.size() &&
+                              Token_VARIABLE == vals[ t + 1 ].token && 
+                              Token_CONSTANT == vals[ t + 5 ].token )
+                    {
+                        // line 140 has 8 tokens  ====>> 140 FL%(K%) = 0
+                        //   0 VARIABLE, value 0, strValue 'fl%'
+                        //   1 OPENPAREN, value 0, strValue ''
+                        //   2 EXPRESSION, value 2, strValue ''
+                        //   3 VARIABLE, value 0, strValue 'k%'
+                        //   4 CLOSEPAREN, value 0, strValue ''
+                        //   5 EQ, value 0, strValue ''
+                        //   6 EXPRESSION, value 2, strValue ''
+                        //   7 CONSTANT, value 0, strValue ''
+
+                        fprintf( fp, "    ld        rres, [%s]\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                        if ( 0 == vals[ t + 5 ].value )
+                            fprintf( fp, "    sto       %s[ rres ], rzero\n", GenVariableName( vals[ variableToken ].strValue ) );
+                        else
+                        {
+                            fprintf( fp, "    ldi       rtmp, %d\n", vals[ t + 5 ].value );
+                            fprintf( fp, "    sto       %s[ rres ], rtmp\n", GenVariableName( vals[ variableToken ].strValue ) );
+                        }
+
+                        break;
+                    }
                     else if ( ( arm64Mac == g_AssemblyTarget || arm64Win == g_AssemblyTarget ) &&
                               8 == vals.size() &&
                               Token_VARIABLE == vals[ t + 1 ].token &&
@@ -6410,6 +6495,29 @@ label_no_eq_optimization:
                         fprintf( fp, "    mov      si, ds: [ %s ]\n", GenVariableName( vals[ t + 1 ].strValue ) );
                         fprintf( fp, "    shl      si, 1\n" );
                         fprintf( fp, "    mov      WORD PTR ds: [ offset %s + si ], bx\n", GenVariableName( vararray ) );
+
+                        break;
+                    }
+                    else if ( oiOS == g_AssemblyTarget &&
+                              8 == vals.size() &&
+                              Token_VARIABLE == vals[ t + 1 ].token &&
+                              Token_VARIABLE == vals[ t + 5 ].token )
+                    {
+                        // line 4230 has 8 tokens  ====>> 4230 sv%(st%) = v%
+                        //   0 VARIABLE, value 0, strValue 'sv%'
+                        //   1 OPENPAREN, value 0, strValue ''
+                        //   2 EXPRESSION, value 2, strValue ''
+                        //   3 VARIABLE, value 0, strValue 'st%'
+                        //   4 CLOSEPAREN, value 0, strValue ''
+                        //   5 EQ, value 0, strValue ''
+                        //   6 EXPRESSION, value 2, strValue ''
+                        //   7 VARIABLE, value 0, strValue 'v%'
+
+                        string & vararray = vals[ variableToken ].strValue;
+
+                        fprintf( fp, "    ld       rres, [ %s ]\n", GenVariableName( vals[ t + 5 ].strValue ) );
+                        fprintf( fp, "    ld       rtmp, [ %s ]\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                        fprintf( fp, "    sto      %s[ rtmp ], rres\n", GenVariableName( vararray ) );
 
                         break;
                     }
@@ -6549,7 +6657,7 @@ label_no_array_eq_optimization:
                             else if ( oiOS == g_AssemblyTarget )
                             {
                                 fprintf( fp, "    ldi      rtmp, %u\n", pvar->dims[ 1 ] );
-                                fprintf( fp, "    mathst   rtmp, rtmp, mul\n" );
+                                fprintf( fp, "    mathst   rtmp, rtmp, imul\n" );
                                 fprintf( fp, "    add      rres, rtmp\n" );
                             }
                         }
@@ -7828,6 +7936,58 @@ label_no_array_eq_optimization:
 
                     break;
                 }
+                else if ( oiOS == g_AssemblyTarget &&
+                     19 == vals.size() &&
+                     16 == vals[ t ].value &&
+                     Token_VARIABLE == vals[ t + 1 ].token &&
+                     Token_EQ ==  vals[ t + 2 ].token &&
+                     Token_OPENPAREN == vals[ t + 4 ].token &&
+                     Token_CONSTANT == vals[ t + 6 ].token &&
+                     Token_AND == vals[ t + 8 ].token &&
+                     Token_VARIABLE == vals[ t + 9 ].token &&
+                     Token_EQ == vals[ t + 10 ].token &&
+                     Token_OPENPAREN == vals[ t + 12 ].token &&
+                     Token_CONSTANT == vals[ t + 14 ].token &&
+                     Token_THEN == vals[ t + 16 ].token &&
+                     0 == vals[ t + 16 ].value &&
+                     !stcmp( vals[ t + 3 ], vals[ t + 11 ] ) &&
+                     Token_RETURN == vals[ t + 17 ].token )
+                {
+                    // line 2020 has 19 tokens  ====>> 2020 if wi% = b%( 1 ) and wi% = b%( 2 ) then return
+                    //    0 IF, value 0, strValue ''
+                    //    1 EXPRESSION, value 16, strValue ''
+                    //    2 VARIABLE, value 0, strValue 'wi%'
+                    //    3 EQ, value 0, strValue ''
+                    //    4 VARIABLE, value 0, strValue 'b%'
+                    //    5 OPENPAREN, value 0, strValue ''
+                    //    6 EXPRESSION, value 2, strValue ''
+                    //    7 CONSTANT, value 1, strValue ''
+                    //    8 CLOSEPAREN, value 0, strValue ''
+                    //    9 AND, value 0, strValue ''
+                    //   10 VARIABLE, value 0, strValue 'wi%'
+                    //   11 EQ, value 0, strValue ''
+                    //   12 VARIABLE, value 0, strValue 'b%'
+                    //   13 OPENPAREN, value 0, strValue ''
+                    //   14 EXPRESSION, value 2, strValue ''
+                    //   15 CONSTANT, value 2, strValue ''
+                    //   16 CLOSEPAREN, value 0, strValue ''
+                    //   17 THEN, value 0, strValue ''
+                    //   18 RETURN, value 0, strValue ''
+
+                    fprintf( fp, "    ld       rtmp, [ %s ]\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                    fprintf( fp, "    ldi      rarg1, %d\n", vals[ t + 6 ].value );
+                    fprintf( fp, "    ldae     %s[ rarg1 ]\n", GenVariableName( vals[ t + 3 ].strValue ) );
+                    fprintf( fp, "    j        rtmp, rres, ne _uniq%d\n", s_uniqueLabel );
+
+                    fprintf( fp, "    ldi      rarg1, %d\n", vals[ t + 14 ].value );
+                    fprintf( fp, "    ldae     %s[ rarg1 ]\n", GenVariableName( vals[ t + 3 ].strValue ) );
+                    fprintf( fp, "    j        rtmp, rres, ne _uniq%d\n", s_uniqueLabel );
+
+                    fprintf( fp, "    jmp      label_gosub_return\n" );
+                    fprintf( fp, "  _uniq%d:\n", s_uniqueLabel );
+                    s_uniqueLabel++;
+                    break;
+                }
                 else if ( i8080CPM != g_AssemblyTarget &&
                           mos6502Apple1 != g_AssemblyTarget &&
                           i8086DOS != g_AssemblyTarget &&
@@ -7970,6 +8130,44 @@ label_no_array_eq_optimization:
                     if ( stcmp( lhs, vals[ t + 8 ].strValue ) )
                         fprintf( fp, "    mov      ax, ds: [ %s ]\n", GenVariableName( vals[ t + 8 ].strValue ) );
                     fprintf( fp, "    mov      WORD PTR ds: [ %s ], ax\n", GenVariableName( vals[ t + 5 ].strValue ) );
+                    break;
+                }
+                else if ( oiOS == g_AssemblyTarget &&
+                          10 == vals.size() &&
+                          4 == vals[ t ].value &&
+                          Token_VARIABLE == vals[ t + 1 ].token &&
+                          isOperatorRelational( vals[ t + 2 ].token ) &&
+                          Token_VARIABLE == vals[ t + 3 ].token &&
+                          Token_THEN == vals[ t + 4 ].token &&
+                          0 == vals[ t + 4 ].value &&
+                          Token_VARIABLE == vals[ t + 5 ].token &&
+                          Token_EQ == vals[ t + 6 ].token &&
+                          Token_EXPRESSION == vals[ t + 7 ].token &&
+                          2 == vals[ t + 7 ].value &&
+                          Token_VARIABLE == vals[ t + 8 ].token )
+                {
+                    // line 4342 has 10 tokens  ====>> 4342 if v% > al% then al% = v%
+                    //   0 IF, value 0, strValue ''
+                    //   1 EXPRESSION, value 4, strValue ''
+                    //   2 VARIABLE, value 0, strValue 'v%'
+                    //   3 GT, value 0, strValue ''
+                    //   4 VARIABLE, value 0, strValue 'al%'
+                    //   5 THEN, value 0, strValue ''
+                    //   6 VARIABLE, value 0, strValue 'al%'
+                    //   7 EQ, value 0, strValue ''
+                    //   8 EXPRESSION, value 2, strValue ''
+                    //   9 VARIABLE, value 0, strValue 'v%'
+
+                    Token op = vals[ t + 2 ].token;
+                    string & lhs = vals[ t + 1 ].strValue;
+                    string & rhs = vals[ t + 3 ].strValue;
+
+                    fprintf( fp, "    ld       rtmp, [%s]\n", GenVariableName( lhs ) );
+                    fprintf( fp, "    ld       rres, [%s]\n", GenVariableName( rhs ) );
+                    fprintf( fp, "    j        rtmp, rres, %s, line_number_%zd\n", ConditionsNotArm[ op ], l + 1 );
+                    if ( stcmp( lhs, vals[ t + 8 ].strValue ) )
+                        fprintf( fp, "    ld       rtmp, [%s]\n", GenVariableName( vals[ t + 8 ].strValue ) );
+                    fprintf( fp, "    st       [%s], rtmp\n", GenVariableName( rhs ) );
                     break;
                 }
                 else if ( i8080CPM != g_AssemblyTarget &&
@@ -8521,6 +8719,41 @@ label_no_array_eq_optimization:
                     fprintf( fp, "    jmp      line_number_%d\n", vals[ t + 9 ].value );
                     break;
                 }
+                else if ( oiOS == g_AssemblyTarget &&
+                          11 == vals.size() &&
+                          4 == vals[ t ].value &&
+                          Token_VARIABLE == vals[ t + 1 ].token &&
+                          isOperatorRelational( vals[ t + 2 ].token ) &&
+                          Token_CONSTANT == vals[ t + 3 ].token &&
+                          Token_THEN == vals[ t + 4 ].token &&
+                          0 == vals[ t + 4 ].value &&
+                          Token_VARIABLE == vals[ t + 5 ].token &&
+                          Token_CONSTANT == vals[ t + 8 ].token &&
+                          Token_GOTO == vals[ t + 9 ].token )
+                {
+                    // line 4110 has 11 tokens  ====>> 4110 if wi% = 1 then re% = 6: goto 4280
+                    //    0 IF, value 0, strValue ''
+                    //    1 EXPRESSION, value 4, strValue ''
+                    //    2 VARIABLE, value 0, strValue 'wi%'
+                    //    3 EQ, value 0, strValue ''
+                    //    4 CONSTANT, value 1, strValue ''
+                    //    5 THEN, value 0, strValue ''
+                    //    6 VARIABLE, value 0, strValue 're%'
+                    //    7 EQ, value 0, strValue ''
+                    //    8 EXPRESSION, value 2, strValue ''
+                    //    9 CONSTANT, value 6, strValue ''
+                    //   10 GOTO, value 4280, strValue ''
+
+                    Token op = vals[ t + 2 ].token;
+
+                    fprintf( fp, "    ldi      rtmp, %d\n", vals[ t + 3 ].value );
+                    fprintf( fp, "    ld       rres, [%s]\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                    fprintf( fp, "    j        rtmp, rres, %s, line_number_%zd\n", ConditionsNotArm[ op ], l + 1 );
+                    fprintf( fp, "    ldi      rres, %d\n", vals[ t + 8 ].value );
+                    fprintf( fp, "    st       [%s], rres\n", GenVariableName( vals[ t + 5 ].strValue ) );
+                    fprintf( fp, "    jmp      line_number_%d\n", vals[ t + 9 ].value );
+                    break;
+                }
                 else if ( i8080CPM != g_AssemblyTarget &&
                           mos6502Apple1 != g_AssemblyTarget &&
                           i8086DOS != g_AssemblyTarget &&
@@ -8678,8 +8911,6 @@ label_no_array_eq_optimization:
                           Token_VARIABLE == vals[ t + 1 ].token &&
                           Token_AND == vals[ t + 2 ].token &&
                           Token_CONSTANT == vals[ t + 3 ].token &&
-                          vals[ t + 3 ].value < 256 &&  // arm64 requires small values 
-                          vals[ t + 3 ].value >= 0 &&
                           Token_THEN == vals[ t + 4 ].token &&
                           0 == vals[ t + 4 ].value &&
                           Token_GOTO == vals[ t + 5 ].token )
@@ -8695,6 +8926,32 @@ label_no_array_eq_optimization:
 
                     fprintf( fp, "    test     ds: [ %s ], %d\n", GenVariableName( vals[ t + 1 ].strValue ), vals[ t + 3 ].value );
                     fprintf( fp, "    jnz      line_number_%d\n", vals[ t + 5 ].value );
+
+                    break;
+                }
+                else if ( oiOS == g_AssemblyTarget &&
+                          7 == vals.size() &&
+                          Token_VARIABLE == vals[ t + 1 ].token &&
+                          Token_AND == vals[ t + 2 ].token &&
+                          Token_CONSTANT == vals[ t + 3 ].token &&
+                          Token_THEN == vals[ t + 4 ].token &&
+                          0 == vals[ t + 4 ].value &&
+                          Token_GOTO == vals[ t + 5 ].token )
+                {
+                    // line 4330 has 7 tokens  ====>> 4330 if st% and 1 goto 4340
+                    //    0 IF, value 0, strValue ''
+                    //    1 EXPRESSION, value 4, strValue ''
+                    //    2 VARIABLE, value 0, strValue 'st%'
+                    //    3 AND, value 0, strValue ''
+                    //    4 CONSTANT, value 1, strValue ''
+                    //    5 THEN, value 0, strValue ''
+                    //    6 GOTO, value 4340, strValue ''
+
+                    fprintf( fp, "    ld       rres, [%s]\n", GenVariableName( vals[ t + 1 ].strValue ) );
+                    fprintf( fp, "    ldi      rtmp, %d\n", vals[ t + 3 ].value );
+                    fprintf( fp, "    math     rres, rres, rtmp, and\n" );
+                    fprintf( fp, "    j        rres, rzero, eq, line_number_%zd\n", l + 1 );
+                    fprintf( fp, "    jmp      line_number_%d\n", vals[ t + 5 ].value );
 
                     break;
                 }
@@ -9293,6 +9550,37 @@ label_no_array_eq_optimization:
                     fprintf( fp, "    jmp       line_number_%d\n", vals[ t + 5 ].value );
                     fprintf( fp, "  _uniq%d:\n", s_uniqueLabel );
                     s_uniqueLabel++;
+                    break;
+                }
+                else if ( oiOS == g_AssemblyTarget &&
+                          4 == vals[ t ].value &&
+                          0 == vals[ t + 4 ].value &&
+                          Token_VARIABLE == vals[ t + 1 ].token &&
+                          ( Token_CONSTANT == vals[ t + 3 ].token || Token_VARIABLE == vals[ t + 3 ].token ) &&
+                          isOperatorRelational( vals[ t + 2 ].token ) &&
+                          Token_GOTO == vals[ t + 5 ].token )
+
+                {
+                    // line 4505 has 7 tokens  ====>> 4505 if p% < 9 then goto 4180
+                    //    0 IF, value 0, strValue ''
+                    //    1 EXPRESSION, value 4, strValue ''
+                    //    2 VARIABLE, value 0, strValue 'p%'
+                    //    3 LT, value 0, strValue ''
+                    //    4 CONSTANT, value 9, strValue ''
+                    //    5 THEN, value 0, strValue ''
+                    //    6 GOTO, value 4180, strValue ''
+
+                    Token op = vals[ t + 2 ].token;
+                    string & lhs = vals[ t + 1 ].strValue;
+
+                    fprintf( fp, "    ld       rres, [ %s ]\n", GenVariableName( lhs ) );
+                    if ( Token_VARIABLE == vals[ t + 3 ].token )
+                        fprintf( fp, "    ld       rtmp, [%s]\n", GenVariableName( vals[ t + 3 ].strValue ) );
+                    else
+                        fprintf( fp, "    ldi      rtmp, %d\n", vals[ t + 3 ].value );
+
+                    fprintf( fp, "    j        rres, rtmp, %s, line_number_%zd\n", ConditionsNotArm[ op ], l + 1 );
+                    fprintf( fp, "    jmp      line_number_%d\n", vals[ t + 5 ].value );
                     break;
                 }
                 else if ( i8080CPM != g_AssemblyTarget &&
