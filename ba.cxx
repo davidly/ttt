@@ -9507,7 +9507,7 @@ label_no_array_eq_optimization:
 
                     if ( 1 == vals[ t + 3 ].value &&
                          IsVariableInReg( varmap, vals[ t + 1 ].strValue ) )
-                        fprintf( fp, "    j        %s, rzero, odd, line_number_%d\n", GenVariableReg( varmap, vals[ t + 1 ].strValue ), vals[ t + 5 ].value, l + 1 );
+                        fprintf( fp, "    j        %s, rzero, odd, line_number_%d\n", GenVariableReg( varmap, vals[ t + 1 ].strValue ), vals[ t + 5 ].value );
                     else
                     {
                         if ( !IsVariableInReg( varmap, vals[ t + 1 ].strValue ) )
