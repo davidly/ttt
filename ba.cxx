@@ -7614,7 +7614,7 @@ label_no_array_eq_optimization:
                 else if ( riscv64 == g_AssemblyTarget)
                     fprintf( fp, "    j        label_gosub_return\n" );
                 else if ( oiOS == g_AssemblyTarget )
-                    fprintf( fp, "    jmp      label_gosub_return\n" );
+                    fprintf( fp, "    retnf\n" );
 
                 break;
             }
@@ -8321,19 +8321,13 @@ label_no_array_eq_optimization:
 
                     fprintf( fp, "    ldi      rres, %d\n", vals[ t + 6 ].value );
                     fprintf( fp, "    ldae     %s[ rres ]\n", GenVariableName( vals[ t + 3 ].strValue ) );
-                    fprintf( fp, "    j        %s, rres, ne _uniq%d\n",
-                             IsVariableInReg( varmap, vals[ t + 1 ].strValue ) ? GenVariableReg( varmap, vals[ t + 1 ].strValue ) : "rtmp",
-                             s_uniqueLabel );
+                    fprintf( fp, "    j        %s, rres, ne, line_number_%zd\n",
+                             IsVariableInReg( varmap, vals[ t + 1 ].strValue ) ? GenVariableReg( varmap, vals[ t + 1 ].strValue ) : "rtmp", l + 1 );
 
                     fprintf( fp, "    ldi      rres, %d\n", vals[ t + 14 ].value );
                     fprintf( fp, "    ldae     %s[ rres ]\n", GenVariableName( vals[ t + 3 ].strValue ) );
-                    fprintf( fp, "    j        %s, rres, ne _uniq%d\n",
-                             IsVariableInReg( varmap, vals[ t + 1 ].strValue ) ? GenVariableReg( varmap, vals[ t + 1 ].strValue ) : "rtmp",
-                             s_uniqueLabel );
-
-                    fprintf( fp, "    jmp      label_gosub_return\n" );
-                    fprintf( fp, "  _uniq%d:\n", s_uniqueLabel );
-                    s_uniqueLabel++;
+                    fprintf( fp, "    j        %s, rres, eq, retnf\n",
+                             IsVariableInReg( varmap, vals[ t + 1 ].strValue ) ? GenVariableReg( varmap, vals[ t + 1 ].strValue ) : "rtmp" );
                     break;
                 }
                 else if ( i8080CPM != g_AssemblyTarget &&
@@ -10243,7 +10237,7 @@ label_no_array_eq_optimization:
                         else if ( arm64Mac == g_AssemblyTarget || arm64Win == g_AssemblyTarget )
                             fprintf( fp, "    b.eq     label_gosub_return\n" );
                         else if ( oiOS == g_AssemblyTarget )
-                            fprintf( fp, "    j        %s, rzero, eq, label_gosub_return\n", pOIOSReg );
+                            fprintf( fp, "    j        %s, rzero, eq, retnf\n", pOIOSReg );
                         break;
                     }
                     else
