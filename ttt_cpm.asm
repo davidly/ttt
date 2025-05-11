@@ -757,9 +757,9 @@ BOARD:     db      0,0,0,0,0,0,0,0,0
 NEGF:      db      0                ; Space for negative flag
            db      '-00000'            
 NUM:       db      '$'              ; Space for number. cp/m strings end with a dollar sign
-CRLF:      db      10,13,0
+CRLF:      db      13,10,0
 STRITERS:  db     'iterations: ', 0
-STRINVARG: db     'iteration argument invalid; it must be 1 - 32767', 10,13,0
+STRINVARG: db     'iteration argument invalid; it must be 1 - 32767', 13,10,0
 STRMOVES:  db     'moves: ', 0
 V:         db      0                ; value in minmax
 DEPTH:     db      0                ; current depth of recursion. must be after V

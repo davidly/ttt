@@ -565,7 +565,7 @@ NEGF:   db      0                   ; Space for negative flag
         db      '-00000'            
 NUM:    db      0                   ; trs-80 strings are null-terminated
 STRWIN: db      'winner ', 0
-CRLF:   db      10,13,0
+CRLF:   db      13,10,0
 BOARD:  db      0,0,0,0,0,0,0,0,0
 V:      db      0                   ; value in minmax
 DEPTH:  db      0                   ; current depth of recursion. must be after V
