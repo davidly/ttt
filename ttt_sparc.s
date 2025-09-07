@@ -1,10 +1,16 @@
 ! prove you can't win at tic-tac-toe if your opponent is competent in sparc v8 assembly.
+! the board is 9 bytes long and arraigned like this:
+!    0 1 2
+!    3 4 5
+!    6 7 8
 ! g1 pointer to the board
 ! g2 array of winprocs
 ! g3 global move count
 ! g4 current depth
-! l1 global loop count
-! l2 value
+! g5 piece_x
+! g6 piece_o
+! l1 loop iteration count in main
+! l2 value in minmax_max/minmax_min
 ! i0/o0 alpha
 ! i1/o1 beta
 ! i2/o2 current move
@@ -21,10 +27,10 @@
 .equ default_iterations, 1
 
 .section .data
-
-.align  2
+.align  4
 .board:
     .zero 9
+
 .section .rodata
 .moves_string:
     .string "moves: %u\n"
@@ -47,15 +53,15 @@
 .align  4
 .type proc0, @function
 proc0:
-    ldub [ %g1 + 0 ], %o0
+    ldub [ %g1 + 0 ], %o0            ! look for a winner after a move to position 0 on the board
     ldub [ %g1 + 1 ], %l3
     cmp %o0, %l3
     bne _proc0_next_a
-    ldub [ %g1 + 2 ], %l3
+    ldub [ %g1 + 2 ], %l3            ! in the delay slot. It's executed even if the branch is taken. assume board is in the cache or this will be very slow
     cmp %o0, %l3
     bne,a _proc0_next_a
     nop
-    retl
+    retl                             ! there is a winner
     nop
   _proc0_next_a:
     ldub [ %g1 + 3 ], %l3
@@ -79,7 +85,7 @@ proc0:
     nop
   _proc0_return_0:
     retl
-    clr %o0
+    clr %o0                          ! the 0 return value is set in the delay slot, before the retl jumps to the return address
 
 .align  4
 .type proc1, @function
@@ -351,7 +357,7 @@ proc8:
 .type minmax_max, @function
 minmax_max:
     .cfi_startproc
-    save %sp, -96, %sp
+    save %sp, -96, %sp               ! 64 required to spill a register window. 32 per sparc v8 calling conventions; it's a handy storage location for other spills.
     .cfi_window_save
     .cfi_register 15, 31
     .cfi_def_cfa_register 30
@@ -361,7 +367,7 @@ minmax_max:
     cmp %g4, 4
     blt _max_no_winner_check
 
-    sll %i2, 2, %l0
+    sll %i2, 2, %l0                  ! in the delay slot
     ld [ %g2 + %l0 ], %l0
     call %l0
     nop
@@ -373,45 +379,44 @@ minmax_max:
     restore
 
   _max_no_winner_check:
-    mov score_min, %l2
-    mov -1, %i2
-    inc %g4
+    mov score_min, %l2               ! maximizing scores into value, so start with the minimum
+    mov -1, %i2                      ! start the loop at -1, but it'll run 0..8
+    inc %g4                          ! increment search depth
 
   _max_loop:
     cmp %i2, 8
+  _max_loop_after_compare:
     be _max_load_value_return
-    inc %i2                      ! in the delay slot
+    inc %i2                          ! in the delay slot
     ldub [ %g1 + %i2 ], %l0
     tst %l0
-    bne _max_loop
-    nop
+    bne,a _max_loop_after_compare
+    cmp %i2, 8                       ! in the delay slot
 
-    mov piece_x, %l0
-    stb %l0, [ %g1 + %i2 ]
-    mov %i0, %o0
-    mov %i1, %o1
-    mov %i2, %o2
-    call minmax_min
-    nop
-    clrb [ %g1 + %i2 ]
+    stb %g5, [ %g1 + %i2 ]           ! store piece_x on the board
+    mov %i0, %o0                     ! alpha
+    mov %i1, %o1                     ! beta
+    call minmax_min                  ! recurse to the min
+    mov %i2, %o2                     ! the move. in the delay slot.
+    clrb [ %g1 + %i2 ]               ! remove the piece from the board
 
-    cmp %o0, score_win           ! can't do better than winning
+    cmp %o0, score_win               ! can't do better than winning
     be,a _max_restore_value
     mov %o0, %i0
 
-    cmp %o0, %l2
+    cmp %o0, %l2                     ! is this a new best score?
     ble _max_loop
 
-    cmp %o0, %i1                 ! in the delay slot
-    bge,a _max_restore_value
+    cmp %o0, %i1                     ! in the delay slot
+    bge,a _max_restore_value         ! beta pruning
     mov %o0, %i0
 
-    mov %o0, %l2
-    cmp %l2, %i0
-    ble,a _max_loop
+    mov %o0, %l2                     ! update value with score
+    cmp %l2, %i0                     ! compare with alpha
+    ble,a _max_loop              
     nop
 
-    mov %l2, %i0
+    mov %l2, %i0                     ! update alpha
     ba,a _max_loop
     nop
 
@@ -420,7 +425,7 @@ minmax_max:
 
   _max_restore_value:
     dec %g4
-    jmp     %i7+8
+    ret
     restore
 .cfi_endproc
 
@@ -438,7 +443,7 @@ minmax_min:
     cmp %g4, 4
     blt _min_no_winner_check
 
-    sll %i2, 2, %l0              ! in the delay slot
+    sll %i2, 2, %l0                  ! in the delay slot
     ld [ %g2 + %l0 ], %l0
     call %l0
     nop
@@ -463,32 +468,31 @@ minmax_min:
     inc %g4
 
   _min_loop:
-    cmp %i2, 8
+    cmp %i2, 8                       ! tried all 9 positions?
+  _min_loop_after_compare:
     be _min_load_value_return
     inc %i2                          ! in the delay slot
-
-    ldub [ %g1 + %i2 ], %l0
+    ldub [ %g1 + %i2 ], %l0          ! is this board position empty?
     tst %l0
-    bne _min_loop
+    bne,a _min_loop_after_compare    ! if it's occupied try the next one
+    cmp %i2, 8                       ! in the delay slot
 
-    mov piece_o, %l0                 ! in the delay slot
-    stb %l0, [ %g1 + %i2 ]
-    mov %i0, %o0
-    mov %i1, %o1
-    mov %i2, %o2
-    call minmax_max
-    nop
-    clrb [ %g1 + %i2 ]
+    stb %g6, [ %g1 + %i2 ]           ! store piece_o on the board
+    mov %i0, %o0                     ! alpha
+    mov %i1, %o1                     ! beta
+    call minmax_max                  ! recurse to the max
+    mov %i2, %o2                     ! the move. in the delay slot
+    clrb [ %g1 + %i2 ]               ! remove the piece from the board
 
-    cmp %o0, score_lose               ! can't do better than losing
+    cmp %o0, score_lose              ! can't do better than losing
     be,a _min_restore_value
     mov %o0, %i0
 
-    cmp %o0, %l2
+    cmp %o0, %l2                     ! is this a new low score?
     bge _min_loop
 
-    cmp %o0, %i0                      ! in the delay slot
-    ble,a _min_restore_value
+    cmp %o0, %i0                     ! in the delay slot
+    ble,a _min_restore_value         ! alpha pruning
     mov %o0, %i0
 
     mov %o0, %l2
@@ -496,7 +500,7 @@ minmax_min:
     bge,a _min_loop
     nop
 
-    mov %l2, %i1
+    mov %l2, %i1                     ! update beta
     ba,a _min_loop
     nop
 
@@ -505,7 +509,7 @@ minmax_min:
 
   _min_restore_value:
     dec %g4
-    jmp   %i7+8
+    ret
     restore
 .cfi_endproc
 
@@ -518,24 +522,30 @@ run_move:
     .cfi_register 15, 31
     .cfi_def_cfa_register 30
 
+    ! do all of this initialization here instead of in main() since run_move may someday be called by multiple threads
+
+    sethi %hi(.winprocs), %g2
+    add %g2, %lo(.winprocs), %g2
+    mov piece_x, %g5
+    mov piece_o, %g6
+
     sethi %hi(.board), %g1
     add %g1, %lo(.board), %g1
-    mov %i0, %l1
-    mov piece_x, %l0
-    stb %l0, [ %g1 + %i0 ]
+    mov %i0, %l1                     ! save the board position for cleanup later
+    stb %g5, [ %g1 + %i0 ]           ! make the first piece_x move
 
-    clr %g4           ! clear the global depth
-    mov %i0, %o2        ! first move
-    mov score_min, %o0  ! alpha
-    mov score_max, %o1  ! beta
+    clr %g4                          ! clear the global depth
+    mov score_min, %o0               ! alpha
+    mov score_max, %o1               ! beta
     call minmax_min
+    mov %i0, %o2                     ! first move. in the delay slot.
     nop
     
-    stb %g0, [ %g1 + %l1 ]
+    stb %g0, [ %g1 + %l1 ]    ! clear the piece from the board
 
-    jmp     %i7+8
+    ret
     restore
-    .cfi_endproc
+.cfi_endproc
 
 .section .text.startup,"ax",@progbits
     .align 4
@@ -550,56 +560,51 @@ main:
     .cfi_def_cfa_register 30
 
     mov default_iterations, %l1
-    cmp %i0, 2
-    bne no_argument
+    cmp %i0, 2                       ! is there a command-line argument with an iteration count?
+    bne,a no_argument
     nop
 
-    ld [%i1 + 4 ], %o0
-    call atoi
-    nop
+    call atoi                        ! turn the argument into a number
+    ld [%i1 + 4 ], %o0               ! delay slot
     tst %o0
-    bne argument_is_good
+    bne,a argument_is_good
     nop
-    mov default_iterations, %o0
+    mov default_iterations, %o0      ! 0 will take a long time. use the default instead
   argument_is_good:
     mov %o0, %l1
 
   no_argument:
     mov %l1, %l2
-    sethi %hi(.winprocs), %g2
-    add %g2, %lo(.winprocs), %g2
-
-  next_iteration:
     clr %g3
 
-    mov 0, %o0
+  next_iteration:
+    ! run the 3 unique first moves once mirror/rotation moves are removed
     call run_move
-    nop
+    mov 0, %o0                       ! if you don't know sparc: this is in the delay slot and executes prior to the final jump part of the call above
+    call run_move
     mov 1, %o0
     call run_move
-    nop
     mov 4, %o0
-    call run_move
-    nop
 
-    subcc %l1, 1, %l1
-    bne next_iteration
+    deccc %l1
+    bne,a next_iteration
+    nop
     
   all_done:
     sethi %hi(.moves_string), %o0
     add %o0, %lo(.moves_string), %o0      
     mov %g3, %o1
-    call  printf
+    call printf
     nop
 
     sethi %hi(.iterations_string), %o0
     add %o0, %lo(.iterations_string), %o0 
     mov %l2, %o1
-    call  printf
+    call printf
     nop
 
-    mov   0, %i0
-    jmp   %i7+8
+    mov 0, %i0
+    ret
     restore
 .cfi_endproc
 
